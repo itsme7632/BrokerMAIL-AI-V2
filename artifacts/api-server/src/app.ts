@@ -6,7 +6,7 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { db, pool, usersTable, plansTable, campaignsTable, emailQueueTable, leadsTable } from "@workspace/db";
 import { eq, and, inArray, isNotNull } from "drizzle-orm";
-import { processCampaignFully } from "./routes/campaigns";
+import { startCampaignProcessor } from "./routes/campaigns";
 import { hashPassword } from "./lib/auth";
 import { maintenanceMiddleware } from "./lib/maintenance";
 
@@ -129,6 +129,7 @@ seedPlans().catch((err) => logger.warn({ err }, "Plan seed skipped (non-fatal)")
 
 // ---------------------------------------------------------------------------
 // Startup recovery — auto-restart processors for campaigns stuck in 'sending'
+// or 'cooling_down' (both states require an active processor).
 // Handles: server restarts, deployments, Replit reboots, process crashes
 // ---------------------------------------------------------------------------
 async function startupRecovery(): Promise<void> {
@@ -136,17 +137,17 @@ async function startupRecovery(): Promise<void> {
     // Give DB a moment to be ready after boot
     await new Promise(r => setTimeout(r, 2_000));
 
-    const sendingCampaigns = await db
-      .select({ id: campaignsTable.id })
+    const staleCampaigns = await db
+      .select({ id: campaignsTable.id, status: campaignsTable.status })
       .from(campaignsTable)
-      .where(eq(campaignsTable.status, "sending"));
+      .where(inArray(campaignsTable.status, ["sending", "cooling_down"]));
 
-    if (sendingCampaigns.length === 0) return;
+    if (staleCampaigns.length === 0) return;
 
-    logger.info({ count: sendingCampaigns.length }, "[RECOVERY] Campaign found — campaigns in 'sending' status detected on startup");
+    logger.info({ count: staleCampaigns.length }, "[RECOVERY] Campaigns in active state detected on startup");
 
-    for (const { id: campaignId } of sendingCampaigns) {
-      // Find deferred queue items for this campaign
+    for (const { id: campaignId } of staleCampaigns) {
+      // Reset any leads/queue items stuck mid-send from before the crash
       const deferredItems = await db
         .select({ leadId: emailQueueTable.leadId })
         .from(emailQueueTable)
@@ -157,8 +158,6 @@ async function startupRecovery(): Promise<void> {
         ));
 
       if (deferredItems.length > 0) {
-        logger.info({ campaignId, count: deferredItems.length }, "[RECOVERY] Deferred items found");
-        // Reset any leads stuck in 'sending' because the processor died mid-send
         const leadIds = deferredItems.map(i => i.leadId).filter((id): id is number => id != null);
         if (leadIds.length > 0) {
           const fixed = await db
@@ -172,10 +171,10 @@ async function startupRecovery(): Promise<void> {
         }
       }
 
-      // Kick off the processor — it handles its own stuck-item recovery internally
-      logger.info({ campaignId }, "[RECOVERY] Processor restarted");
-      processCampaignFully(campaignId).catch(err =>
-        logger.error({ err, campaignId }, "[RECOVERY] Processor error after restart")
+      // startCampaignProcessor handles the cooling_down → sending reset internally
+      logger.info({ campaignId }, "[RECOVERY] Restarting processor");
+      startCampaignProcessor(campaignId).catch(err =>
+        logger.error({ err, campaignId }, "[RECOVERY] Processor error after restart"),
       );
     }
   } catch (err) {
@@ -184,6 +183,42 @@ async function startupRecovery(): Promise<void> {
 }
 
 startupRecovery().catch(() => {});
+
+// ---------------------------------------------------------------------------
+// Periodic watchdog — every 60 s find campaigns in 'sending' or 'cooling_down'
+// that have no active worker and restart their processors automatically.
+// Prevents campaigns from appearing active when nothing is actually running.
+// ---------------------------------------------------------------------------
+async function runWatchdog(): Promise<void> {
+  try {
+    const activeCampaigns = await db
+      .select({ id: campaignsTable.id, status: campaignsTable.status, cooldownUntil: campaignsTable.cooldownUntil })
+      .from(campaignsTable)
+      .where(inArray(campaignsTable.status, ["sending", "cooling_down"]));
+
+    for (const c of activeCampaigns) {
+      const key = `campaign:${c.id}`;
+      // Import activeJobs — it's defined in campaigns.ts but we check via the processor guard
+      // We rely on startCampaignProcessor's own activeJobs.get() guard to skip already-running jobs.
+      // For cooling_down: only restart if the cooldown has already expired (to avoid flooding resets)
+      if (c.status === "cooling_down" && c.cooldownUntil && c.cooldownUntil > new Date()) {
+        continue; // Still cooling — check again next tick
+      }
+      logger.info({ campaignId: c.id, status: c.status }, "[WATCHDOG] Orphaned campaign detected — restarting processor");
+      startCampaignProcessor(c.id).catch(err =>
+        logger.error({ err, campaignId: c.id }, "[WATCHDOG] Processor restart failed"),
+      );
+    }
+  } catch (err) {
+    logger.warn({ err }, "[WATCHDOG] Periodic check skipped (non-fatal)");
+  }
+}
+
+// Start watchdog 10 s after boot, then every 60 s
+setTimeout(() => {
+  runWatchdog().catch(() => {});
+  setInterval(() => runWatchdog().catch(() => {}), 60_000);
+}, 10_000);
 
 // ---------------------------------------------------------------------------
 // Startup schema validation — compares DB columns against Drizzle schema

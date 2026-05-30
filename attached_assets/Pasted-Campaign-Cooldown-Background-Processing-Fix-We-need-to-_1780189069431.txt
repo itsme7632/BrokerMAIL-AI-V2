@@ -1,0 +1,90 @@
+Campaign Cooldown & Background Processing Fix
+We need to fix two critical campaign-processing issues.
+========================================
+COOLDOWN COUNTDOWN BUG========================================
+Current issue:
+The cooldown timer sometimes loops:
+60 → 59 → 60 → 59 → 60
+instead of counting down normally.
+Required Fix:
+Store a single cooldownUntil timestamp in the database.
+Countdown must be calculated as:
+remainingSeconds = cooldownUntil - currentTime
+Never recalculate cooldown from quota values on each refresh.
+Timer must continue correctly across:
+page refresh
+browser refresh
+navigation between pages
+logout/login
+When cooldown reaches zero:
+campaign automatically resumes processing
+no manual refresh required
+Diagnostics should show:
+cooldownUntil
+currentServerTime
+remainingCooldownSeconds
+========================================2. CAMPAIGN SHOULD NOT DEPEND ON BROWSER
+Current issue:
+If the user closes the browser, refreshes, loses internet, or leaves the page during sending, the campaign sometimes gets stuck showing "Sending" while no emails are actually being sent.
+Users currently have to:
+Pause Campaign
+→ Resume Campaign
+to make it continue.
+Required Fix:
+Determine the intended architecture and implement one of the following correctly:
+OPTION A (Preferred)
+True background processing.
+Campaign processing must run entirely on the server.
+Campaign continues sending even when:
+browser is closed
+user logs out
+user switches device
+page is inactive
+Frontend should only display status.
+No campaign logic should depend on browser polling.
+========================================OPTION B (If background processing is not supported)
+If campaign processing requires an active browser session:
+Detect when:
+browser tab closes
+browser becomes inactive
+websocket disconnects
+polling stops
+Automatically pause the campaign.
+Update campaign status to:
+Paused - User Session Ended
+Never leave campaign status as "Sending" if no processor is running.
+Show Resume Campaign button when user returns.
+========================================3. STUCK CAMPAIGN RECOVERY
+Add automatic recovery logic.
+Every 60 seconds:
+Find campaigns where:
+status = "sending"
+BUT
+no active worker exists.
+If found:
+Either:
+A) Restart the worker automatically
+OR
+B) Change campaign status to paused.
+Never allow:
+Campaign Status = Sending
+Worker Running = No
+========================================4. ADD DIAGNOSTICS
+Campaign Diagnostics should show:
+Campaign Status
+Worker Active (Yes/No)
+Last Processing Time
+Last Successful Send
+Current Cooldown
+Cooldown Until
+Browser Connected (if applicable)
+Queue Counts
+Deferred Counts
+This should make it impossible for campaigns to appear active while nothing is actually running.
+========================================SUCCESS CRITERIA
+Cooldown countdown never resets or loops.
+Campaign does not get stuck in Sending state.
+Browser refresh or close does not create a fake Sending status.
+Campaign either continues in the background OR automatically pauses.
+Stuck campaigns recover automatically.
+Resume button appears whenever a campaign is paused.

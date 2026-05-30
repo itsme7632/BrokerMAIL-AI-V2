@@ -458,6 +458,63 @@ export async function processCampaignJobQueue(
   }
 }
 
+// ─── Self-contained campaign processor launcher ───────────────────────────────
+// Loads box / template / user from DB, then delegates to processCampaignFully.
+// Used by startup-recovery and the periodic watchdog so they don't need callers
+// to pass context. Safe to call even if the processor is already running (no-op).
+export async function startCampaignProcessor(campaignId: number): Promise<void> {
+  const key = `campaign:${campaignId}`;
+  if (activeJobs.get(key)) {
+    logger.info({ campaignId }, "[PROCESSOR] Already active — skipping duplicate start");
+    return;
+  }
+
+  const [campaign] = await db.select().from(campaignsTable)
+    .where(eq(campaignsTable.id, campaignId));
+  if (!campaign) {
+    logger.warn({ campaignId }, "[PROCESSOR] Campaign not found — skipping");
+    return;
+  }
+  if (!campaign.templateId) {
+    logger.warn({ campaignId }, "[PROCESSOR] No template on campaign — skipping");
+    return;
+  }
+
+  const [template] = await db.select().from(templatesTable)
+    .where(eq(templatesTable.id, campaign.templateId));
+  if (!template) {
+    logger.warn({ campaignId }, "[PROCESSOR] Template not found — skipping");
+    return;
+  }
+
+  const [freshUser] = await db.select().from(usersTable)
+    .where(eq(usersTable.id, campaign.userId));
+  if (!freshUser) {
+    logger.warn({ campaignId }, "[PROCESSOR] User not found — skipping");
+    return;
+  }
+
+  const [box] = await db.select().from(mailboxesTable)
+    .where(and(eq(mailboxesTable.userId, campaign.userId), eq(mailboxesTable.isActive, true)));
+  if (!box) {
+    logger.warn({ campaignId }, "[PROCESSOR] No active mailbox — skipping");
+    return;
+  }
+
+  // If the campaign was stuck in cooling_down at startup, reset it to sending so
+  // processCampaignFully can re-evaluate the quota and set a fresh cooldown if needed.
+  if (campaign.status === "cooling_down") {
+    await db.update(campaignsTable)
+      .set({ status: "sending", updatedAt: new Date() })
+      .where(eq(campaignsTable.id, campaignId));
+    logger.info({ campaignId }, "[PROCESSOR] Reset cooling_down → sending before restart");
+  }
+
+  processCampaignFully(campaignId, box, template, freshUser).catch(err =>
+    logger.error({ err, campaignId }, "[PROCESSOR] Campaign processor error after restart"),
+  );
+}
+
 // ─── Fully automated campaign processor (campaign-level, not batch-level) ────
 export async function processCampaignFully(
   campaignId: number,
@@ -1121,6 +1178,7 @@ router.get("/campaigns/:id/progress", requireAuth, async (req, res): Promise<voi
     total, sent, sending, queued, failed, remaining,
     sentThisHour, hourlyLimit, remainingQuota,
     isHourlyLimitReached, cooldownSeconds,
+    cooldownUntil: campaign.cooldownUntil?.toISOString() ?? null,
     currentJobId: campaign.currentJobId ?? null,
     isJobActive,
     sendMode: campaign.sendMode,
@@ -1810,6 +1868,23 @@ router.get("/campaigns/:id/diagnostics", requireAuth, async (req, res): Promise<
   const legacyKey   = campaign.currentJobId ?? "";
   const isJobActive = activeJobs.has(campaignKey) || activeJobs.has(legacyKey);
 
+  // Last successful send timestamp
+  const [lastSent] = await db.select({ sentAt: emailQueueTable.sentAt })
+    .from(emailQueueTable)
+    .where(and(
+      eq(emailQueueTable.campaignId, campaignId),
+      eq(emailQueueTable.status, "success"),
+      isNotNull(emailQueueTable.sentAt),
+    ))
+    .orderBy(desc(emailQueueTable.sentAt))
+    .limit(1);
+
+  const now = new Date();
+  const cooldownUntilDate = campaign.cooldownUntil;
+  const remainingCooldownSeconds = cooldownUntilDate && cooldownUntilDate > now
+    ? Math.ceil((cooldownUntilDate.getTime() - now.getTime()) / 1000)
+    : 0;
+
   res.json({
     campaignId,
     status: campaign.status,
@@ -1819,6 +1894,9 @@ router.get("/campaigns/:id/diagnostics", requireAuth, async (req, res): Promise<
     isJobActive,
     currentJobId: campaign.currentJobId ?? null,
     cooldownUntil: campaign.cooldownUntil?.toISOString() ?? null,
+    currentServerTime: now.toISOString(),
+    lastSuccessfulSend: lastSent?.sentAt?.toISOString() ?? null,
+    remainingCooldownSeconds,
     leadCounts,
     queueCounts,
     nextDeferred: nextDeferred ? {

@@ -34,6 +34,7 @@ interface CampaignProgress {
   remainingQuota: number;
   isHourlyLimitReached: boolean;
   cooldownSeconds: number;
+  cooldownUntil: string | null;
   currentJobId: string | null;
   isJobActive: boolean;
   sendMode: string;
@@ -68,6 +69,9 @@ interface CampaignDiagnostics {
   isJobActive: boolean;
   currentJobId: string | null;
   cooldownUntil: string | null;
+  currentServerTime: string | null;
+  lastSuccessfulSend: string | null;
+  remainingCooldownSeconds: number;
   leadCounts: Record<string, number>;
   queueCounts: Record<string, number>;
   nextDeferred: {
@@ -117,15 +121,31 @@ function StatCard({
 }
 
 // ─── Countdown timer hook ─────────────────────────────────────────────────────
-function useCooldownTimer(initialSeconds: number) {
-  const [secs, setSecs] = useState(initialSeconds);
+// Derives remaining seconds from an absolute ISO timestamp (cooldownUntil).
+// The effect only re-runs when the target timestamp changes — not on every poll.
+// This prevents the 60→59→60 loop caused by Math.ceil rounding on each API call.
+function useCooldownTimerUntil(cooldownUntil: string | null) {
+  const calcRemaining = (iso: string | null) => {
+    if (!iso) return 0;
+    return Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 1000));
+  };
+
+  const [secs, setSecs] = useState(() => calcRemaining(cooldownUntil));
   const ref = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => {
-    setSecs(initialSeconds);
-    if (initialSeconds <= 0) return;
-    ref.current = setInterval(() => setSecs(s => Math.max(0, s - 1)), 1000);
+    if (ref.current) clearInterval(ref.current);
+    const initial = calcRemaining(cooldownUntil);
+    setSecs(initial);
+    if (!cooldownUntil || initial <= 0) return;
+    // Tick every second, calculating from the target timestamp each time so
+    // clock drift never accumulates
+    ref.current = setInterval(() => {
+      setSecs(calcRemaining(cooldownUntil));
+    }, 1000);
     return () => { if (ref.current) clearInterval(ref.current); };
-  }, [initialSeconds]);
+  }, [cooldownUntil]); // only changes when cooldown starts / ends
+
   return secs;
 }
 
@@ -154,7 +174,7 @@ export default function CampaignDetail() {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [diagnostics, setDiagnostics]     = useState<CampaignDiagnostics | null>(null);
 
-  const cooldownLeft = useCooldownTimer(progress?.cooldownSeconds ?? 0);
+  const cooldownLeft = useCooldownTimerUntil(progress?.cooldownUntil ?? null);
 
   const { data: campaign, isLoading: isCampaignLoading } = useGetCampaign(campaignId, {
     query: { enabled: !!campaignId, queryKey: getGetCampaignQueryKey(campaignId) }
@@ -1376,20 +1396,25 @@ export default function CampaignDetail() {
 
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
                         {[
-                          { label: "Campaign Status", value: diagnostics.status },
-                          { label: "Total Leads", value: diagnostics.totalLeads },
-                          { label: "Job Active", value: diagnostics.isJobActive ? "Yes" : "No" },
-                          { label: "sentCount (DB)", value: diagnostics.sentCount },
-                          { label: "failedCount (DB)", value: diagnostics.failedCount },
-                          { label: "Cooldown Until", value: diagnostics.cooldownUntil
-                            ? new Date(diagnostics.cooldownUntil).toLocaleTimeString()
-                            : "—" },
-                        ].map(r => (
-                          <div key={r.label} className="bg-slate-50 rounded-xl px-3 py-2">
-                            <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">{r.label}</p>
-                            <p className="font-bold text-slate-800 mt-0.5">{String(r.value)}</p>
-                          </div>
-                        ))}
+                          { label: "Campaign Status", value: diagnostics.status, highlight: diagnostics.status === "sending" ? "blue" : diagnostics.status === "cooling_down" ? "amber" : diagnostics.status === "completed" ? "green" : "none" },
+                          { label: "Worker Active", value: diagnostics.isJobActive ? "✓ Yes" : "✗ No", highlight: diagnostics.isJobActive ? "green" : (diagnostics.status === "sending" || diagnostics.status === "cooling_down") ? "red" : "none" },
+                          { label: "Total Leads", value: diagnostics.totalLeads, highlight: "none" },
+                          { label: "Sent (DB)", value: diagnostics.sentCount, highlight: "none" },
+                          { label: "Failed (DB)", value: diagnostics.failedCount, highlight: "none" },
+                          { label: "Cooldown Remaining", value: diagnostics.remainingCooldownSeconds > 0 ? formatSeconds(diagnostics.remainingCooldownSeconds) : "—", highlight: diagnostics.remainingCooldownSeconds > 0 ? "amber" : "none" },
+                          { label: "Cooldown Until", value: diagnostics.cooldownUntil ? new Date(diagnostics.cooldownUntil).toLocaleTimeString() : "—", highlight: "none" },
+                          { label: "Last Successful Send", value: diagnostics.lastSuccessfulSend ? new Date(diagnostics.lastSuccessfulSend).toLocaleTimeString() : "—", highlight: "none" },
+                          { label: "Server Time", value: diagnostics.currentServerTime ? new Date(diagnostics.currentServerTime).toLocaleTimeString() : "—", highlight: "none" },
+                        ].map(r => {
+                          const bg = r.highlight === "blue" ? "bg-blue-50 border border-blue-100" : r.highlight === "amber" ? "bg-amber-50 border border-amber-100" : r.highlight === "green" ? "bg-emerald-50 border border-emerald-100" : r.highlight === "red" ? "bg-red-50 border border-red-100" : "bg-slate-50";
+                          const txt = r.highlight === "blue" ? "text-blue-800" : r.highlight === "amber" ? "text-amber-800" : r.highlight === "green" ? "text-emerald-800" : r.highlight === "red" ? "text-red-800" : "text-slate-800";
+                          return (
+                            <div key={r.label} className={`rounded-xl px-3 py-2 ${bg}`}>
+                              <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">{r.label}</p>
+                              <p className={`font-bold mt-0.5 ${txt}`}>{String(r.value)}</p>
+                            </div>
+                          );
+                        })}
                       </div>
 
                       <div className="grid grid-cols-2 gap-3">
