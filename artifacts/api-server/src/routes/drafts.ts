@@ -287,7 +287,12 @@ router.post("/drafts/from-template", requireAuth, async (req, res): Promise<void
   const useSig    = useSignatureBuilder !== undefined
     ? useSignatureBuilder
     : (freshUser.useSignature ?? false);
-  const buildOpts = { style: emailStyle, useSignatureBuilder: useSig };
+  const ctaButtonsFromTemplate = (() => {
+    try { return template.ctaButtonsJson ? JSON.parse(template.ctaButtonsJson) : []; }
+    catch { return []; }
+  })();
+  logger.info({ templateId, ctaCount: ctaButtonsFromTemplate.length }, "[CTA LOAD] Gmail drafts from-template — loading CTA buttons");
+  const buildOpts = { style: emailStyle, useSignatureBuilder: useSig, ctaButtons: ctaButtonsFromTemplate };
   const baseUrl   = `${req.protocol}://${req.get("host")}`;
 
   const results: {

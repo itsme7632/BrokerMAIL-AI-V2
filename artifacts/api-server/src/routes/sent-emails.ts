@@ -44,7 +44,12 @@ function validStyle(s?: string | null): EmailStyle {
 /** Human-readable SMTP error label — decodes MIME quoted-printable before matching */
 export function parseSMTPError(raw?: string | null): string {
   if (!raw) return "Unknown error";
-  const decoded = decodeQuotedPrintable(raw);
+  let base = raw;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && parsed.friendly) base = parsed.friendly;
+  } catch { }
+  const decoded = decodeQuotedPrintable(base);
   const s = decoded.toLowerCase();
   if (s.includes("mailbox full") || s.includes("over quota") || s.includes("user over") || s.includes("452")) return "Mailbox full";
   if (s.includes("user not found") || s.includes("user unknown") || s.includes("no such user") || s.includes("does not exist") || /\b550\b/.test(s)) return "Invalid email address";
@@ -255,10 +260,17 @@ router.get("/sent-emails/:id/preview", requireAuth, async (req, res): Promise<vo
   try { row = JSON.parse(item.rowDataJson); } catch { }
 
   const branding = userBranding(freshUser);
-  const html     = buildHtmlEmail(template.body, row, branding, {
+  const ctaButtons = (() => {
+    try { return template.ctaButtonsJson ? JSON.parse(template.ctaButtonsJson) : []; }
+    catch { return []; }
+  })();
+  logger.info({ id, templateId: template.id, ctaCount: ctaButtons.length }, "[CTA LOAD] Sent email preview — loading CTA buttons from template");
+  const html = buildHtmlEmail(template.body, row, branding, {
     style: validStyle(item.style),
     useSignatureBuilder: item.useSignatureBuilder,
+    ctaButtons,
   });
+  logger.info({ id, ctaCount: ctaButtons.length, style: item.style }, "[EMAIL RENDER] Sent email preview rendered");
   const subject = replaceVarsText(template.subject, row);
 
   res.json({

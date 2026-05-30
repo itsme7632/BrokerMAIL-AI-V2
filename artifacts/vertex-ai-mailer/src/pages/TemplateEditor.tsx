@@ -42,6 +42,7 @@ interface CtaButton {
   size:        "sm" | "md" | "lg";
   urlVariable: string;
   directUrl?:  string;
+  disabled?:   boolean;
 }
 
 // Generic sample data — NO hardcoded company names
@@ -274,8 +275,15 @@ export default function TemplateEditor() {
                         value={btn.text}
                         onChange={e => updateCtaButton(btn.id, { text: e.target.value })}
                         placeholder="Button label"
-                        className="rounded-xl h-8 text-xs flex-1"
+                        className={`rounded-xl h-8 text-xs flex-1 ${btn.disabled ? "opacity-50 line-through" : ""}`}
                       />
+                      <button
+                        onClick={() => updateCtaButton(btn.id, { disabled: !btn.disabled })}
+                        title={btn.disabled ? "Enable button" : "Disable button"}
+                        className={`p-1.5 rounded-lg transition-colors text-xs font-bold w-7 h-7 flex items-center justify-center border ${btn.disabled ? "bg-slate-100 text-slate-400 border-slate-200 hover:bg-green-50 hover:text-green-600 hover:border-green-200" : "bg-green-50 text-green-600 border-green-200 hover:bg-slate-100 hover:text-slate-400 hover:border-slate-200"}`}
+                      >
+                        {btn.disabled ? "✗" : "✓"}
+                      </button>
                       <button onClick={() => removeCtaButton(btn.id)} className="p-1.5 text-red-400 hover:text-red-600 rounded-lg hover:bg-red-50">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>

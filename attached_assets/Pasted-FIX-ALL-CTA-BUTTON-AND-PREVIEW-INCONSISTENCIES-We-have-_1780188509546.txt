@@ -1,0 +1,181 @@
+FIX ALL CTA BUTTON AND PREVIEW INCONSISTENCIES
+
+We have confirmed multiple CTA-related bugs. Please fix ALL of them together and do not stop after fixing only one path.
+
+ROOT PROBLEM
+
+The application currently has two separate CTA systems:
+
+1. CTA Builder (stored in ctaButtonsJson)
+2. Hardcoded buttons inside style templates (e.g. "Reply Now To Confirm")
+
+This causes different previews and sent emails to show different buttons.
+
+REQUIRED FIXES
+
+1. REMOVE HARDCODED BUTTONS
+
+Search all email style renderers/templates (Clean, Modern, Minimal, Luxury, Corporate, Urgent, Dispatch, Friendly Broker, Mobile Optimized, Dark Mode, etc.).
+
+Remove any hardcoded buttons such as:
+
+* Reply Now To Confirm
+* Confirm Booking
+* Get Started
+* Any fixed CTA button embedded in template HTML
+
+Email styles should control ONLY:
+
+* Layout
+* Colors
+* Header
+* Footer
+* Banner
+* Typography
+* Card design
+* Borders
+* Badges
+
+Email styles must NEVER create their own CTA buttons.
+
+2. SINGLE CTA SOURCE OF TRUTH
+
+The only source of CTA buttons must be:
+
+ctaButtonsJson
+
+Every CTA shown in any email must come from CTA Builder.
+
+No hidden buttons.
+No automatic buttons.
+No hardcoded buttons.
+
+3. FULL CTA EDITING
+
+Users must be able to:
+
+* Add button
+* Delete button
+* Change button text
+* Change button URL
+* Change button color
+* Change button size
+* Reorder buttons
+* Disable button
+* Enable button
+
+Nothing should be locked or hardcoded.
+
+4. UNIFY ALL EMAIL RENDERERS
+
+Currently previews and actual emails do not match.
+
+Create ONE shared email rendering function and use it everywhere:
+
+* Template Editor Preview
+* Upload & Send Preview
+* Campaign Preview
+* Actual SMTP Send
+* Sent Email Preview
+* Resend Email
+* Retry Email
+
+All six paths must generate identical HTML.
+
+If a button appears in a sent email, it must appear in every preview.
+
+If a button appears in preview, it must appear in the sent email.
+
+5. FIX TEMPLATE EDITOR PREVIEW
+
+Current issue:
+
+CTA button is saved.
+CTA button is sent.
+CTA button appears in email.
+
+But Template Editor Preview sometimes shows no button.
+
+Fix the preview to load ctaButtonsJson exactly the same way as the actual email renderer.
+
+6. FIX CAMPAIGN PREVIEW
+
+Current issue:
+
+Campaign preview before sending does not always show CTA buttons.
+
+Campaign preview must use the same renderer used by SMTP send.
+
+7. FIX BUILT-IN TEMPLATE BUTTONS
+
+Current example:
+
+Urgent template shows:
+
+* Blue "Book Now" button from CTA Builder
+* Red "Reply Now To Confirm" button from template
+
+Expected:
+
+Only CTA Builder buttons should appear.
+
+The red hardcoded button must be removed.
+
+8. DIAGNOSTIC LOGGING
+
+Add logs:
+
+[CTA LOAD]
+Template ID
+CTA Count
+
+[CTA RENDER]
+Button Text
+Button URL
+
+[EMAIL RENDER]
+Renderer Path
+CTA Count
+
+This will help diagnose future issues.
+
+ACCEPTANCE TEST
+
+After deployment:
+
+1. Create CTA button:
+   Text = Book Now
+   URL = https://example.com
+
+2. Save template
+
+3. Reopen template
+
+Expected:
+Button still exists.
+
+4. Open Template Preview
+
+Expected:
+Book Now button visible.
+
+5. Open Campaign Preview
+
+Expected:
+Book Now button visible.
+
+6. Send email
+
+Expected:
+Book Now button visible.
+
+7. Sent Email Preview
+
+Expected:
+Book Now button visible.
+
+8. No hardcoded buttons appear anywhere.
+
+RESULT
+
+There must be only ONE CTA system in the entire application and every preview/sending path must use the exact same renderer.

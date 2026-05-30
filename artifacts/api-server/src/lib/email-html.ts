@@ -34,6 +34,7 @@ export interface CtaButton {
   size:        "sm" | "md" | "lg";
   urlVariable: string;
   directUrl?:  string;
+  disabled?:   boolean;
 }
 
 export interface EmailBuildOptions {
@@ -199,7 +200,9 @@ function buildCtaButtonsHtml(
   publicBase: string | undefined,
   fontFamily: string,
 ): string {
-  if (!buttons.length) return "";
+  const active = buttons.filter(b => !b.disabled);
+  if (!active.length) return "";
+  buttons = active;
 
   const items = buttons.map(btn => {
     const rawUrl = btn.directUrl?.trim() || row[btn.urlVariable] || "";
@@ -373,13 +376,6 @@ function modernTemplate(
 ${quotePanel}
 <!-- Body -->
 <tr><td class="em-mod-body" style="padding:${quotePanel ? "4px" : "36px"} 40px 36px;font-family:${FONT};">${bodyHtml}${ctaHtml}${sigHtml}</td></tr>
-<!-- CTA footer -->
-<tr>
-  <td class="em-mod-foot" style="padding:20px 40px 28px;background-color:#f8fafc;border-top:1px solid #e0e7ff;text-align:center;">
-    <p style="margin:0 0 12px;font-family:${FONT};color:#6b7280;font-size:12px;">Ready to book your transport?</p>
-    <a href="mailto:" style="display:inline-block;padding:11px 32px;background-color:${accent};color:#ffffff;font-family:${FONT};font-size:14px;font-weight:700;text-decoration:none;border-radius:6px;letter-spacing:0.3px;">Reply to Confirm &rarr;</a>
-  </td>
-</tr>
 </table>
 <!--[if (gte mso 9)|(IE)]></td></tr></table><![endif]-->
 </td></tr>
@@ -669,13 +665,7 @@ ${urgencyPanel}
 <tr>
   <td class="em-urg-body" style="padding:8px 40px 36px;font-family:${FONT};">${bodyHtml}${ctaHtml}${sigHtml}</td>
 </tr>
-<tr>
-  <td style="padding:16px 40px 20px;background-color:#fff5f5;border-top:1px solid #fecaca;text-align:center;">
-    <p style="margin:0 0 10px;font-family:${FONT};color:#ef4444;font-size:11px;">This quote expires soon. Please respond promptly to lock in your rate.</p>
-    <a href="mailto:" style="display:inline-block;padding:10px 28px;background-color:#dc2626;color:#ffffff;font-family:${FONT};font-size:13px;font-weight:700;text-decoration:none;border-radius:4px;letter-spacing:0.3px;">Reply Now to Confirm &rarr;</a>
-    ${quoteId ? `<p style="margin:10px 0 0;font-family:${FONT};color:#f87171;font-size:11px;">Quote Ref: ${quoteId}</p>` : ""}
-  </td>
-</tr>
+${quoteId ? `<tr><td style="padding:10px 40px 16px;background-color:#fff5f5;border-top:1px solid #fecaca;text-align:center;"><p style="margin:0;font-family:${FONT};color:#f87171;font-size:11px;">Quote Ref: ${quoteId}</p></td></tr>` : ""}
 </table>
 <!--[if (gte mso 9)|(IE)]></td></tr></table><![endif]-->
 </td></tr>
@@ -944,11 +934,6 @@ function mobileTemplate(
 ${priceDisplay}
 <tr>
   <td class="em-mob-body" style="padding:0 0 32px;font-family:${FONT};">${bodyHtml}${ctaHtml}${sigHtml}</td>
-</tr>
-<tr>
-  <td style="padding:0 0 32px;text-align:center;">
-    <a href="mailto:" style="display:inline-block;padding:16px 40px;background-color:${accent};color:#ffffff;font-family:${FONT};font-size:16px;font-weight:700;text-decoration:none;border-radius:8px;">Reply to Confirm &rarr;</a>
-  </td>
 </tr>
 </table>
 <!--[if (gte mso 9)|(IE)]></td></tr></table><![endif]-->
