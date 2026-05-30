@@ -513,7 +513,8 @@ export const CreateTemplateBody = zod.object({
   "name": zod.string().min(1),
   "subject": zod.string().min(1),
   "body": zod.string().min(1),
-  "isDefault": zod.boolean().optional()
+  "isDefault": zod.boolean().optional(),
+  "ctaButtonsJson": zod.string().nullable().optional()
 })
 
 
@@ -531,6 +532,7 @@ export const GetTemplateResponse = zod.object({
   "subject": zod.string(),
   "body": zod.string(),
   "isDefault": zod.boolean(),
+  "ctaButtonsJson": zod.string().nullable().optional(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -547,7 +549,8 @@ export const UpdateTemplateBody = zod.object({
   "name": zod.string().optional(),
   "subject": zod.string().optional(),
   "body": zod.string().optional(),
-  "isDefault": zod.boolean().optional()
+  "isDefault": zod.boolean().optional(),
+  "ctaButtonsJson": zod.string().nullable().optional()
 })
 
 export const UpdateTemplateResponse = zod.object({
@@ -557,6 +560,7 @@ export const UpdateTemplateResponse = zod.object({
   "subject": zod.string(),
   "body": zod.string(),
   "isDefault": zod.boolean(),
+  "ctaButtonsJson": zod.string().nullable().optional(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })

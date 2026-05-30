@@ -1249,6 +1249,9 @@ components:
           type: string
         isDefault:
           type: boolean
+        ctaButtonsJson:
+          type: string
+          nullable: true
         createdAt:
           type: string
         updatedAt:
@@ -1269,6 +1272,9 @@ components:
           minLength: 1
         isDefault:
           type: boolean
+        ctaButtonsJson:
+          type: string
+          nullable: true
       required: [name, subject, body]
 
     EmailTemplateUpdate:
@@ -1282,6 +1288,9 @@ components:
           type: string
         isDefault:
           type: boolean
+        ctaButtonsJson:
+          type: string
+          nullable: true
 
     # ─── AI ──────────────────────────────────────────────────────────────────
     GenerateEmailInput:

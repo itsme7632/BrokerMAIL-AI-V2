@@ -289,6 +289,8 @@ export interface EmailTemplate {
   subject: string;
   body: string;
   isDefault: boolean;
+  /** @nullable */
+  ctaButtonsJson?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -301,6 +303,8 @@ export interface EmailTemplateInput {
   /** @minLength 1 */
   body: string;
   isDefault?: boolean;
+  /** @nullable */
+  ctaButtonsJson?: string | null;
 }
 
 export interface EmailTemplateUpdate {
@@ -308,6 +312,8 @@ export interface EmailTemplateUpdate {
   subject?: string;
   body?: string;
   isDefault?: boolean;
+  /** @nullable */
+  ctaButtonsJson?: string | null;
 }
 
 export type GenerateEmailInputTone = typeof GenerateEmailInputTone[keyof typeof GenerateEmailInputTone];
