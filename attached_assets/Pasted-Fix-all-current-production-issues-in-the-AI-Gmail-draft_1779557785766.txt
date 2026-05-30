@@ -1,0 +1,284 @@
+Fix all current production issues in the AI Gmail drafting platform.
+
+The app structure is good, but several core systems are failing or incomplete.
+
+This is NOT a mockup project anymore.
+All systems must now function end-to-end in production quality.
+
+---
+
+# ISSUE 1 — EMAIL DRAFT CREATION FAILING
+
+Current problem:
+Campaign shows:
+
+* Failed: 9
+* Drafted Successfully: 0
+
+Fix the Gmail draft generation pipeline completely.
+
+Requirements:
+
+1. Diagnose why Gmail draft creation is failing
+2. Add detailed backend logging
+3. Store exact Gmail API error per lead
+4. Show human-readable errors in UI
+
+Possible causes to check:
+
+* expired OAuth token
+* missing refresh token
+* wrong Gmail scope
+* malformed RFC822 email payload
+* invalid MIME formatting
+* missing base64 encoding
+* Gmail API quota issues
+
+Implement:
+
+* retry mechanism
+* refresh token auto-renewal
+* failed draft retry button
+* success/failure logs
+
+After clicking “Generate Drafts”:
+
+* drafts must actually appear inside connected Gmail account
+
+This is the CORE feature and must fully work.
+
+---
+
+# ISSUE 2 — VEHICLE FIELD NOT POPULATING
+
+Currently vehicle field shows:
+“-”
+
+Fix CSV mapping and template personalization.
+
+Requirements:
+
+1. Detect vehicle column automatically
+2. Support variations:
+
+* vehicle
+* car
+* vehicle_type
+* make_model
+* transport_vehicle
+
+3. Ensure placeholders populate correctly:
+
+* {vehicle}
+* {pickup}
+* {delivery}
+* {price}
+* {name}
+
+4. Add mapping fallback logic
+
+If column missing:
+
+* show warning
+* allow manual mapping
+
+5. Add preview before draft generation
+
+Example preview:
+“Hi John, I can ship your 2021 BMW X5 from Miami, FL to Dallas, TX for $950.”
+
+---
+
+# ISSUE 3 — AI PREVIEW / RUN TEST FAILING
+
+Current issue:
+“Daily AI quota reached”
+
+I already added my OpenAI API key into Replit Secrets.
+
+Fix AI provider configuration completely.
+
+Requirements:
+
+1. Detect available AI provider automatically
+2. Support:
+
+* OpenAI API
+* Gemini API fallback
+
+3. Verify environment variables:
+
+* OPENAI_API_KEY
+* GEMINI_API_KEY
+
+4. Use OpenAI if available
+
+5. Only fallback to Gemini if OpenAI missing
+
+6. Add provider status diagnostics page
+
+Show:
+
+* provider connected
+* model name
+* quota status
+* API test button
+
+7. Improve error handling
+
+DO NOT show:
+
+* raw API errors
+* HTML responses
+* quota stack traces
+
+Show friendly errors instead.
+
+8. Add request throttling and caching
+
+9. Add retry queue for AI generation
+
+10. Add “Test AI Connection” button in Settings
+
+---
+
+# ISSUE 4 — ADMIN PANEL CHECK
+
+Check if admin panel already exists.
+
+If admin panel exists:
+
+* provide admin route
+* provide seeded admin email/password
+* explain how to login
+
+If admin panel does NOT exist:
+create a complete admin panel.
+
+Requirements:
+
+Admin features:
+
+* user management
+* Gmail connection monitoring
+* AI usage analytics
+* campaign logs
+* draft logs
+* failed jobs
+* API usage tracking
+* quota monitoring
+* uploaded CSV viewer
+* system health dashboard
+
+Admin auth:
+
+* separate admin role
+* protected routes
+* seeded admin account
+
+Seed default admin:
+
+Email:
+[admin@vertexmailer.ai](mailto:admin@vertexmailer.ai)
+
+Password:
+Admin@12345
+
+Store securely using hashed password.
+
+Add:
+
+* role-based middleware
+* admin sidebar
+* analytics charts
+* queue monitoring
+
+---
+
+# ISSUE 5 — SIMPLIFY PRODUCT UX
+
+Current UI still feels too much like:
+
+* CRM
+* enterprise SDR platform
+
+This app should feel like:
+“AI Gmail draft assistant for vehicle shipping brokers”
+
+Simplify navigation to:
+
+* Dashboard
+* AI Followups
+* Upload Leads
+* Gmail Drafts
+* Settings
+
+Remove enterprise CRM feeling.
+
+---
+
+# ISSUE 6 — IMPROVE AI FOLLOWUP FLOW
+
+Create ChatGPT-style followup generation.
+
+Workflow:
+
+1. User types:
+   “Follow up customers who stopped replying about vehicle shipment.”
+
+2. AI generates:
+
+* 3 followup options
+* subject lines
+* followup sequences
+
+3. User selects one
+
+4. User uploads CSV
+
+5. AI personalizes drafts
+
+6. Gmail drafts created
+
+This should be the primary workflow.
+
+---
+
+# ISSUE 7 — ADD DEBUGGING TOOLS
+
+Create developer diagnostics page.
+
+Show:
+
+* Gmail OAuth status
+* token expiration
+* OpenAI connection
+* Gemini connection
+* Redis status
+* database status
+* queue health
+* failed jobs
+* API logs
+
+This is critical for debugging production issues.
+
+---
+
+# FINAL REQUIREMENTS
+
+Do NOT use mock data.
+Do NOT leave placeholders.
+Do NOT fake success states.
+
+Everything must function end-to-end:
+
+* Gmail OAuth
+* AI generation
+* CSV parsing
+* personalization
+* Gmail draft creation
+* admin panel
+* AI previews
+* retry handling
+
+The app should now behave like a real SaaS product, not a frontend prototype.

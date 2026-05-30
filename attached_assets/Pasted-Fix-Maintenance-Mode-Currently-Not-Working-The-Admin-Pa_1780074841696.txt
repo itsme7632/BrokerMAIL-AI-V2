@@ -1,0 +1,151 @@
+Fix Maintenance Mode (Currently Not Working)
+
+The Admin Panel Maintenance Mode toggle currently only changes the switch state but does not affect the platform.
+
+This is a bug.
+
+Required Behavior
+
+When Maintenance Mode is ON:
+
+For All Regular Users
+
+Block access to:
+
+Dashboard
+Templates
+Template Gallery
+Upload & Send
+Campaigns
+Sent Emails
+Gmail Drafts
+Mailbox
+Settings
+Billing
+
+If a user tries to access any page, redirect them to:
+
+/maintenance
+
+Maintenance Page
+
+Create a professional maintenance page.
+
+Show:
+
+BrokerMAIL AI logo
+Maintenance icon
+Title:
+
+"Platform Under Maintenance"
+
+Message:
+
+"We're currently performing system upgrades and improvements. Please check back shortly."
+
+Optional:
+
+Estimated return time
+
+Admin contact email
+
+Refresh button
+
+Admin Bypass
+
+Admins must still be able to access the platform.
+
+If:
+
+role = admin
+
+Then maintenance mode should NOT block access.
+
+Admins need access to:
+
+Dashboard
+Users
+Billing
+Settings
+Maintenance Controls
+Logs
+
+while maintenance mode is active.
+
+Backend Protection
+
+Do NOT rely on frontend only.
+
+Protect all routes on the backend.
+
+Before serving any page or API:
+
+Check maintenance_mode setting.
+Check user role.
+If maintenance_mode = true AND user is not admin:
+Return maintenance page.
+Block API requests.
+API Protection
+
+While maintenance mode is enabled:
+
+Block:
+
+Sending emails
+Creating drafts
+Uploading CSV/XLSX
+Campaign creation
+SMTP sending
+User settings changes
+
+Return:
+
+HTTP 503 Service Unavailable
+
+with message:
+
+"BrokerMAIL AI is currently in maintenance mode."
+
+Maintenance Settings
+
+In Admin Panel show:
+
+Current Status:
+
+Online
+Maintenance Active
+
+Maintenance Started:
+
+Date
+Time
+
+Maintenance Message:
+
+Custom message field
+
+Expected Return:
+
+Optional datetime field
+
+Save all values in database.
+
+Maintenance mode must persist after server restart.
+
+Test Checklist
+
+When maintenance mode is enabled:
+
+✓ Logged-in users are redirected to maintenance page.
+
+✓ New logins are blocked.
+
+✓ Email sending is blocked.
+
+✓ Campaigns are paused.
+
+✓ API requests return 503.
+
+✓ Admin accounts still have full access.
+
+✓ Turning maintenance mode OFF instantly restores access.

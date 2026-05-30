@@ -1,0 +1,290 @@
+Fix the entire Upload & Draft workflow architecture according to the actual business logic below.
+
+The current “Column Mapping” system is overcomplicated, confusing, and causing broken drafts.
+
+This app is for vehicle shipping brokers.
+The workflow should be automatic and extremely simple.
+
+---
+
+# REMOVE COLUMN MAPPING UI COMPLETELY
+
+Delete:
+
+* manual variable mapping interface
+* dropdown mapping system
+* raw variable mapping section
+* “maps to variable” table
+
+Users should NOT manually map fields.
+
+The app should intelligently auto-detect columns internally.
+
+The current UI feels too technical and causes broken draft generation.
+
+---
+
+# REQUIRED AUTO-DETECTION LOGIC
+
+Implement strict automatic detection rules.
+
+Map spreadsheet columns automatically like this:
+
+## PRICE
+
+Detect from:
+
+* TotalTariff
+* TotalQuote
+* Quote
+* Price
+* Amount
+* Total
+* TransportCost
+
+Map to:
+`{price}`
+
+Format automatically:
+425 → $425
+1200 → $1,200
+
+---
+
+# PICKUP / ORIGIN
+
+Detect from:
+
+* Origin
+* Pickup
+* PickupCity
+* OriginCity
+* Origin State
+* Pickup State
+* Origin ZIP
+
+Combine intelligently into:
+`{pickup}`
+
+Example:
+“Southfield, MI 48034”
+
+---
+
+# DELIVERY / DESTINATION
+
+Detect from:
+
+* Destination
+* Delivery
+* DestinationCity
+* Delivery State
+* Destination ZIP
+
+Combine intelligently into:
+`{delivery}`
+
+Example:
+“Dallas, TX 75002”
+
+---
+
+# CUSTOMER NAME
+
+Detect from:
+
+* Name
+* CustomerName
+* FullName
+* ClientName
+
+Map to:
+`{name}`
+
+---
+
+# EMAIL
+
+Detect from:
+
+* Email
+* CustomerEmail
+* ClientEmail
+
+Map to:
+`{email}`
+
+This field is REQUIRED.
+
+Do NOT create drafts if email missing.
+
+---
+
+# VEHICLE
+
+Detect ONLY from:
+
+* Vehicle
+* Vehicles
+* Car
+* VehicleType
+* MakeModel
+
+Map to:
+`{vehicle}`
+
+IMPORTANT:
+Numeric fields must NEVER map to vehicle.
+
+“425” should NEVER become vehicle.
+
+---
+
+# REMOVE THESE VARIABLES
+
+Do NOT auto-detect:
+
+* agent_name
+* company_name
+
+User will manually type these inside template editor.
+
+Example:
+Frank Miller
+Vertex Carship
+
+should stay static inside template.
+
+---
+
+# FIX CURRENT BROKEN DRAFT ISSUE
+
+Current issue:
+Drafts are no longer being created.
+
+Requirements:
+
+1. Diagnose draft creation pipeline
+2. Add backend logging
+3. Ensure Gmail drafts are successfully created again
+4. Show proper success/failure counts
+5. Store Gmail draft IDs
+6. Add retry failed drafts button
+
+Most likely issue:
+broken mapping logic causing invalid payloads.
+
+Fix immediately.
+
+---
+
+# NEW SIMPLIFIED WORKFLOW
+
+FINAL USER FLOW SHOULD BE:
+
+1. Upload CSV/XLSX
+2. System auto-detects fields internally
+3. User selects template
+4. User previews first draft
+5. User clicks:
+   “Create Gmail Drafts”
+6. Drafts appear in Gmail
+
+NO manual mapping step.
+
+---
+
+# PREVIEW SYSTEM
+
+Preview should show REAL detected values.
+
+Example:
+
+Subject:
+Shipping quote for your 2021 BMW X5
+
+Body:
+Hi John,
+
+I can ship your 2021 BMW X5 from Southfield, MI 48034 to Dallas, TX 75002 for $425.
+
+Let me know if you’d like to proceed.
+
+Thanks,
+Frank Miller
+Vertex Carship
+
+---
+
+# ADMIN PANEL ISSUE
+
+Current issue:
+`/admin` redirects to `/login`
+and admin credentials do not work.
+
+Fix admin authentication completely.
+
+Requirements:
+
+1. Create working admin route:
+   `/admin`
+
+2. Create separate admin auth middleware
+
+3. Seed working admin account:
+
+Email:
+[admin@vertexmailer.ai](mailto:admin@vertexmailer.ai)
+
+Password:
+Admin@12345
+
+4. Ensure admin login redirects to:
+   `/admin/dashboard`
+
+NOT user dashboard.
+
+5. Add role-based authentication:
+
+* user
+* admin
+
+6. Prevent admin credentials from logging into normal user dashboard.
+
+7. Add visible admin login page:
+   `/admin/login`
+
+---
+
+# ADMIN PANEL REQUIREMENTS
+
+Admin dashboard should include:
+
+* users
+* Gmail connections
+* uploaded files
+* draft logs
+* failed drafts
+* Gmail API logs
+* system health
+* queue monitoring
+
+---
+
+# FINAL PRODUCT GOAL
+
+The app should feel:
+
+* automatic
+* simple
+* fast
+* beginner-friendly
+
+This is NOT a CRM.
+
+This is:
+“Gmail draft automation for vehicle shipping brokers.”
+
+The entire UX should support:
+upload spreadsheet → create Gmail drafts
+within 60 seconds.

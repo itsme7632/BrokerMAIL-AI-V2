@@ -1,0 +1,1554 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Vertex AI Mailer API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: campaigns
+    description: Campaign management
+  - name: leads
+    description: Lead management
+  - name: templates
+    description: Email template management
+  - name: drafts
+    description: Gmail draft operations
+  - name: gmail
+    description: Gmail connection management
+  - name: ai
+    description: AI email generation
+  - name: uploads
+    description: File upload operations
+  - name: dashboard
+    description: Dashboard analytics
+  - name: admin
+    description: Admin panel operations
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  # ─── AUTH ───────────────────────────────────────────────────────────────────
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Register with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterInput"
+      responses:
+        "201":
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout current user
+      responses:
+        "200":
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /auth/google:
+    get:
+      operationId: googleAuthStart
+      tags: [auth]
+      summary: Start Google OAuth flow
+      responses:
+        "302":
+          description: Redirect to Google OAuth
+
+  /auth/google/callback:
+    get:
+      operationId: googleAuthCallback
+      tags: [auth]
+      summary: Google OAuth callback
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect after auth
+
+  # ─── GMAIL ──────────────────────────────────────────────────────────────────
+  /gmail/status:
+    get:
+      operationId: getGmailStatus
+      tags: [gmail]
+      summary: Get Gmail connection status for current user
+      responses:
+        "200":
+          description: Gmail status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GmailStatus"
+
+  /gmail/connect:
+    get:
+      operationId: gmailConnectStart
+      tags: [gmail]
+      summary: Start Gmail OAuth connection flow
+      responses:
+        "302":
+          description: Redirect to Google Gmail OAuth
+
+  /gmail/callback:
+    get:
+      operationId: gmailCallback
+      tags: [gmail]
+      summary: Gmail OAuth callback
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect after Gmail connection
+
+  /gmail/disconnect:
+    post:
+      operationId: gmailDisconnect
+      tags: [gmail]
+      summary: Disconnect Gmail from account
+      responses:
+        "200":
+          description: Gmail disconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  # ─── DASHBOARD ───────────────────────────────────────────────────────────────
+  /dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [dashboard]
+      summary: Get dashboard summary statistics
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /dashboard/recent-campaigns:
+    get:
+      operationId: getRecentCampaigns
+      tags: [dashboard]
+      summary: Get recent campaigns for dashboard
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 5
+      responses:
+        "200":
+          description: Recent campaigns list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Campaign"
+
+  /dashboard/activity:
+    get:
+      operationId: getDashboardActivity
+      tags: [dashboard]
+      summary: Get recent activity feed
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: Activity feed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
+  # ─── CAMPAIGNS ───────────────────────────────────────────────────────────────
+  /campaigns:
+    get:
+      operationId: getCampaigns
+      tags: [campaigns]
+      summary: List all campaigns for current user
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [drafted, pending, failed, completed]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Campaigns list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedCampaigns"
+    post:
+      operationId: createCampaign
+      tags: [campaigns]
+      summary: Create a new campaign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CampaignInput"
+      responses:
+        "201":
+          description: Campaign created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+
+  /campaigns/{id}:
+    get:
+      operationId: getCampaign
+      tags: [campaigns]
+      summary: Get campaign by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Campaign details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateCampaign
+      tags: [campaigns]
+      summary: Update campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CampaignUpdate"
+      responses:
+        "200":
+          description: Campaign updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+    delete:
+      operationId: deleteCampaign
+      tags: [campaigns]
+      summary: Delete campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Campaign deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /campaigns/{id}/generate-drafts:
+    post:
+      operationId: generateCampaignDrafts
+      tags: [campaigns]
+      summary: Generate Gmail drafts for all leads in a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateDraftsInput"
+      responses:
+        "200":
+          description: Draft generation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DraftGenerationResult"
+
+  # ─── LEADS ──────────────────────────────────────────────────────────────────
+  /leads:
+    get:
+      operationId: getLeads
+      tags: [leads]
+      summary: List leads with optional filters
+      parameters:
+        - name: campaignId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [new, drafted, failed, skipped]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Leads list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedLeads"
+    post:
+      operationId: createLead
+      tags: [leads]
+      summary: Create a single lead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeadInput"
+      responses:
+        "201":
+          description: Lead created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+
+  /leads/{id}:
+    get:
+      operationId: getLead
+      tags: [leads]
+      summary: Get lead by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Lead details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+    patch:
+      operationId: updateLead
+      tags: [leads]
+      summary: Update lead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeadUpdate"
+      responses:
+        "200":
+          description: Lead updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+    delete:
+      operationId: deleteLead
+      tags: [leads]
+      summary: Delete lead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Lead deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /leads/bulk-import:
+    post:
+      operationId: bulkImportLeads
+      tags: [leads]
+      summary: Bulk import leads from parsed CSV/XLSX data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkLeadImportInput"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkImportResult"
+
+  /leads/{id}/retry-draft:
+    post:
+      operationId: retryLeadDraft
+      tags: [leads]
+      summary: Retry draft creation for a failed lead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Draft retry result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DraftResult"
+
+  # ─── TEMPLATES ───────────────────────────────────────────────────────────────
+  /templates:
+    get:
+      operationId: getTemplates
+      tags: [templates]
+      summary: List email templates for current user
+      responses:
+        "200":
+          description: Templates list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EmailTemplate"
+    post:
+      operationId: createTemplate
+      tags: [templates]
+      summary: Create email template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailTemplateInput"
+      responses:
+        "201":
+          description: Template created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailTemplate"
+
+  /templates/{id}:
+    get:
+      operationId: getTemplate
+      tags: [templates]
+      summary: Get template by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Template details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailTemplate"
+    patch:
+      operationId: updateTemplate
+      tags: [templates]
+      summary: Update template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailTemplateUpdate"
+      responses:
+        "200":
+          description: Template updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailTemplate"
+    delete:
+      operationId: deleteTemplate
+      tags: [templates]
+      summary: Delete template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Template deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /templates/{id}/duplicate:
+    post:
+      operationId: duplicateTemplate
+      tags: [templates]
+      summary: Duplicate a template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "201":
+          description: Duplicated template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailTemplate"
+
+  # ─── AI ─────────────────────────────────────────────────────────────────────
+  /ai/generate-email:
+    post:
+      operationId: generateEmail
+      tags: [ai]
+      summary: AI-generate a personalized email for a lead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateEmailInput"
+      responses:
+        "200":
+          description: Generated email
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeneratedEmail"
+
+  /ai/preview-email:
+    post:
+      operationId: previewEmail
+      tags: [ai]
+      summary: Preview how a template renders for a specific lead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreviewEmailInput"
+      responses:
+        "200":
+          description: Rendered email preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeneratedEmail"
+
+  # ─── DRAFTS ─────────────────────────────────────────────────────────────────
+  /drafts:
+    get:
+      operationId: getDrafts
+      tags: [drafts]
+      summary: List all draft records
+      parameters:
+        - name: campaignId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, success, failed]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Drafts list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedDrafts"
+
+  /drafts/{id}:
+    get:
+      operationId: getDraft
+      tags: [drafts]
+      summary: Get draft record by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Draft record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DraftRecord"
+
+  /drafts/from-template:
+    post:
+      operationId: createDraftsFromTemplate
+      tags: [drafts]
+      summary: Create Gmail drafts from a template and CSV row data (no AI required)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDraftsFromTemplateInput"
+      responses:
+        "200":
+          description: Draft creation results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateDraftsFromTemplateResult"
+        "400":
+          description: Missing templateId/rows or Gmail not connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Template not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ─── UPLOADS ─────────────────────────────────────────────────────────────────
+  /uploads/parse:
+    post:
+      operationId: parseUploadedFile
+      tags: [uploads]
+      summary: Parse CSV/XLSX file and return detected leads
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/FileUploadInput"
+      responses:
+        "200":
+          description: Parsed leads preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParsedFileResult"
+
+  # ─── ADMIN ──────────────────────────────────────────────────────────────────
+  /admin/users:
+    get:
+      operationId: adminGetUsers
+      tags: [admin]
+      summary: Admin — list all users
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Users list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedUsers"
+
+  /admin/stats:
+    get:
+      operationId: adminGetStats
+      tags: [admin]
+      summary: Admin — system-wide statistics
+      responses:
+        "200":
+          description: Admin stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+
+  /admin/logs:
+    get:
+      operationId: adminGetLogs
+      tags: [admin]
+      summary: Admin — draft generation and AI usage logs
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: System logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedLogs"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required: [status]
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required: [message]
+
+    # ─── AUTH ────────────────────────────────────────────────────────────────
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        name:
+          type: string
+        avatarUrl:
+          type: ["string", "null"]
+        role:
+          type: string
+          enum: [user, admin]
+        gmailConnected:
+          type: boolean
+        gmailEmail:
+          type: ["string", "null"]
+        timezone:
+          type: ["string", "null"]
+        aiTone:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required: [id, email, name, role, gmailConnected, createdAt]
+
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        token:
+          type: string
+      required: [user, token]
+
+    LoginInput:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+      required: [email, password]
+
+    RegisterInput:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+        name:
+          type: string
+          minLength: 1
+      required: [email, password, name]
+
+    # ─── GMAIL ───────────────────────────────────────────────────────────────
+    GmailStatus:
+      type: object
+      properties:
+        connected:
+          type: boolean
+        email:
+          type: ["string", "null"]
+        lastSynced:
+          type: ["string", "null"]
+      required: [connected]
+
+    # ─── DASHBOARD ───────────────────────────────────────────────────────────
+    DashboardStats:
+      type: object
+      properties:
+        totalCampaigns:
+          type: integer
+        totalLeads:
+          type: integer
+        totalDraftsCreated:
+          type: integer
+        draftSuccessRate:
+          type: number
+        aiEmailsGenerated:
+          type: integer
+        activeCampaigns:
+          type: integer
+      required: [totalCampaigns, totalLeads, totalDraftsCreated, draftSuccessRate, aiEmailsGenerated, activeCampaigns]
+
+    ActivityItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [campaign_created, leads_imported, drafts_generated, gmail_connected, draft_failed]
+        description:
+          type: string
+        createdAt:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+      required: [id, type, description, createdAt]
+
+    # ─── CAMPAIGNS ───────────────────────────────────────────────────────────
+    Campaign:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        name:
+          type: string
+        status:
+          type: string
+          enum: [drafted, pending, failed, completed]
+        templateId:
+          type: ["integer", "null"]
+        totalLeads:
+          type: integer
+        draftedCount:
+          type: integer
+        failedCount:
+          type: integer
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, userId, name, status, totalLeads, draftedCount, failedCount, createdAt, updatedAt]
+
+    CampaignInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        templateId:
+          type: ["integer", "null"]
+      required: [name]
+
+    CampaignUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        status:
+          type: string
+          enum: [drafted, pending, failed, completed]
+        templateId:
+          type: ["integer", "null"]
+
+    PaginatedCampaigns:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Campaign"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required: [data, total, page, limit]
+
+    GenerateDraftsInput:
+      type: object
+      properties:
+        templateId:
+          type: integer
+        tone:
+          type: string
+          enum: [professional, friendly, sales, followup, urgent]
+          default: professional
+        customPrompt:
+          type: ["string", "null"]
+      required: [templateId]
+
+    DraftGenerationResult:
+      type: object
+      properties:
+        total:
+          type: integer
+        succeeded:
+          type: integer
+        failed:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+      required: [total, succeeded, failed, errors]
+
+    # ─── LEADS ───────────────────────────────────────────────────────────────
+    Lead:
+      type: object
+      properties:
+        id:
+          type: integer
+        campaignId:
+          type: ["integer", "null"]
+        userId:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        vehicle:
+          type: ["string", "null"]
+        route:
+          type: ["string", "null"]
+        pickup:
+          type: ["string", "null"]
+        delivery:
+          type: ["string", "null"]
+        price:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [new, drafted, failed, skipped]
+        gmailDraftId:
+          type: ["string", "null"]
+        errorMessage:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, userId, name, email, status, createdAt, updatedAt]
+
+    LeadInput:
+      type: object
+      properties:
+        campaignId:
+          type: ["integer", "null"]
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
+        vehicle:
+          type: string
+        route:
+          type: string
+        pickup:
+          type: string
+        delivery:
+          type: string
+        price:
+          type: string
+        notes:
+          type: string
+      required: [name, email]
+
+    LeadUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        vehicle:
+          type: string
+        route:
+          type: string
+        pickup:
+          type: string
+        delivery:
+          type: string
+        price:
+          type: string
+        notes:
+          type: string
+        status:
+          type: string
+          enum: [new, drafted, failed, skipped]
+
+    PaginatedLeads:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Lead"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required: [data, total, page, limit]
+
+    BulkLeadImportInput:
+      type: object
+      properties:
+        campaignId:
+          type: ["integer", "null"]
+        leads:
+          type: array
+          items:
+            $ref: "#/components/schemas/LeadInput"
+      required: [leads]
+
+    BulkImportResult:
+      type: object
+      properties:
+        imported:
+          type: integer
+        skipped:
+          type: integer
+        duplicates:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+      required: [imported, skipped, duplicates, errors]
+
+    DraftResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        gmailDraftId:
+          type: ["string", "null"]
+        error:
+          type: ["string", "null"]
+      required: [success]
+
+    # ─── TEMPLATES ───────────────────────────────────────────────────────────
+    EmailTemplate:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        name:
+          type: string
+        subject:
+          type: string
+        body:
+          type: string
+        isDefault:
+          type: boolean
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, userId, name, subject, body, isDefault, createdAt, updatedAt]
+
+    EmailTemplateInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        subject:
+          type: string
+          minLength: 1
+        body:
+          type: string
+          minLength: 1
+        isDefault:
+          type: boolean
+      required: [name, subject, body]
+
+    EmailTemplateUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        subject:
+          type: string
+        body:
+          type: string
+        isDefault:
+          type: boolean
+
+    # ─── AI ──────────────────────────────────────────────────────────────────
+    GenerateEmailInput:
+      type: object
+      properties:
+        leadId:
+          type: integer
+        templateId:
+          type: integer
+        tone:
+          type: string
+          enum: [professional, friendly, sales, followup, urgent]
+          default: professional
+        customPrompt:
+          type: ["string", "null"]
+      required: [leadId, templateId]
+
+    PreviewEmailInput:
+      type: object
+      properties:
+        templateId:
+          type: integer
+        leadData:
+          type: object
+          properties:
+            name:
+              type: string
+            email:
+              type: string
+            vehicle:
+              type: ["string", "null"]
+            route:
+              type: ["string", "null"]
+            pickup:
+              type: ["string", "null"]
+            delivery:
+              type: ["string", "null"]
+            price:
+              type: ["string", "null"]
+          required: [name, email]
+        tone:
+          type: string
+          enum: [professional, friendly, sales, followup, urgent]
+          default: professional
+      required: [templateId, leadData]
+
+    GeneratedEmail:
+      type: object
+      properties:
+        subject:
+          type: string
+        body:
+          type: string
+        tone:
+          type: string
+      required: [subject, body, tone]
+
+    # ─── DRAFTS ──────────────────────────────────────────────────────────────
+    DraftRecord:
+      type: object
+      properties:
+        id:
+          type: integer
+        campaignId:
+          type: ["integer", "null"]
+        leadId:
+          type: integer
+        userId:
+          type: integer
+        gmailDraftId:
+          type: ["string", "null"]
+        subject:
+          type: string
+        body:
+          type: string
+        status:
+          type: string
+          enum: [pending, success, failed]
+        errorMessage:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required: [id, userId, subject, body, status, createdAt]
+
+    PaginatedDrafts:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/DraftRecord"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required: [data, total, page, limit]
+
+    # ─── UPLOADS ─────────────────────────────────────────────────────────────
+    FileUploadInput:
+      type: object
+      properties:
+        filename:
+          type: string
+      required: [filename]
+
+    ParsedLeadRow:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        vehicle:
+          type: ["string", "null"]
+        route:
+          type: ["string", "null"]
+        pickup:
+          type: ["string", "null"]
+        delivery:
+          type: ["string", "null"]
+        price:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        company:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        hasValidEmail:
+          type: boolean
+        isDuplicate:
+          type: boolean
+      additionalProperties: true
+      required: [hasValidEmail, isDuplicate]
+
+    ParsedFileResult:
+      type: object
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/ParsedLeadRow"
+        totalRows:
+          type: integer
+        validRows:
+          type: integer
+        invalidRows:
+          type: integer
+        duplicateRows:
+          type: integer
+        detectedColumns:
+          type: array
+          items:
+            type: string
+      required: [rows, totalRows, validRows, invalidRows, duplicateRows, detectedColumns]
+
+    CreateDraftsFromTemplateInput:
+      type: object
+      properties:
+        templateId:
+          type: integer
+        rows:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              type: string
+      required: [templateId, rows]
+
+    DraftRowResult:
+      type: object
+      properties:
+        email:
+          type: string
+        subject:
+          type: string
+        status:
+          type: string
+          enum: [success, failed]
+        gmailDraftId:
+          type: string
+        error:
+          type: string
+      required: [email, subject, status]
+
+    CreateDraftsFromTemplateResult:
+      type: object
+      properties:
+        total:
+          type: integer
+        succeeded:
+          type: integer
+        failed:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/DraftRowResult"
+      required: [total, succeeded, failed, results]
+
+    # ─── ADMIN ───────────────────────────────────────────────────────────────
+    AdminStats:
+      type: object
+      properties:
+        totalUsers:
+          type: integer
+        totalCampaigns:
+          type: integer
+        totalLeads:
+          type: integer
+        totalDraftsCreated:
+          type: integer
+        totalAiCalls:
+          type: integer
+        gmailConnectedUsers:
+          type: integer
+        failedDrafts:
+          type: integer
+      required: [totalUsers, totalCampaigns, totalLeads, totalDraftsCreated, totalAiCalls, gmailConnectedUsers, failedDrafts]
+
+    PaginatedUsers:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required: [data, total, page, limit]
+
+    SystemLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: ["integer", "null"]
+        type:
+          type: string
+          enum: [draft_created, draft_failed, ai_call, gmail_error, upload_error]
+        description:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+      required: [id, type, description, createdAt]
+
+    PaginatedLogs:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SystemLog"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required: [data, total, page, limit]

@@ -1,0 +1,121 @@
+UI/UX Navigation & Notification Improvements
+
+Refactor the BrokerMAIL AI layout to improve usability and make it match modern SaaS standards.
+
+1. Move Notifications to Top Right
+
+The current notification panel is opening on the left side and is partially hidden/off-screen.
+
+Requirements:
+
+Move notification bell to the top-right navbar.
+Notifications dropdown must open below the bell.
+Fixed width 350-400px.
+Scrollable if more than 10 notifications.
+Show:
+Email opened
+Campaign completed
+Campaign paused due to quota
+SMTP connection issues
+Draft creation completed
+Failed delivery alerts
+Unread notification counter badge.
+Mark as read button.
+Mark all as read button.
+View all notifications page.
+2. Move User Profile to Top Right
+
+Current profile card is located at the bottom left.
+
+Move it to the top-right area beside notifications.
+
+Clicking profile should open dropdown:
+
+My Account
+Branding Settings
+Mailbox Settings
+Billing
+Help Center
+Logout
+
+Display:
+
+Avatar
+Name
+Company Name
+Plan Badge
+
+Keep sidebar navigation only for pages.
+
+3. Global Success / Error Toast System
+
+Currently save messages appear at the bottom.
+
+Replace with modern toast notifications.
+
+Position:
+
+Top Right
+
+Behavior:
+
+Success = Green
+Warning = Orange
+Error = Red
+Info = Blue
+
+Examples:
+
+✓ Template Saved
+
+✓ Campaign Started
+
+✓ Settings Updated
+
+✓ SMTP Connected
+
+⚠ Hourly limit reached
+
+✕ SMTP Authentication Failed
+
+Toast behavior:
+
+Slide in from right
+Auto dismiss after 4 seconds
+User can manually close
+Multiple toasts stack vertically
+4. Sticky Top Header
+
+Create a persistent header containing:
+
+Left:
+
+BrokerMAIL logo
+
+Right:
+
+Search
+Notifications Bell
+User Profile
+
+Header remains visible while scrolling.
+
+5. Mobile Responsiveness
+
+On mobile:
+
+Notifications open full-width modal.
+Profile dropdown opens from top-right.
+Toast notifications remain visible at top.
+6. Cleanup
+
+Remove any duplicate profile controls from bottom-left sidebar.
+
+Bottom-left should only show:
+
+Small avatar
+Workspace indicator
+
+No settings menu there.
+
+Goal: Make the platform behave like modern SaaS products such as HubSpot, Apollo, Instantly, Mailchimp, and Notion.

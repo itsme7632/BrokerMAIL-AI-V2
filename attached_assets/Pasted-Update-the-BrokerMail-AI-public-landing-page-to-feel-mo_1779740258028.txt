@@ -1,0 +1,118 @@
+Update the BrokerMail AI public landing page to feel more premium, industry-specific, and conversion-focused for auto transport brokers.
+
+DO NOT redesign the whole page. Keep the current clean SaaS layout and blue theme, but improve messaging and sections.
+
+CHANGES:
+
+1. HERO SECTION
+   Replace current hero text with stronger positioning.
+
+Headline:
+“Close more transport deals with AI-powered outreach.”
+
+Subheadline:
+“Upload lead sheets, personalize emails instantly, and send directly from your own business mailbox using SMTP or Gmail.”
+
+CTA buttons:
+Primary: “Start Sending Outreach”
+Secondary: “View Demo”
+
+Add a small trust text under buttons:
+“Built specifically for auto transport brokers.”
+
+2. REMOVE GMAIL-ONLY POSITIONING
+   Remove wording like:
+
+* Gmail Draft Automation
+* Create Gmail Drafts
+* Gmail drafts instantly
+
+Replace with broader terms:
+
+* outreach campaigns
+* business email outreach
+* personalized outreach
+* direct email sending
+
+3. ADD FEATURE SECTION
+   Create a modern feature grid section below hero.
+
+Feature cards:
+
+AI Personalization
+“Generate personalized outreach emails from CSV or XLSX lead sheets.”
+
+SMTP + IMAP Support
+“Connect Hostinger, GoDaddy, Zoho, Outlook, Gmail, or private mail.”
+
+White-Label Branding
+“Use your own company name, signature, and branding.”
+
+Bulk Outreach Control
+“Send campaigns in batches like 100, 500, or full lead lists.”
+
+Auto Column Detection
+“Automatically detect name, vehicle, route, and pricing columns.”
+
+Mobile Friendly
+“Manage campaigns and outreach directly from your phone.”
+
+4. ADD “BUILT FOR” SECTION
+
+Title:
+“Built for the Auto Transport Industry”
+
+Cards:
+
+* Auto Transport Brokers
+* Dispatch Teams
+* Vehicle Shipping Companies
+* Lead Generation Teams
+
+5. ADD PROVIDER COMPATIBILITY ROW
+
+Add a clean logo/text row:
+Gmail
+Outlook
+Hostinger
+GoDaddy
+Zoho
+Namecheap
+Private Mail
+
+Title:
+“Works with your existing business email.”
+
+6. IMPROVE CTA SECTION AT BOTTOM
+
+Replace:
+“Get started for free”
+
+With:
+“Upload your first lead sheet in under 60 seconds.”
+
+Button:
+“Start Sending Emails”
+
+7. MOBILE RESPONSIVENESS
+
+Improve:
+
+* section spacing
+* card sizing
+* hero text scaling
+* screenshot responsiveness
+* button spacing
+* typography
+
+Mobile should feel compact and modern instead of stretched.
+
+8. KEEP EXISTING BRANDING
+   Do not bring back:
+
+* Vertex Mailer
+* Vertex branding
+* Gmail-only branding
+* footer mailer branding
+
+Everything should remain fully white-label.

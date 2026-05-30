@@ -1,0 +1,136 @@
+Continue improving the BrokerMail AI landing page and UI polish.
+
+1. EMAIL PROVIDER LOGOS
+   The provider section currently only shows text/buttons.
+
+Replace them with REAL provider logos/icons + names.
+
+Providers:
+
+* Gmail
+* Outlook
+* Hostinger
+* GoDaddy
+* Zoho
+* Namecheap
+* Private Mail
+
+Requirements:
+
+* Use official SVG logos/icons if possible
+* Keep them monochrome or soft colored to match current UI
+* Responsive on mobile
+* Equal spacing and alignment
+* Modern SaaS look
+
+Section title:
+“Works with your existing business email”
+
+2. ADD PRODUCT SCREENSHOT SECTION
+
+Add a modern showcase section below the features.
+
+Title:
+“Everything you need for broker outreach.”
+
+Show clean screenshots/mockups of:
+
+* Template Builder
+* CSV Upload
+* Email Preview
+* SMTP/IMAP Mailbox Setup
+* Admin Dashboard
+
+Layout:
+
+* modern SaaS cards
+* soft shadows
+* rounded corners
+* responsive on mobile
+
+3. ADD WORKFLOW SECTION
+
+Create a 4-step workflow timeline.
+
+Title:
+“How BrokerMail AI works”
+
+Steps:
+
+1. Upload lead sheet
+2. Create personalized templates
+3. Connect your mailbox
+4. Send outreach campaigns
+
+Add icons and subtle animations.
+
+4. ADD TRUST / SECURITY SECTION
+
+Title:
+“Built for real transport businesses”
+
+Items:
+
+* Secure SMTP & IMAP support
+* Passwords stored encrypted
+* White-label branding
+* Works with private mail servers
+* Mobile friendly dashboard
+* Gmail + Outlook compatible
+
+5. ADD SIMPLE PRICING SECTION
+
+Do NOT connect Stripe yet.
+
+Create placeholder pricing cards.
+
+Starter
+
+* 500 emails/month
+* 1 mailbox
+* CSV upload
+* Basic personalization
+
+Growth
+
+* 10,000 emails/month
+* SMTP/IMAP support
+* Bulk sending
+* White-label branding
+
+Agency
+
+* Unlimited campaigns
+* Multi-user access
+* Admin dashboard
+* Priority support
+
+Add CTA buttons:
+“Coming Soon”
+
+6. LANDING PAGE VISUAL IMPROVEMENTS
+
+Improve:
+
+* section spacing
+* typography hierarchy
+* gradients
+* hover effects
+* icon consistency
+* button polish
+* card shadows
+* mobile responsiveness
+
+Goal:
+Make the platform feel like a premium SaaS product, similar to modern AI startup websites.
+
+7. KEEP EVERYTHING WHITE-LABEL
+
+Do NOT add:
+
+* “Sent via BrokerMail AI”
+* Vertex branding
+* forced footer branding
+* auto signatures
+
+All emails and previews must remain fully white-label.

@@ -1,0 +1,241 @@
+```txt id="2pw4nr"
+Build a production-ready full-stack AI SaaS web application called “Vertex AI Mailer” for vehicle shipping brokers.
+
+The platform should allow users to:
+- Connect Gmail securely using Google OAuth
+- Upload CSV/XLSX lead files
+- Generate AI-personalized emails
+- Create Gmail drafts automatically
+- Manage campaigns and leads
+- Use AI email templates
+- Review drafts before sending
+
+IMPORTANT:
+This app should ONLY create Gmail drafts.
+NEVER auto-send emails automatically.
+
+TECH STACK:
+Frontend:
+- React
+- TypeScript
+- TailwindCSS
+- shadcn/ui
+- Framer Motion
+
+Backend:
+- Node.js
+- Express.js
+- TypeScript
+
+Database:
+- PostgreSQL or Supabase
+
+Authentication:
+- Google OAuth
+- JWT/session auth
+
+AI:
+- OpenAI API
+
+Email:
+- Gmail API
+
+File Processing:
+- XLSX
+- PapaParse
+
+APP FEATURES:
+
+1. AUTH SYSTEM
+- Google login/signup
+- Email/password auth
+- Protected dashboard routes
+- Persistent sessions
+
+2. DASHBOARD
+Modern SaaS dashboard with:
+- Sidebar navigation
+- Campaign analytics
+- Draft statistics
+- Gmail connection status
+- Recent campaigns
+- Recent uploads
+- AI generation metrics
+
+3. CSV/XLSX IMPORTER
+Allow users to:
+- Upload CSV/XLSX files
+- Parse leads automatically
+- Detect columns:
+  - Name
+  - Email
+  - Vehicle
+  - Route
+  - Pickup
+  - Delivery
+  - Price
+  - Notes
+- Editable lead preview table
+- Duplicate detection
+- Missing email validation
+
+4. AI EMAIL TEMPLATE SYSTEM
+Users can:
+- Create templates
+- Save templates
+- Edit templates
+- Duplicate templates
+- Delete templates
+
+Support variables:
+{name}
+{vehicle}
+{route}
+{pickup}
+{delivery}
+{price}
+
+5. AI EMAIL WRITER
+Integrate OpenAI API.
+
+AI should:
+- Generate personalized subject lines
+- Rewrite email naturally
+- Avoid spam-trigger wording
+- Support tones:
+  - Professional
+  - Friendly
+  - Sales
+  - Follow-up
+  - Urgent
+
+6. GMAIL INTEGRATION
+Use Gmail OAuth + Gmail API.
+
+Required permissions:
+- gmail.compose
+- gmail.readonly
+- user profile
+
+Features:
+- Connect Gmail
+- Disconnect Gmail
+- Gmail sync status
+- Gmail account info
+
+7. GMAIL DRAFT CREATOR
+Workflow:
+- Upload leads
+- Select template
+- AI personalizes each email
+- System creates Gmail drafts automatically
+- User reviews drafts manually inside Gmail
+
+Add:
+- Draft progress UI
+- Success/failure tracking
+- Retry failed drafts
+- Open Gmail drafts button
+
+8. CAMPAIGN MANAGEMENT
+Users can:
+- Create campaigns
+- Name campaigns
+- Upload leads
+- Generate drafts
+- View campaign history
+
+Campaign statuses:
+- Drafted
+- Pending
+- Failed
+- Completed
+
+9. LEAD MANAGEMENT
+Features:
+- Search leads
+- Edit leads
+- Filter leads
+- Export leads
+- Delete leads
+- Merge duplicates
+
+10. ADMIN PANEL
+Simple internal admin dashboard:
+- Users list
+- Campaign logs
+- Draft generation logs
+- AI usage metrics
+- Gmail connection monitoring
+- Failed jobs/errors
+- System analytics
+
+11. SETTINGS PAGE
+Add:
+- Gmail reconnect
+- Profile settings
+- Timezone settings
+- AI preferences
+- Draft behavior settings
+
+12. ERROR HANDLING
+Handle:
+- Gmail API failures
+- OAuth expiration
+- CSV parsing errors
+- AI timeout errors
+- Upload failures
+
+13. UI/UX
+Design should feel:
+- Premium SaaS
+- Modern dark mode
+- Glassmorphism
+- Fast and smooth
+- Minimal and clean
+- Broker-focused workflow
+
+Use:
+- Beautiful tables
+- Smooth transitions
+- Loading states
+- Progress bars
+- Toast notifications
+- Responsive layouts
+
+14. SECURITY
+- Secure token storage
+- Environment variables
+- API route protection
+- Role-based access
+- Row-level security
+- Input validation
+
+15. LANDING PAGE
+Create:
+- Hero section
+- Features section
+- Gmail draft workflow demo
+- AI email generation explanation
+- CSV upload demo
+- Vehicle shipping use-case
+- CTA buttons
+
+16. IMPORTANT BUSINESS LOGIC
+- NEVER auto-send emails
+- ONLY create Gmail drafts
+- Draft creation must require user confirmation
+- Avoid spammy wording
+- Optimize for vehicle shipping brokers
+
+17. FUTURE-READY ARCHITECTURE
+Codebase should be scalable for future additions:
+- SMS integration
+- CRM
+- AI followups
+- Quote calculator
+- Dispatch management
+- Team accounts
+
+Generate a clean, production-ready MVP with scalable architecture, modular backend structure, reusable components, and professional SaaS quality UI.
+```

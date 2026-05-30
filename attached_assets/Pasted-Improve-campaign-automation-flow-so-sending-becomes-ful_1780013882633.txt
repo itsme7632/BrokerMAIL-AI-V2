@@ -1,0 +1,140 @@
+Improve campaign automation flow so sending becomes fully automatic after clicking “Start Campaign”.
+
+Current issue:
+User must manually trigger every batch after cooldown or hourly limit. This creates unnecessary steps.
+
+We need true automated campaign queue behavior.
+
+---
+
+## NEW EXPECTED FLOW
+
+1. User uploads CSV/XLSX
+2. User selects template
+3. User selects:
+
+   * batch size
+   * hourly limit
+   * delay per email
+4. User clicks:
+   “Start Campaign”
+
+AFTER THIS:
+
+* system handles everything automatically
+* user should NOT click “Send Next Batch”
+* user should NOT manually resume after cooldown
+
+---
+
+## AUTOMATED CAMPAIGN ENGINE
+
+Once campaign starts:
+
+SYSTEM SHOULD:
+
+* begin sending first batch automatically
+* process emails one-by-one using configured delay
+* respect hourly limit
+* pause automatically when limit reached
+* automatically resume when cooldown ends
+* continue remaining batches automatically
+* finish entire campaign without user interaction
+
+---
+
+## REMOVE MANUAL FLOW
+
+Remove:
+
+* “Send Next Batch” requirement
+* manual resume requirement
+* retry-to-continue workflow for normal cooldowns
+
+Keep only:
+
+* Pause Campaign
+* Resume Campaign
+* Cancel Campaign
+
+---
+
+## SMART CAMPAIGN STATES
+
+Campaign statuses:
+
+* Queued
+* Sending
+* Cooling Down
+* Paused
+* Completed
+* Failed
+* Cancelled
+
+---
+
+## COOLDOWN AUTOMATION
+
+When hourly limit reached:
+
+System should:
+
+* automatically enter cooldown mode
+* display countdown timer
+* queue remaining emails
+* auto resume when timer hits zero
+
+User should NOT click anything.
+
+---
+
+## REAL-TIME STATUS UI
+
+Campaign page should show:
+
+* currently sending recipient
+* next send ETA
+* cooldown timer
+* estimated completion time
+* remaining leads
+* sent this hour
+* queued emails
+
+---
+
+## BACKGROUND PROCESSING
+
+Campaign sending must continue reliably:
+
+* even if user changes pages
+* even if browser refreshes
+* even if user closes campaign page temporarily
+
+Implement proper background queue/job processing instead of frontend-only sending logic.
+
+---
+
+## AUTO RETRY SYSTEM
+
+Temporary failures:
+
+* queue automatically for retry
+* retry after delay
+* max retry attempts configurable
+
+Permanent failures:
+
+* mark failed
+* show reason
+* allow manual resend later
+
+---
+
+## IMPORTANT
+
+Do NOT rebuild UI from scratch.
+
+Keep current campaign design/layout.
+
+Only convert workflow into:
+FULLY AUTOMATED CAMPAIGN PROCESSING SYSTEM.

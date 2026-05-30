@@ -1,0 +1,283 @@
+Fix Template Gallery duplication issue and redesign Dashboard with proper light-theme UI.
+
+## CURRENT ISSUE
+
+The 6 newly added templates are not actually unique.
+
+Only the template names changed:
+
+* Corporate
+* Urgent
+* Dispatch
+* Friendly Broker
+* Mobile Optimized
+* Dark Modern
+
+But the actual email HTML/design/layout is still identical to “Clean”.
+
+This makes Template Gallery misleading and low quality.
+
+Also:
+Dashboard still feels unfinished and visually weak.
+
+Platform should remain:
+
+* modern
+* premium
+* minimal
+* LIGHT THEME ONLY
+
+No dark dashboard UI.
+
+---
+
+## PART 1 — FIX TEMPLATE GALLERY
+
+Each template must have:
+
+* unique HTML structure
+* unique header style
+* unique spacing
+* unique typography
+* unique CTA/button styling
+* unique footer layout
+* unique accent colors
+* unique card/container styling
+
+Do NOT reuse same HTML with color swaps only.
+
+---
+
+## CREATE REAL UNIQUE TEMPLATES
+
+1. CLEAN
+
+* simple white card
+* blue top bar
+* standard professional transport look
+
+2. MODERN
+
+* gradient header
+* rounded containers
+* modern spacing
+* soft shadows
+* contemporary typography
+
+3. MINIMAL
+
+* ultra clean
+* thin borders
+* smaller header
+* text-focused
+* high deliverability appearance
+
+4. LUXURY
+
+* navy + gold
+* premium serif headings
+* elegant spacing
+* luxury transport company feel
+
+5. CORPORATE
+
+* enterprise style
+* stronger structure
+* quote summary box
+* professional business layout
+
+6. URGENT
+
+* follow-up style
+* urgency badge
+* highlighted CTA
+* “limited availability” appearance
+
+7. DISPATCH
+
+* dispatch-board feel
+* route/status styled sections
+* logistics-focused layout
+
+8. FRIENDLY BROKER
+
+* softer colors
+* approachable typography
+* warm footer
+* trust-building style
+
+9. MOBILE OPTIMIZED
+
+* larger text
+* single-column spacing
+* extra mobile readability
+* simplified layout
+
+10. DARK MODERN
+
+* email-safe dark design
+* dark container
+* light text
+* modern SaaS feel
+
+---
+
+## IMPORTANT
+
+Every template preview MUST render different visually.
+
+Not just different colors.
+
+---
+
+## PART 2 — TEMPLATE PREVIEW IMPROVEMENTS
+
+Preview modal should:
+
+* render actual email HTML
+* support logo preview
+* support branding preview
+* support live variable replacement
+* support mobile preview toggle
+* support desktop preview toggle
+
+Add:
+
+* next/previous template arrows
+* template category badges
+* responsive scaling
+
+---
+
+## PART 3 — DASHBOARD REDESIGN
+
+Current dashboard feels empty and outdated.
+
+Redesign entire dashboard using:
+
+* clean SaaS layout
+* premium spacing
+* light theme only
+* modern cards
+* soft shadows
+* rounded corners
+* cleaner typography hierarchy
+
+---
+
+## NEW DASHBOARD SECTIONS
+
+1. HERO SECTION
+   Top welcome section with:
+
+* greeting
+* quick stats
+* upload button
+* current SMTP status
+* quota usage
+
+---
+
+2. QUICK ACTIONS
+   Beautiful action cards:
+
+* Upload & Send
+* Create Template
+* View Campaigns
+* Sent Emails
+* Gmail Drafts
+* Mailbox Settings
+
+---
+
+3. LIVE CAMPAIGN STATUS
+   Show:
+
+* active campaigns
+* paused campaigns
+* queued emails
+* cooldown timer
+* hourly quota usage
+
+---
+
+4. DELIVERY ANALYTICS
+   Charts/cards:
+
+* sent today
+* delivered
+* opened
+* failed
+* bounced
+* open rate
+* response rate
+
+Use clean light-theme charts only.
+
+---
+
+5. RECENT ACTIVITY FEED
+   Modern activity timeline:
+
+* campaign started
+* quota paused
+* emails opened
+* failed emails
+* mailbox connected
+
+---
+
+6. RECENT EMAIL PREVIEWS
+   Show:
+
+* subject
+* recipient
+* timestamp
+* status
+* open tracking status
+
+---
+
+7. SMTP HEALTH CARD
+   Show:
+
+* SMTP connected
+* IMAP connected
+* hourly limit
+* cooldown remaining
+* retry queue
+* delivery health
+
+---
+
+## STYLE REQUIREMENTS
+
+Use:
+
+* white/light gray backgrounds
+* subtle borders
+* blue accent colors
+* modern shadows
+* clean typography
+* consistent spacing
+
+Avoid:
+
+* dark dashboard
+* oversized empty spacing
+* flat/basic cards
+* template duplication
+
+---
+
+## FINAL IMPORTANT NOTE
+
+This should feel like:
+
+* Mailchimp
+* Instantly
+* Apollo
+* Smartlead
+* modern SaaS platforms
+
+NOT like an unfinished admin panel.

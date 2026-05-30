@@ -1,0 +1,121 @@
+Add new public pages to BrokerMail AI to make the platform feel like a complete SaaS product.
+
+IMPORTANT:
+Keep the same design system, colors, spacing, typography, and modern SaaS look already used on the landing page.
+
+Create these pages:
+
+1. PRICING PAGE (/pricing)
+
+Add modern pricing cards.
+
+Starter
+
+* 500 emails/month
+* 1 mailbox
+* CSV/XLSX upload
+* Basic personalization
+
+Growth
+
+* 10,000 emails/month
+* SMTP + IMAP
+* White-label branding
+* Bulk outreach
+
+Agency
+
+* Unlimited campaigns
+* Multi-user support
+* Admin dashboard
+* Priority support
+
+Enterprise
+
+* Custom sending limits
+* Dedicated onboarding
+* Team management
+* Future API access
+
+Buttons:
+“Coming Soon”
+
+Add FAQ section at bottom of pricing page.
+
+2. FAQ PAGE (/faq)
+
+Add searchable FAQ section with collapsible accordions.
+
+Questions:
+
+* Does BrokerMail AI send automatically?
+* Does it support Gmail?
+* Can I use Outlook or private mail?
+* Does it work with Hostinger and GoDaddy?
+* Can I upload XLSX files?
+* Is SMTP secure?
+* Can I use my own branding?
+* Can I send bulk campaigns?
+* Will emails appear in Sent folder?
+* Is it mobile friendly?
+
+3. CONTACT PAGE (/contact)
+
+Add:
+
+* contact form
+* support email section
+* business inquiry section
+* demo request section
+
+Fields:
+
+* Name
+* Email
+* Company
+* Message
+
+Add success toast after form submission.
+
+4. TRUST / SECURITY PAGE (/trust)
+
+This page is very important.
+
+Add sections:
+
+* Secure SMTP & IMAP handling
+* Password encryption
+* White-label email privacy
+* No inbox reading
+* Secure authentication
+* Transport industry focus
+
+Add trust badges/cards:
+
+* Encrypted Credentials
+* SMTP Secure
+* IMAP Compatible
+* White-Label Ready
+* Mobile Friendly
+
+5. NAVIGATION + FOOTER
+
+Add links in navbar and footer:
+
+* Pricing
+* FAQ
+* Contact
+* Trust
+
+Footer should remain clean and white-label.
+
+DO NOT add:
+
+* “Powered by”
+* “Sent via”
+* Vertex branding
+* forced platform branding
+
+6. MOBILE RESPONSIVENESS
+
+All new pages must be fully responsive and polished on mobile devices.

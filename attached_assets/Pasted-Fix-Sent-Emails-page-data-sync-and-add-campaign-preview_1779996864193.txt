@@ -1,0 +1,182 @@
+Fix Sent Emails page data sync and add campaign preview system.
+
+Current issues:
+
+1. Sent Emails page is empty even after successful SMTP campaigns.
+2. Campaign analytics page shows sent/open data but Sent Emails page does not sync.
+3. User cannot preview campaign emails before starting send.
+4. Preview only exists inside Templates page, not during actual campaign send flow.
+
+Implement the following fixes:
+
+---
+
+1. FIX SENT EMAILS PAGE DATA
+
+---
+
+Currently:
+
+* SMTP emails are being sent successfully
+* campaign analytics show sent/open counts
+* but Sent Emails page stays empty
+
+Fix:
+
+* Every successfully sent SMTP email must automatically create a SentEmail database record.
+* Save:
+
+  * recipient email
+  * recipient name
+  * quote ID
+  * subject
+  * delivery route
+  * vehicle
+  * mailbox used
+  * send timestamp
+  * campaign ID
+  * opened status
+  * open count
+  * message ID
+
+Then:
+
+* Sent Emails page must load real sent campaign data from database.
+* Existing campaign analytics and Sent Emails page must use the same source of truth.
+
+---
+
+2. ADD EMAIL PREVIEW BEFORE CAMPAIGN SEND
+
+---
+
+In Upload & Send page:
+
+Before clicking “Start Campaign” or “Send Batch”:
+
+* show a live preview panel
+
+Preview should include:
+
+* rendered subject
+* rendered email body
+* branding/logo/signature
+* customer variables replaced
+* actual customer example from uploaded sheet
+
+Add:
+
+* Next Preview
+* Previous Preview
+
+So user can preview multiple leads before sending.
+
+---
+
+3. PREVIEW CUSTOMER DETAILS
+
+---
+
+Inside preview modal/panel show:
+
+* customer name
+* customer email
+* vehicle
+* pickup
+* delivery
+* quote ID
+
+This helps user verify spreadsheet mapping.
+
+---
+
+4. ADD CAMPAIGN SUMMARY BOX
+
+---
+
+Before sending show:
+
+* total leads
+* valid emails
+* duplicate emails
+* estimated send time
+* delivery method
+* current hourly limit
+* batch size
+* delay per email
+
+---
+
+5. SAVE CAMPAIGN HISTORY PROPERLY
+
+---
+
+Every campaign should permanently store:
+
+* uploaded file info
+* template used
+* sent count
+* failed count
+* opened count
+* status
+* timestamps
+
+Campaign details page should always remain viewable after send.
+
+---
+
+6. FIX OPEN TRACKING LINKING
+
+---
+
+Open tracking currently appears in analytics only.
+
+Also sync open tracking into:
+
+* Sent Emails page
+* Campaign details page
+* recipient detail modal
+
+---
+
+7. ADD SENT EMAIL DETAIL MODAL
+
+---
+
+Clicking a sent email should open:
+
+* full email preview
+* sent time
+* opened time
+* open count
+* recipient details
+* quote ID
+* delivery status
+
+---
+
+8. MOBILE RESPONSIVE
+
+---
+
+Ensure:
+
+* preview panel works on mobile
+* sent emails table stacks properly
+* preview modal scrolls correctly
+* analytics cards responsive
+
+---
+
+9. IMPORTANT
+
+---
+
+Do NOT rebuild the entire campaign system.
+
+Only:
+
+* fix data persistence
+* connect Sent Emails page correctly
+* add campaign preview workflow
+* improve campaign UX

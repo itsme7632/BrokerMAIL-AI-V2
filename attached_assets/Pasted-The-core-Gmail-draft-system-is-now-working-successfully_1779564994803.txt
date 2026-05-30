@@ -1,0 +1,265 @@
+The core Gmail draft system is now working successfully, which is great progress. However, several UX and template rendering issues still need refinement to make the product production-quality for vehicle shipping brokers.
+
+Please fix ALL issues below carefully.
+
+---
+
+# ISSUE 1 — WRONG VARIABLE MAPPING
+
+Current problem:
+The generated draft is putting the price inside the `{vehicle}` placeholder.
+
+Example:
+Subject:
+“Shipping quote for your 425”
+
+This means:
+
+* vehicle field mapping is incorrect
+* CSV parser is mapping numeric price column into vehicle field
+
+Fix the template variable engine completely.
+
+Requirements:
+
+1. Improve automatic CSV field detection
+2. Correctly detect:
+
+* vehicle
+* price
+* pickup
+* delivery
+* route
+* name
+
+3. Add smarter matching logic
+
+Example mappings:
+
+* vehicle → car, make_model, vehicle_type
+* price → quote, amount, transport_price
+* pickup → origin, pickup_city
+* delivery → destination, delivery_city
+
+4. Prevent numeric-only values from becoming vehicle names
+
+Example:
+“425” should NEVER become vehicle.
+
+5. Add validation rules:
+
+* vehicle should usually contain text
+* price should detect currency/numeric values
+
+6. Add manual mapping UI before draft creation
+
+Let user manually confirm:
+CSV Column → Template Variable
+
+---
+
+# ISSUE 2 — PRICE FORMATTING
+
+Current issue:
+Price appears as:
+`425`
+
+Instead of:
+`$425`
+
+Requirements:
+
+1. Automatically format currency values
+2. Detect plain numeric amounts
+3. Add configurable currency symbol
+
+Default:
+USD → `$`
+
+Examples:
+425 → $425
+950 → $950
+1200 → $1,200
+
+4. Preserve already formatted values
+
+If CSV already contains:
+`$950`
+Do not double-format.
+
+---
+
+# ISSUE 3 — EMAIL DESIGN TOO PLAIN
+
+Current drafts look too basic and unprofessional.
+
+Improve Gmail draft formatting.
+
+Requirements:
+
+1. Generate HTML email drafts instead of plain text
+2. Add rich formatting:
+
+* bold text
+* spacing
+* highlighted values
+* professional typography
+
+3. Important variables should be visually emphasized:
+
+* customer name
+* vehicle
+* pickup
+* delivery
+* price
+* company name
+* agent name
+
+Example formatting:
+
+* vehicle → bold
+* route → bold
+* price → green highlighted
+* company name → branded footer
+
+4. Improve email spacing and readability
+
+5. Add professional email footer support
+
+Example:
+
+Best regards,
+Frank Miller
+Vertex Carship
+Dispatch Department
+(832) 304-8468
+
+6. Add template styles:
+
+* Clean Professional
+* Modern
+* Minimal
+* Luxury Auto Transport
+
+---
+
+# ISSUE 4 — DASHBOARD GMAIL UI OVERFLOW
+
+Current issue:
+Connected Gmail address overflows outside the dashboard card.
+
+Fix responsive dashboard layout.
+
+Requirements:
+
+1. Prevent Gmail address overflow
+2. Add truncation/ellipsis
+3. Improve card spacing
+4. Make dashboard responsive
+
+Example:
+[frank.vertexcarship1@gmail.com](mailto:frank.vertexcarship1@gmail.com)
+
+should properly fit inside card.
+
+5. Add Gmail avatar icon
+6. Add “Connected” badge
+
+---
+
+# ISSUE 5 — ADMIN PANEL ACCESS
+
+Check whether admin panel already exists.
+
+If admin panel exists:
+Please provide:
+
+* admin URL
+* seeded admin email
+* seeded admin password
+
+Example:
+
+* URL: /admin
+* Email: [admin@vertexmailer.ai](mailto:admin@vertexmailer.ai)
+* Password: Admin@12345
+
+If admin panel does NOT exist:
+Create full admin dashboard.
+
+Requirements:
+
+* user management
+* Gmail connection monitoring
+* draft logs
+* failed draft logs
+* upload logs
+* system health
+* queue monitoring
+* API diagnostics
+
+Seed default admin credentials and display them clearly.
+
+---
+
+# ISSUE 6 — GMAIL DRAFT HTML SUPPORT
+
+Currently drafts are plain-text only.
+
+Upgrade Gmail draft creation to use multipart MIME HTML emails.
+
+Requirements:
+
+1. Use HTML MIME payloads
+2. Support:
+
+* bold
+* colors
+* spacing
+* buttons
+* signatures
+
+3. Ensure Gmail renders formatting correctly inside drafts folder
+
+4. Add live email preview inside app
+
+---
+
+# ISSUE 7 — TEMPLATE UX IMPROVEMENTS
+
+Improve template editor.
+
+Add:
+
+* variable insertion menu
+* live replacement preview
+* HTML editor
+* preview with sample CSV row
+* test Gmail draft button
+
+Add supported variable list:
+{name}
+{vehicle}
+{pickup}
+{delivery}
+{price}
+{route}
+{company}
+{agent_name}
+{phone}
+
+---
+
+# FINAL GOAL
+
+The final product should feel like:
+
+“Professional Gmail draft automation platform for vehicle shipping brokers”
+
+NOT:
+
+* plain text mail merge
+* developer prototype
+* CRM software
+
+The generated Gmail drafts should look polished, professional, and ready to send immediately.

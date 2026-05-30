@@ -1,0 +1,161 @@
+Add advanced failed-email recovery and company logo/template system.
+
+---
+
+## PART 1 — FAILED EMAIL RECOVERY SYSTEM
+
+Add a “Retry / Re-send” action for every failed or bounced email inside:
+
+* Sent Emails page
+* Campaign Details page
+
+For each failed lead show:
+
+* recipient email
+* customer name
+* quote ID
+* failure reason
+* SMTP response
+* failed timestamp
+
+Add buttons:
+
+* Retry Now
+* Edit & Retry
+* Mark Ignored
+
+---
+
+## RETRY NOW
+
+Immediately retries delivery using:
+
+* same mailbox
+* same template
+* same campaign settings
+
+If successful:
+
+* status changes to Delivered
+* failure badge removed
+* resend timestamp saved
+
+---
+
+## EDIT & RETRY
+
+Open a modal where user can:
+
+* edit recipient email
+* edit subject
+* edit message body
+* then resend manually
+
+---
+
+## FAILED EMAIL FILTERS
+
+Add filters:
+
+* All
+* Delivered
+* Failed
+* Opened
+* Unopened
+* Replied
+
+---
+
+## AUTO FAILURE DETECTION
+
+Detect common SMTP failures:
+
+* mailbox full
+* invalid email
+* blocked by provider
+* rate limit exceeded
+* spam rejected
+* temporary unavailable
+
+Show readable labels instead of raw SMTP codes.
+
+---
+
+## PART 2 — COMPANY LOGO + TEMPLATE SYSTEM
+
+Inside Branding Settings add:
+
+1. Company Logo Upload
+
+* upload PNG/JPG/SVG
+* show live preview
+* auto resize for email headers
+* save securely
+
+2. Email Header Style
+   Options:
+
+* Minimal
+* Corporate
+* Modern Gradient
+* Dark Premium
+* Auto Transport Classic
+
+3. Email Footer Style
+   Options:
+
+* Compact
+* Detailed
+* Centered
+* Social Links
+
+4. Live Signature Preview
+   Update instantly while editing branding.
+
+---
+
+## NEW EMAIL DESIGN TEMPLATES
+
+Add multiple professional templates:
+
+1. Modern Quote
+2. Luxury Black
+3. Minimal White
+4. Premium Carrier Style
+5. Urgent Follow-Up
+6. Dispatch Ready
+7. Friendly Broker Style
+8. Corporate Blue
+9. Clean Mobile Optimized
+10. Dark Mode Modern
+
+---
+
+## TEMPLATE FEATURES
+
+Each template should support:
+
+* company logo
+* accent color
+* agent name
+* quote ID
+* dynamic variables
+* mobile responsive layout
+* open tracking
+* SMTP delivery
+
+---
+
+## IMPORTANT
+
+Do NOT remove existing templates.
+
+Add a Template Gallery page with:
+
+* thumbnail previews
+* mobile preview
+* desktop preview
+* one-click apply
+* duplicate/edit template
+
+Keep UI lightweight and responsive.

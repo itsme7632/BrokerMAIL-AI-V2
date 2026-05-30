@@ -1,0 +1,185 @@
+Fix SMTP hourly quota tracking, retry handling, and bounce parsing.
+
+Current issue:
+
+SMTP provider/cPanel server is still rate-limiting emails even though BrokerMail AI believes sending is within limits.
+
+Example:
+
+* server says 51/50 emails used
+* app UI may show lower count
+* deferred emails continue increasing quota usage
+
+This causes:
+
+* unexpected deferred emails
+* false delivery reporting
+* campaigns pausing incorrectly
+
+---
+
+## ROOT PROBLEM
+
+SMTP server counts:
+
+* accepted sends
+* retries
+* deferred attempts
+* bounced attempts
+* SMTP test emails
+* manual mailbox sends
+
+BrokerMail AI currently tracks only successful frontend sends.
+
+This creates quota mismatch.
+
+---
+
+## REQUIRED FIXES
+
+1. TRUE SMTP QUOTA TRACKING
+
+---
+
+Track ALL SMTP attempts including:
+
+* successful sends
+* deferred sends
+* retries
+* bounced attempts
+* SMTP test emails
+
+Quota tracking must match actual provider behavior.
+
+---
+
+2. USE ROLLING 60-MINUTE WINDOW
+
+---
+
+Do NOT reset quota on clock hour.
+
+Use rolling window:
+Example:
+
+* email sent at 2:15 PM
+* quota frees at 3:15 PM
+
+Track exact timestamps.
+
+---
+
+3. COUNT DEFERRED EMAILS
+
+---
+
+Deferred emails still consume SMTP quota.
+
+When email becomes:
+
+* Deferred
+* Retrying
+* Temporarily failed
+
+count it toward hourly usage.
+
+---
+
+4. RETRY QUEUE LIMITER
+
+---
+
+Current retry system likely retries too aggressively.
+
+Implement:
+
+* retry backoff
+* retry scheduling
+* retry cooldown
+
+Example:
+1st retry → 15 min
+2nd retry → 30 min
+3rd retry → 60 min
+
+Maximum retry count configurable.
+
+---
+
+5. MAIL SERVER SYNC
+
+---
+
+When provider returns:
+“max emails per hour exceeded”
+
+System should:
+
+* immediately pause campaign
+* stop ALL sending attempts
+* stop retry queue
+* enter cooldown mode
+
+Do NOT continue trying sends during cooldown.
+
+---
+
+6. QUOTA DASHBOARD
+
+---
+
+Inside Mailbox Settings show:
+
+SMTP Usage:
+
+* hourly limit
+* used this hour
+* deferred count
+* retry queue count
+* next quota release time
+
+---
+
+7. FIX MIME/ENCODING DISPLAY
+
+---
+
+Bounce messages currently show broken encoding:
+Example:
+=E2=80=99
+
+Decode MIME properly before rendering.
+
+Bounce previews should show clean readable text.
+
+---
+
+8. CLEAN BOUNCE UI
+
+---
+
+Instead of raw SMTP body:
+
+Show:
+❌ Deferred
+Reason:
+Hourly sending limit exceeded by provider.
+
+Next retry:
+58 minutes
+
+---
+
+9. IMPORTANT
+
+---
+
+Do NOT rely only on frontend counters.
+
+Backend SMTP queue manager must become source of truth for:
+
+* quota
+* retries
+* cooldowns
+* deferred sends
+* delivery states.

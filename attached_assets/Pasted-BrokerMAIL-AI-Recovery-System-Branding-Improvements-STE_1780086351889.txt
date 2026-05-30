@@ -1,0 +1,156 @@
+BrokerMAIL AI - Recovery System + Branding Improvements
+
+STEP 1 — Server Startup Recovery System
+
+The deferred retry loop is now working while the server remains online. We also need crash/restart recovery.
+
+Requirements:
+
+1. On API startup, scan all campaigns where:
+
+   * status = sending
+   * deferred queue items exist
+   * lead status = sending
+   * queue status = deferred
+
+2. Automatically restart processing for eligible campaigns.
+
+3. For deferred items where:
+   retryAfter <= now
+
+   immediately resume processing.
+
+4. For campaigns where:
+
+   * campaign.status = sending
+   * activeJobs does not contain the campaign
+
+   automatically recreate the processor.
+
+5. If a lead is stuck in:
+   sending
+
+   while queue item is:
+   deferred
+
+   reset lead back to queued.
+
+6. Add startup logs:
+
+   [RECOVERY] Campaign found
+
+   [RECOVERY] Deferred items found
+
+   [RECOVERY] Processor restarted
+
+Goal:
+
+No campaign should require manual Resume after:
+
+* server restart
+* deployment
+* Replit reboot
+* process crash
+
+---
+
+STEP 2 — Improve Platform Logo Visibility
+
+Current logo is too small and gets lost in the sidebar.
+
+Requirements:
+
+1. Increase logo size by 2x–3x.
+
+2. Increase sidebar logo container height.
+
+3. Preserve aspect ratio.
+
+4. Add proper top/bottom padding.
+
+5. Keep logo sharp on desktop and mobile.
+
+6. If logo upload is low-resolution, allow larger logo uploads.
+
+7. Improve overall branding visibility across the platform.
+
+Goal:
+
+The company logo should immediately stand out when users open the platform.
+
+---
+
+STEP 3 — Replace Hardcoded Company Examples
+
+Remove all hardcoded references such as:
+
+* NSLA Carship
+* NSLA Carship Sales
+* NSLA Dispatch
+* Vertex Carship
+* BrokerMAIL examples
+
+from:
+
+* Branding Settings
+* Template examples
+* Placeholder text
+* Onboarding forms
+* Company settings
+* Demo content
+
+Replace with generic white-label placeholders:
+
+Company Name:
+
+* Your Company Name
+* XYZ Carship
+* ABC Auto Transport
+
+Agent Name:
+
+* Your Agent Name
+* Sales Team
+
+Dispatch Name:
+
+* Dispatch Team
+
+Support Email:
+
+* [support@yourcompany.com](mailto:support@yourcompany.com)
+
+Sender Email:
+
+* [sales@yourcompany.com](mailto:sales@yourcompany.com)
+
+Website:
+
+* [www.yourcompany.com](http://www.yourcompany.com)
+
+Phone:
+
+* (000) 000-0000
+
+Goal:
+
+The platform should appear completely white-label and suitable for any transport company using BrokerMAIL AI.
+
+---
+
+STEP 4 — UI Consistency
+
+Ensure all branding updates are reflected immediately throughout the platform:
+
+* Dashboard
+* Email previews
+* Templates
+* Branding settings
+* User profile areas
+* Sidebar
+
+No old company names should remain visible after branding changes are saved.
+
+Goal:
+
+Every customer should feel that the platform belongs to their company, not to another broker or transport company.

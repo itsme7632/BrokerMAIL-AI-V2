@@ -1,0 +1,202 @@
+Pivot the platform architecture away from AI-generated followups.
+
+New product direction:
+
+This app is primarily a:
+“Gmail draft automation tool for vehicle shipping brokers using spreadsheet variables.”
+
+Remove dependency on AI-generated followups for core workflow.
+
+---
+
+# NEW CORE WORKFLOW
+
+1. User connects Gmail
+2. User writes their own email template
+3. User inserts dynamic variables
+4. User uploads CSV/XLSX
+5. System replaces variables with spreadsheet data
+6. Gmail drafts get created automatically
+
+---
+
+# REMOVE AI AS CORE DEPENDENCY
+
+AI should become OPTIONAL only.
+
+Remove AI dependency from:
+
+* draft generation
+* followup generation
+* campaign creation
+
+Keep AI only for optional helpers:
+
+* rewrite email
+* improve tone
+* generate subject line
+
+Core functionality must work WITHOUT AI APIs.
+
+---
+
+# TEMPLATE VARIABLE SYSTEM
+
+Create robust variable replacement engine.
+
+Supported variables:
+
+* {name}
+* {email}
+* {vehicle}
+* {pickup}
+* {delivery}
+* {price}
+* {route}
+* {company}
+* {phone}
+* {notes}
+
+Allow ANY CSV column to become a variable automatically.
+
+Example:
+CSV column:
+`transport_type`
+
+Becomes usable:
+`{transport_type}`
+
+---
+
+# CSV FIELD DETECTION
+
+Auto-detect spreadsheet columns.
+
+Support flexible naming:
+
+* vehicle
+* car
+* make_model
+* transport_vehicle
+
+Map intelligently.
+
+Add:
+
+* manual mapping UI
+* preview mode
+
+---
+
+# TEMPLATE EDITOR
+
+Create simple clean template builder.
+
+Features:
+
+* subject line
+* email body
+* variable insertion buttons
+* live preview
+* sample replacement preview
+* test draft button
+
+Example variable chips:
+{name}
+{vehicle}
+{pickup}
+{delivery}
+{price}
+
+---
+
+# LIVE PREVIEW
+
+When user uploads CSV:
+show real preview instantly.
+
+Example:
+Template:
+“Shipping quote for your {vehicle}”
+
+Preview:
+“Shipping quote for your BMW X5”
+
+---
+
+# GMAIL DRAFT CREATION
+
+After clicking:
+“Create Gmail Drafts”
+
+System should:
+
+* loop through spreadsheet rows
+* replace variables
+* generate RFC822 email
+* create Gmail draft
+* store Gmail draft ID
+
+Show:
+
+* successful drafts
+* failed drafts
+* detailed logs
+
+---
+
+# REMOVE ENTERPRISE CRM FEEL
+
+Simplify app structure to:
+
+* Dashboard
+* Templates
+* Upload Leads
+* Gmail Drafts
+* Settings
+
+Remove:
+
+* campaigns
+* SDR terminology
+* outbound analytics
+* AI-first workflow
+
+---
+
+# UI DIRECTION
+
+The app should feel like:
+
+* simple
+* fast
+* modern
+* lightweight
+* productivity-focused
+
+Reference:
+
+* Notion
+* Mailmeteor
+* GMass
+* ChatGPT light UI
+
+NOT:
+
+* Salesforce
+* HubSpot
+* Apollo
+
+---
+
+# FINAL PRODUCT GOAL
+
+The user should:
+
+* paste email template
+* upload CSV
+* click create drafts
+
+within 60 seconds.
+
+That is the optimized MVP.

@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Vertex AI Mailer"
+version = "1.0.0"
+id = "artifacts/vertex-ai-mailer"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24622
+
+[services.development]
+run = "pnpm --filter @workspace/vertex-ai-mailer run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/vertex-ai-mailer", "run", "build" ]
+publicDir = "artifacts/vertex-ai-mailer/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24622"
+BASE_PATH = "/"
