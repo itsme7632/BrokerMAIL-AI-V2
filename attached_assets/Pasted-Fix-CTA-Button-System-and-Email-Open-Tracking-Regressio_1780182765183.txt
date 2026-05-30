@@ -1,0 +1,162 @@
+Fix CTA Button System and Email Open Tracking Regression
+
+CRITICAL ISSUE #1 — CTA Buttons Not Appearing
+
+Problem:
+
+* CTA button feature was added.
+* Templates do not display CTA buttons.
+* No visible option exists to:
+
+  * Add a CTA button
+  * Remove a CTA button
+  * Reposition a CTA button
+  * Edit button text
+  * Edit button URL
+
+Required:
+
+1. Template Builder Controls
+
+Add visual controls:
+
+Add Button
+Remove Button
+Edit Button
+Move Button
+
+2. Button Settings
+
+Allow:
+
+Button Text
+Button URL
+Button Color
+Button Position
+Button Size
+Button Style
+
+3. Button Placement
+
+Allow placement:
+
+Top of email
+Middle of email
+Below quote section
+Above signature
+Footer
+
+4. Multiple Buttons
+
+Support:
+
+Book Now
+View Quote
+Call Now
+Reply To Confirm
+
+5. Template Preview
+
+Preview must exactly match the email that is actually sent.
+
+---
+
+CRITICAL ISSUE #2 — Email Open Tracking Regression
+
+Problem:
+Before CTA implementation:
+
+* Open tracking worked.
+* Multiple opens were counted.
+* Notifications appeared correctly.
+* Open count increased correctly.
+
+After CTA implementation:
+
+* Opens are not tracked correctly.
+* Open notifications stopped working.
+* Repeated opens do not increment counts.
+
+Required Investigation:
+
+1. Verify tracking pixel still exists in rendered HTML.
+
+Check:
+
+* Original template HTML
+* Final rendered HTML
+* Final email HTML after CTA injection
+
+2. Verify CTA insertion does not remove:
+
+trackingPixel
+trackingId
+openTracker
+analytics scripts
+
+3. Verify multiple opens are recorded.
+
+Test:
+
+Open email once
+Open email twice
+Open email three times
+
+Expected:
+
+Open Count = 3
+
+4. Verify notifications.
+
+Expected:
+
+Lead opened email
+Lead reopened email
+Lead opened email 3 times
+
+5. Add diagnostics.
+
+Log:
+
+Tracking ID
+Pixel URL
+Open Event Timestamp
+Open Count
+Lead ID
+Campaign ID
+
+---
+
+CRITICAL ISSUE #3 — Analytics Validation
+
+Create a test campaign.
+
+Test:
+
+Template A
+Template B
+Template C
+
+For each:
+
+Send email
+Open email multiple times
+Click CTA button
+
+Verify:
+
+Open Tracking
+Click Tracking
+Notifications
+Campaign Analytics
+
+---
+
+DO NOT MARK COMPLETE UNTIL:
+
+* CTA buttons appear in templates.
+* Buttons can be added, removed, and repositioned.
+* Open tracking works exactly as before.
+* Multiple opens are counted correctly.
+* Notifications are restored.
+* Click tracking and open tracking both work simultaneously.

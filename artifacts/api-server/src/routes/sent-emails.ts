@@ -1,9 +1,10 @@
 import { Router, type IRouter } from "express";
 import {
   db, emailQueueTable, draftsTable, mailboxesTable, usersTable, templatesTable,
-  emailTrackingEventsTable,
+  emailTrackingEventsTable, campaignsTable,
 } from "@workspace/db";
 import { eq, and, count, desc, sql, inArray } from "drizzle-orm";
+import { logger } from "../lib/logger";
 import { requireAuth } from "../lib/auth";
 import {
   buildHtmlEmail, replaceVarsText, formatPrice, type EmailStyle, type BrandingSettings,
@@ -340,20 +341,46 @@ router.post("/sent-emails/:id/retry", requireAuth, async (req, res): Promise<voi
   const row       = JSON.parse(item.rowDataJson) as Record<string, string>;
   if (row.price) row.price = formatPrice(row.price);
 
-  const subject   = replaceVarsText(template.subject, row);
-  const bodyText  = replaceVarsText(template.body, row);
-  const bodyHtml  = buildHtmlEmail(template.body, row, branding, {
-    style: validStyle(item.style), useSignatureBuilder: item.useSignatureBuilder,
-  });
+  // Populate URL variables from campaign so CTA buttons resolve correctly
+  if (item.campaignId) {
+    const [campaignRow] = await db.select({
+      bookingUrl:  campaignsTable.bookingUrl,
+      quoteUrl:    campaignsTable.quoteUrl,
+      websiteUrl:  campaignsTable.websiteUrl,
+      phoneNumber: campaignsTable.phoneNumber,
+    }).from(campaignsTable).where(eq(campaignsTable.id, item.campaignId));
+    if (campaignRow?.bookingUrl)  row.booking_link = campaignRow.bookingUrl;
+    if (campaignRow?.quoteUrl)    row.quote_link   = campaignRow.quoteUrl;
+    if (campaignRow?.websiteUrl)  row.website_link = campaignRow.websiteUrl;
+    if (campaignRow?.phoneNumber) row.phone_link   = campaignRow.phoneNumber;
+  }
 
   const trackingId = randomUUID();
   const publicBase = process.env.REPLIT_DEV_DOMAIN
     ? `https://${process.env.REPLIT_DEV_DOMAIN}`
     : (process.env.PUBLIC_URL ?? "http://localhost:3000");
+
+  const ctaButtons = (() => {
+    try { return template.ctaButtonsJson ? JSON.parse(template.ctaButtonsJson) : []; }
+    catch { return []; }
+  })();
+
+  const subject   = replaceVarsText(template.subject, row);
+  const bodyText  = replaceVarsText(template.body, row);
+  const bodyHtml  = buildHtmlEmail(template.body, row, branding, {
+    style: validStyle(item.style),
+    useSignatureBuilder: item.useSignatureBuilder,
+    ctaButtons,
+    trackingId,
+    publicBase,
+  });
+
   const pixelTag   = `<img src="${publicBase}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none!important;width:1px!important;height:1px!important;border:0;" />`;
   const trackedHtml = bodyHtml.includes("</body>")
     ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`)
     : bodyHtml + pixelTag;
+
+  logger.info({ id, trackingId, email: item.email, ctaCount: ctaButtons.length }, "[RETRY] Building email with tracking and CTA buttons");
 
   try {
     await sendEmail(mailbox, { to: item.email, subject, text: bodyText, html: trackedHtml });
@@ -416,6 +443,30 @@ router.post("/sent-emails/:id/edit-resend", requireAuth, async (req, res): Promi
   const row       = JSON.parse(item.rowDataJson) as Record<string, string>;
   if (row.price) row.price = formatPrice(row.price);
 
+  // Populate URL variables from campaign so CTA buttons resolve correctly
+  if (item.campaignId) {
+    const [campaignRow] = await db.select({
+      bookingUrl:  campaignsTable.bookingUrl,
+      quoteUrl:    campaignsTable.quoteUrl,
+      websiteUrl:  campaignsTable.websiteUrl,
+      phoneNumber: campaignsTable.phoneNumber,
+    }).from(campaignsTable).where(eq(campaignsTable.id, item.campaignId));
+    if (campaignRow?.bookingUrl)  row.booking_link = campaignRow.bookingUrl;
+    if (campaignRow?.quoteUrl)    row.quote_link   = campaignRow.quoteUrl;
+    if (campaignRow?.websiteUrl)  row.website_link = campaignRow.websiteUrl;
+    if (campaignRow?.phoneNumber) row.phone_link   = campaignRow.phoneNumber;
+  }
+
+  const trackingId = randomUUID();
+  const publicBase = process.env.REPLIT_DEV_DOMAIN
+    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+    : (process.env.PUBLIC_URL ?? "http://localhost:3000");
+
+  const ctaButtons = (() => {
+    try { return template.ctaButtonsJson ? JSON.parse(template.ctaButtonsJson) : []; }
+    catch { return []; }
+  })();
+
   const finalSubject = editedSubject?.trim() || replaceVarsText(template.subject, row);
 
   // Build note prefix if provided
@@ -425,17 +476,19 @@ router.post("/sent-emails/:id/edit-resend", requireAuth, async (req, res): Promi
   const bodyWithNote = notePrefix + template.body;
   const bodyText = notePrefix + replaceVarsText(template.body, row);
   const bodyHtml = buildHtmlEmail(bodyWithNote, row, branding, {
-    style: validStyle(item.style), useSignatureBuilder: item.useSignatureBuilder,
+    style: validStyle(item.style),
+    useSignatureBuilder: item.useSignatureBuilder,
+    ctaButtons,
+    trackingId,
+    publicBase,
   });
 
-  const trackingId = randomUUID();
-  const publicBase = process.env.REPLIT_DEV_DOMAIN
-    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-    : (process.env.PUBLIC_URL ?? "http://localhost:3000");
-  const pixelTag  = `<img src="${publicBase}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none!important;" />`;
+  const pixelTag  = `<img src="${publicBase}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none!important;width:1px!important;height:1px!important;border:0;" />`;
   const trackedHtml = bodyHtml.includes("</body>")
     ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`)
     : bodyHtml + pixelTag;
+
+  logger.info({ id, trackingId, email: recipientEmail, ctaCount: ctaButtons.length }, "[EDIT-RESEND] Building email with tracking and CTA buttons");
 
   try {
     await sendEmail(mailbox, { to: recipientEmail, subject: finalSubject, text: bodyText, html: trackedHtml });
