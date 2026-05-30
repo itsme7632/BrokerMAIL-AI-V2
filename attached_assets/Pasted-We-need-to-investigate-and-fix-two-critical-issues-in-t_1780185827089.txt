@@ -1,0 +1,147 @@
+We need to investigate and fix two critical issues in the email campaign system.
+
+## ISSUE 1 — SMTP Deferred Emails / False Timeout Errors
+
+Current behavior:
+
+* SMTP Test succeeds.
+* IMAP Test succeeds.
+* Emails have been sent successfully before using the same mailbox.
+* Sometimes a test campaign sends successfully.
+* Later campaigns go:
+  Queue → Deferred
+* Diagnostics always show:
+
+Campaign Status: sending
+Job Active: Yes
+Queue Status: Deferred = 1
+Lead Status: Queued = 1
+
+And the error shown is:
+
+"Connection timeout — the SMTP server did not respond within the time limit."
+
+However, because SMTP and IMAP tests pass, I do not trust this error completely.
+
+### Please investigate:
+
+1. Verify SMTP Test and Campaign Send use exactly the same transporter configuration.
+2. Verify SMTP host, port, encryption, username, and timeout values are identical.
+3. Verify the campaign processor is not converting all SMTP failures into the same generic timeout message.
+4. Verify deferred items are not getting stuck incorrectly.
+
+### Add detailed SMTP diagnostics
+
+Add a new Diagnostics section:
+
+Last SMTP Attempt
+
+* SMTP Host
+* SMTP Port
+* Encryption
+* Attempt Number
+* SMTP Stage
+* Raw Error Code
+* Raw Error Message
+* SMTP Command
+* Last Attempt Timestamp
+* Deferred Until
+* Retry Countdown
+
+Example:
+
+SMTP Host: mail.vertexcarship.com
+Port: 465
+Stage: sendMail
+Raw Error Code: ETIMEDOUT
+Raw Error Message: Connection timed out after 30000ms
+Last Attempt: 2026-05-30 14:22:15
+Retry In: 13m 08s
+
+### Add logging
+
+[SMTP TEST]
+Host
+Port
+Verify Success
+
+[CAMPAIGN SEND]
+Host
+Port
+Connect Success
+Auth Success
+sendMail Started
+sendMail Completed
+
+If it fails:
+
+[SMTP FAILURE]
+Stage
+Raw Error Code
+Raw Error Message
+SMTP Command
+
+I want the REAL error, not a friendly error message.
+
+---
+
+## ISSUE 2 — CTA Buttons Not Appearing In Campaign Preview Or Emails
+
+Current state:
+
+✅ CTA buttons save correctly.
+✅ CTA buttons remain after reopening templates.
+✅ Template editor preview shows CTA buttons.
+
+But:
+
+❌ Campaign Preview Email does not show CTA buttons.
+❌ Upload & Send preview does not show CTA buttons.
+❌ Sent emails do not show CTA buttons.
+
+This means template persistence is fixed but campaign rendering is broken.
+
+### Investigate the full CTA flow
+
+1. Template save API
+2. Template load API
+3. Campaign creation
+4. Campaign preview
+5. Upload & Send preview
+6. Email builder
+7. SMTP send path
+8. Retry / resend path
+
+Add logging:
+
+[TEMPLATE]
+Template ID
+CTA Button Count
+
+[CAMPAIGN PREVIEW]
+Template ID
+CTA Button Count
+
+[EMAIL BUILDER]
+Template ID
+CTA Button Count
+
+[SMTP SEND]
+Template ID
+CTA Button Count
+
+### Acceptance Criteria
+
+* Create CTA button.
+* Save template.
+* Refresh page.
+* Reopen template.
+* CTA button still exists.
+* Campaign Preview shows CTA button.
+* Upload & Send Preview shows CTA button.
+* Sent email shows CTA button.
+* Retry / Resend email shows CTA button.
+* Click tracking still works.
+* Open tracking still works.
+
+Please trace the entire rendering path and identify exactly where ctaButtonsJson is being lost.
