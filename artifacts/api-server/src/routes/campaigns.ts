@@ -68,6 +68,30 @@ function retryBackoffMs(deferredCount: number): number {
   return 60 * 60_000;
 }
 
+/** Serialize raw SMTP error details into JSON for persistent storage in lastError. */
+function buildSmtpErrorJson(
+  err: any,
+  box: { smtpHost: string; smtpPort: number; smtpSecure: string },
+  stage = "sendMail",
+): string {
+  const friendly  = String(err?.message ?? "Send failed");
+  const rawCode   = err?.rawCode  ?? err?.code    ?? null;
+  const rawMsg    = err?.rawMsg   ?? friendly;
+  const smtpCmd   = err?.command  ?? null;
+  logger.error({
+    stage, rawCode, rawMsg, smtpCommand: smtpCmd,
+    smtpHost: box.smtpHost, smtpPort: box.smtpPort, encryption: box.smtpSecure,
+  }, "[SMTP FAILURE] Raw error details at send stage (before storing)");
+  return JSON.stringify({
+    friendly, rawCode, rawMsg, smtpCommand: smtpCmd,
+    smtpHost:   box.smtpHost,
+    smtpPort:   box.smtpPort,
+    encryption: box.smtpSecure,
+    stage,
+    timestamp:  new Date().toISOString(),
+  });
+}
+
 function userBranding(user: User): BrandingSettings {
   return {
     agentName:      user.agentName      ?? null,
@@ -277,8 +301,8 @@ export async function processCampaignJobQueue(
       const subject  = replaceVarsText(template.subject, row);
       const bodyText = replaceVarsText(template.body, row);
       const resolvedStyle = (item.style ?? "clean") as any;
-      logger.info({ jobId, campaignId, queueItemId: item.id, templateId: template.id, templateName: template.name, itemStyle: item.style, resolvedStyle },
-        "[TEMPLATE] processCampaignJobQueue: rendering email");
+      logger.info({ jobId, campaignId, queueItemId: item.id, templateId: template.id, templateName: template.name, ctaCount: ctaButtons.length, itemStyle: item.style, resolvedStyle },
+        "[EMAIL BUILDER] processCampaignJobQueue: rendering HTML email (ctaCount included)");
       const bodyHtml = buildHtmlEmail(template.body, row, branding, {
         style: resolvedStyle,
         useSignatureBuilder: item.useSignatureBuilder,
@@ -292,7 +316,7 @@ export async function processCampaignJobQueue(
         ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`)
         : bodyHtml + pixelTag;
 
-      logger.info({ jobId, campaignId, queueItemId: item.id, to: item.email, subject }, "[QUEUE] 4. SMTP transporter created — 5. Calling sendMail()");
+      logger.info({ jobId, campaignId, queueItemId: item.id, to: item.email, subject, ctaCount: ctaButtons.length, smtpHost: box.smtpHost, smtpPort: box.smtpPort, encryption: box.smtpSecure }, "[SMTP SEND] sendMail starting — host/port/ctaCount for verification");
 
       try {
         const info = await sendEmailWithTimeout(box, { to: item.email, subject, text: bodyText, html: trackedHtml });
@@ -335,6 +359,7 @@ export async function processCampaignJobQueue(
         const errMsg   = String(err?.message ?? "Send failed");
         const attempts = item.attempts + 1;
         const newDeferred = (item.deferredCount ?? 0) + 1;
+        const errorJson = buildSmtpErrorJson(err, box);
         logger.error({ jobId, campaignId, queueItemId: item.id, to: item.email, errMsg, attempts }, "[QUEUE] 7. sendMail() threw exception");
 
         await db.insert(draftsTable).values({
@@ -345,7 +370,7 @@ export async function processCampaignJobQueue(
         if (isProviderRateLimitError(errMsg)) {
           const retryAfter = new Date(Date.now() + 60 * 60_000);
           await db.update(emailQueueTable)
-            .set({ status: "deferred", attempts, deferredCount: newDeferred, retryAfter, lastError: errMsg })
+            .set({ status: "deferred", attempts, deferredCount: newDeferred, retryAfter, lastError: errorJson })
             .where(eq(emailQueueTable.id, item.id));
           if (item.leadId) {
             await db.update(leadsTable)
@@ -356,7 +381,7 @@ export async function processCampaignJobQueue(
           break;
         } else if (attempts >= 3) {
           await db.update(emailQueueTable)
-            .set({ status: "failed", attempts, lastError: errMsg })
+            .set({ status: "failed", attempts, lastError: errorJson })
             .where(eq(emailQueueTable.id, item.id));
           if (item.leadId) {
             await db.update(leadsTable)
@@ -372,7 +397,7 @@ export async function processCampaignJobQueue(
         } else {
           const retryAfter = new Date(Date.now() + retryBackoffMs(newDeferred));
           await db.update(emailQueueTable)
-            .set({ status: "deferred", attempts, deferredCount: newDeferred, retryAfter, lastError: errMsg })
+            .set({ status: "deferred", attempts, deferredCount: newDeferred, retryAfter, lastError: errorJson })
             .where(eq(emailQueueTable.id, item.id));
           if (item.leadId) {
             await db.update(leadsTable)
@@ -652,8 +677,8 @@ export async function processCampaignFully(
       const subject  = replaceVarsText(template.subject, row);
       const bodyText = replaceVarsText(template.body, row);
       const resolvedStyleFull = (item.style ?? "clean") as any;
-      logger.info({ campaignId, queueItemId: item.id, templateId: template.id, templateName: template.name, itemStyle: item.style, resolvedStyle: resolvedStyleFull },
-        "[TEMPLATE] processCampaignFully: rendering email");
+      logger.info({ campaignId, queueItemId: item.id, templateId: template.id, templateName: template.name, ctaCount: ctaButtonsFull.length, itemStyle: item.style, resolvedStyle: resolvedStyleFull },
+        "[EMAIL BUILDER] processCampaignFully: rendering HTML email (ctaCount included)");
       const bodyHtml = buildHtmlEmail(template.body, row, branding, {
         style: resolvedStyleFull,
         useSignatureBuilder: item.useSignatureBuilder,
@@ -667,7 +692,7 @@ export async function processCampaignFully(
         ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`)
         : bodyHtml + pixelTag;
 
-      logger.info({ campaignId, queueItemId: item.id, to: item.email, subject }, "[CAMPAIGN] 4. SMTP transporter created — 5. Calling sendMail()");
+      logger.info({ campaignId, queueItemId: item.id, to: item.email, subject, ctaCount: ctaButtonsFull.length, smtpHost: box.smtpHost, smtpPort: box.smtpPort, encryption: box.smtpSecure }, "[SMTP SEND] sendMail starting — host/port/ctaCount for verification");
 
       try {
         const info = await sendEmailWithTimeout(box, { to: item.email, subject, text: bodyText, html: trackedHtml });
@@ -709,6 +734,7 @@ export async function processCampaignFully(
         const errMsg      = String(err?.message ?? "Send failed");
         const attempts    = item.attempts + 1;
         const newDeferred = (item.deferredCount ?? 0) + 1;
+        const errorJson   = buildSmtpErrorJson(err, box);
         logger.error({ campaignId, queueItemId: item.id, to: item.email, errMsg, attempts }, "[CAMPAIGN] 7. sendMail() threw exception");
 
         await db.insert(draftsTable).values({
@@ -719,7 +745,7 @@ export async function processCampaignFully(
         if (isProviderRateLimitError(errMsg)) {
           const retryAfter = new Date(Date.now() + 60 * 60_000);
           await db.update(emailQueueTable)
-            .set({ status: "deferred", attempts, deferredCount: newDeferred, retryAfter, lastError: errMsg })
+            .set({ status: "deferred", attempts, deferredCount: newDeferred, retryAfter, lastError: errorJson })
             .where(eq(emailQueueTable.id, item.id));
           if (item.leadId) {
             await db.update(leadsTable)
@@ -733,7 +759,7 @@ export async function processCampaignFully(
           break;
         } else if (attempts >= 3) {
           await db.update(emailQueueTable)
-            .set({ status: "failed", attempts, lastError: errMsg })
+            .set({ status: "failed", attempts, lastError: errorJson })
             .where(eq(emailQueueTable.id, item.id));
           if (item.leadId) {
             await db.update(leadsTable)
@@ -748,7 +774,7 @@ export async function processCampaignFully(
         } else {
           const retryAfter = new Date(Date.now() + retryBackoffMs(newDeferred));
           await db.update(emailQueueTable)
-            .set({ status: "deferred", attempts, deferredCount: newDeferred, retryAfter, lastError: errMsg })
+            .set({ status: "deferred", attempts, deferredCount: newDeferred, retryAfter, lastError: errorJson })
             .where(eq(emailQueueTable.id, item.id));
           if (item.leadId) {
             await db.update(leadsTable)
@@ -1719,6 +1745,7 @@ router.get("/campaigns/:id/diagnostics", requireAuth, async (req, res): Promise<
     retryAfter: emailQueueTable.retryAfter,
     deferredCount: emailQueueTable.deferredCount,
     lastError: emailQueueTable.lastError,
+    attempts: emailQueueTable.attempts,
   }).from(emailQueueTable)
     .where(and(
       eq(emailQueueTable.campaignId, campaignId),
@@ -1726,6 +1753,58 @@ router.get("/campaigns/:id/diagnostics", requireAuth, async (req, res): Promise<
     ))
     .orderBy(emailQueueTable.retryAfter)
     .limit(1);
+
+  // Most recent item with a lastError (deferred OR failed) for Last SMTP Attempt panel
+  const [lastAttempted] = await db.select({
+    id: emailQueueTable.id,
+    email: emailQueueTable.email,
+    lastError: emailQueueTable.lastError,
+    attempts: emailQueueTable.attempts,
+    deferredCount: emailQueueTable.deferredCount,
+    retryAfter: emailQueueTable.retryAfter,
+  }).from(emailQueueTable)
+    .where(and(
+      eq(emailQueueTable.campaignId, campaignId),
+      isNotNull(emailQueueTable.lastError),
+      inArray(emailQueueTable.status, ["deferred", "failed"]),
+    ))
+    .orderBy(desc(emailQueueTable.id))
+    .limit(1);
+
+  function parseSmtpErrorJson(raw: string | null): Record<string, any> | null {
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && ("rawCode" in parsed || "smtpHost" in parsed)) return parsed;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  const lastSmtpAttempt = (() => {
+    if (!lastAttempted?.lastError) return null;
+    const parsed = parseSmtpErrorJson(lastAttempted.lastError);
+    const retryAfterDate = lastAttempted.retryAfter;
+    return {
+      email:          lastAttempted.email,
+      attemptNumber:  lastAttempted.attempts,
+      deferredCount:  lastAttempted.deferredCount,
+      smtpHost:       parsed?.smtpHost ?? null,
+      smtpPort:       parsed?.smtpPort ?? null,
+      encryption:     parsed?.encryption ?? null,
+      stage:          parsed?.stage ?? null,
+      rawCode:        parsed?.rawCode ?? null,
+      rawMsg:         parsed?.rawMsg ?? null,
+      smtpCommand:    parsed?.smtpCommand ?? null,
+      friendlyError:  parsed?.friendly ?? lastAttempted.lastError,
+      timestamp:      parsed?.timestamp ?? null,
+      retryAfter:     retryAfterDate?.toISOString() ?? null,
+      retryInSeconds: retryAfterDate
+        ? Math.max(0, Math.ceil((retryAfterDate.getTime() - Date.now()) / 1000))
+        : null,
+    };
+  })();
 
   const campaignKey = `campaign:${campaignId}`;
   const legacyKey   = campaign.currentJobId ?? "";
@@ -1748,7 +1827,13 @@ router.get("/campaigns/:id/diagnostics", requireAuth, async (req, res): Promise<
       retryInSeconds: nextDeferred.retryAfter
         ? Math.max(0, Math.ceil((nextDeferred.retryAfter.getTime() - Date.now()) / 1000))
         : null,
+      // Parse JSON lastError for friendly display; fall back to raw string for old items
+      lastError: (() => {
+        const p = parseSmtpErrorJson(nextDeferred.lastError ?? null);
+        return p ? (p.friendly ?? nextDeferred.lastError) : (nextDeferred.lastError ?? null);
+      })(),
     } : null,
+    lastSmtpAttempt,
   });
 });
 

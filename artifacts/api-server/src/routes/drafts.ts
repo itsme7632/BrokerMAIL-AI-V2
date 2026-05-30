@@ -199,6 +199,7 @@ router.post("/drafts/preview", requireAuth, async (req, res): Promise<void> => {
 
   let templateBody: string;
   let templateSubject: string;
+  let templateCtaButtons: any[] = [];
 
   if (rawBody !== undefined && rawSubject !== undefined) {
     templateBody    = rawBody;
@@ -211,6 +212,13 @@ router.post("/drafts/preview", requireAuth, async (req, res): Promise<void> => {
     if (!template) { res.status(404).json({ error: "Template not found" }); return; }
     templateBody    = template.body;
     templateSubject = template.subject;
+    // Load CTA buttons from the template — callers that don't send ctaButtons will get them automatically
+    try {
+      templateCtaButtons = template.ctaButtonsJson ? JSON.parse(template.ctaButtonsJson) : [];
+    } catch {
+      templateCtaButtons = [];
+    }
+    req.log?.info({ templateId, ctaCount: templateCtaButtons.length }, "[TEMPLATE] Loaded ctaButtonsJson from DB");
   } else {
     res.status(400).json({ error: "Provide either templateId or body+subject" });
     return;
@@ -227,11 +235,16 @@ router.post("/drafts/preview", requireAuth, async (req, res): Promise<void> => {
     ? useSignatureBuilder
     : (freshUser.useSignature ?? false);
 
+  // CTA priority: explicit ctaButtons in request body → template's stored ctaButtonsJson
+  const resolvedCtaButtons = Array.isArray(ctaButtons) ? ctaButtons : templateCtaButtons;
+
+  req.log?.info({ templateId, ctaCount: resolvedCtaButtons.length }, "[CAMPAIGN PREVIEW] Rendering preview with CTA buttons");
+
   const subject = replaceVarsText(templateSubject, row);
   const html    = buildHtmlEmail(templateBody, row, branding, {
     style:               emailStyle,
     useSignatureBuilder: useSig,
-    ctaButtons:          Array.isArray(ctaButtons) ? ctaButtons : [],
+    ctaButtons:          resolvedCtaButtons,
   });
 
   res.json({ html, subject });

@@ -42,6 +42,23 @@ interface CampaignProgress {
   estimatedCompletionSeconds: number;
 }
 
+interface LastSmtpAttempt {
+  email: string | null;
+  attemptNumber: number | null;
+  deferredCount: number | null;
+  smtpHost: string | null;
+  smtpPort: number | null;
+  encryption: string | null;
+  stage: string | null;
+  rawCode: string | null;
+  rawMsg: string | null;
+  smtpCommand: string | null;
+  friendlyError: string | null;
+  timestamp: string | null;
+  retryAfter: string | null;
+  retryInSeconds: number | null;
+}
+
 interface CampaignDiagnostics {
   campaignId: number;
   status: string;
@@ -61,6 +78,7 @@ interface CampaignDiagnostics {
     deferredCount: number | null;
     lastError: string | null;
   } | null;
+  lastSmtpAttempt: LastSmtpAttempt | null;
 }
 
 interface CampaignBatch {
@@ -1414,6 +1432,57 @@ export default function CampaignDetail() {
                               Error: {diagnostics.nextDeferred.lastError}
                             </p>
                           )}
+                        </div>
+                      )}
+
+                      {/* ── Last SMTP Attempt ────────────────────────────────── */}
+                      {diagnostics.lastSmtpAttempt && (
+                        <div className="bg-slate-900 rounded-xl px-4 py-3 text-xs font-mono space-y-1">
+                          <p className="text-slate-400 text-[10px] uppercase tracking-widest font-semibold mb-2">Last SMTP Attempt</p>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+                            <span className="text-slate-400">SMTP Host</span>
+                            <span className="text-white">{diagnostics.lastSmtpAttempt.smtpHost ?? "—"}</span>
+                            <span className="text-slate-400">Port</span>
+                            <span className="text-white">{diagnostics.lastSmtpAttempt.smtpPort ?? "—"}</span>
+                            <span className="text-slate-400">Encryption</span>
+                            <span className="text-white">{diagnostics.lastSmtpAttempt.encryption ?? "—"}</span>
+                            <span className="text-slate-400">Attempt #</span>
+                            <span className="text-white">{diagnostics.lastSmtpAttempt.attemptNumber ?? "—"}</span>
+                            <span className="text-slate-400">SMTP Stage</span>
+                            <span className="text-white">{diagnostics.lastSmtpAttempt.stage ?? "—"}</span>
+                          </div>
+                          {(diagnostics.lastSmtpAttempt.rawCode || diagnostics.lastSmtpAttempt.rawMsg) && (
+                            <div className="border-t border-slate-700 mt-2 pt-2 space-y-1">
+                              <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+                                <span className="text-slate-400">Raw Error Code</span>
+                                <span className="text-red-400 font-bold">{diagnostics.lastSmtpAttempt.rawCode ?? "—"}</span>
+                                {diagnostics.lastSmtpAttempt.smtpCommand && (
+                                  <>
+                                    <span className="text-slate-400">SMTP Command</span>
+                                    <span className="text-orange-300">{diagnostics.lastSmtpAttempt.smtpCommand}</span>
+                                  </>
+                                )}
+                              </div>
+                              <div className="mt-1">
+                                <p className="text-slate-400 mb-0.5">Raw Error Message</p>
+                                <p className="text-red-300 break-all whitespace-pre-wrap">{diagnostics.lastSmtpAttempt.rawMsg ?? "—"}</p>
+                              </div>
+                            </div>
+                          )}
+                          <div className="border-t border-slate-700 mt-2 pt-2 grid grid-cols-2 gap-x-4 gap-y-0.5">
+                            <span className="text-slate-400">Last Attempt</span>
+                            <span className="text-slate-300">
+                              {diagnostics.lastSmtpAttempt.timestamp
+                                ? new Date(diagnostics.lastSmtpAttempt.timestamp).toLocaleString()
+                                : "—"}
+                            </span>
+                            <span className="text-slate-400">Retry In</span>
+                            <span className="text-amber-300">
+                              {diagnostics.lastSmtpAttempt.retryInSeconds != null && diagnostics.lastSmtpAttempt.retryInSeconds > 0
+                                ? formatSeconds(diagnostics.lastSmtpAttempt.retryInSeconds)
+                                : diagnostics.lastSmtpAttempt.retryAfter ? "Ready now" : "—"}
+                            </span>
+                          </div>
                         </div>
                       )}
                     </>

@@ -187,10 +187,11 @@ export async function testSmtp(creds: SmtpCredentials & { rawPass?: string }): P
   } as any);
 
   try {
-    logger.info(ctx, "[SMTP-TEST] 3. Calling transport.verify()");
+    logger.info(ctx, "[SMTP TEST] 3. Calling transport.verify()");
     await transport.verify();
-    logger.info(ctx, "[SMTP-TEST] transport.verify() succeeded — authentication OK");
+    logger.info({ ...ctx, verifySuccess: true }, "[SMTP TEST] Verify Success — host/port/auth OK");
   } catch (err) {
+    logger.error({ ...ctx, verifySuccess: false }, "[SMTP TEST] Verify Failed — see raw error below");
     throw friendlySmtpError(err, ctx);
   } finally {
     transport.close();
