@@ -193,6 +193,24 @@ Best regards,<br>${lines.join("<br>")}
 
 // ─── CTA Button builder ───────────────────────────────────────────────────────
 
+/**
+ * Ensure a CTA destination URL has a proper scheme.
+ * Raw phone numbers (+18005551234) → tel:+18005551234
+ * Raw email addresses             → mailto:user@example.com
+ * Bare domains                    → https://example.com
+ * Already-schemed URLs are returned unchanged.
+ */
+function normalizeCtaUrl(raw: string): string {
+  const s = raw.trim();
+  if (!s) return s;
+  if (/^(https?|tel|mailto|sms|ftp):/i.test(s)) return s;
+  // Detect phone numbers: strip formatting chars, check for 7–15 digits with optional leading +
+  const stripped = s.replace(/[\s\-().]/g, "");
+  if (/^[+]?\d{7,15}$/.test(stripped)) return `tel:${stripped}`;
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) return `mailto:${s}`;
+  return `https://${s}`;
+}
+
 function buildCtaButtonsHtml(
   buttons: CtaButton[],
   row: Record<string, string>,
@@ -205,7 +223,7 @@ function buildCtaButtonsHtml(
   buttons = active;
 
   const items = buttons.map(btn => {
-    const rawUrl = btn.directUrl?.trim() || row[btn.urlVariable] || "";
+    const rawUrl = normalizeCtaUrl(btn.directUrl?.trim() || row[btn.urlVariable] || "");
     if (!rawUrl) return "";
 
     let href = rawUrl;

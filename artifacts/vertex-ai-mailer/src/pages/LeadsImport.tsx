@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from "react";
-import { useGetTemplates } from "@workspace/api-client-react";
+import { useGetTemplates, useGetGmailStatus } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -469,14 +469,13 @@ export default function LeadsImport() {
   const [selectedTemplateId, setSelectedTemplateId]   = useState<string>("");
   const [emailStyle, setEmailStyle]                   = useState<EmailStyle>("clean");
   const [useSignatureBuilder, setUseSignatureBuilder] = useState(false);
-  const [sendMode, setSendMode]                       = useState<SendMode>("gmail");
+  const [sendMode, setSendMode]                       = useState<SendMode>("smtp");
   const [campaignName, setCampaignName]               = useState<string>("");
-  const [bookingUrl, setBookingUrl]                   = useState<string>("");
-  const [quoteUrl, setQuoteUrl]                       = useState<string>("");
-  const [websiteUrl, setWebsiteUrl]                   = useState<string>("");
-  const [phoneNumber, setPhoneNumber]                 = useState<string>("");
   const [isCreating, setIsCreating]                   = useState(false);
   const [mailboxConnected, setMailboxConnected]       = useState(false);
+
+  const { data: gmailStatus, isLoading: gmailLoading } = useGetGmailStatus();
+  const gmailConnected = !gmailLoading && gmailStatus?.connected === true;
   const [showPreview, setShowPreview]                 = useState(false);
 
   const { data: templates, isLoading: templatesLoading } = useGetTemplates();
@@ -575,6 +574,10 @@ export default function LeadsImport() {
 
   async function handleCreateCampaign() {
     if (!selectedTemplate || readyRows.length === 0 || !campaignName.trim()) return;
+    if (sendMode === "gmail" && !gmailConnected) {
+      toast({ variant: "destructive", title: "Gmail not connected", description: "Connect Gmail first or switch to SMTP Direct." });
+      return;
+    }
     setIsCreating(true);
     try {
       const token = localStorage.getItem("auth_token");
@@ -589,10 +592,6 @@ export default function LeadsImport() {
           useSignature: useSignatureBuilder,
           fileName:    file?.name ?? "",
           rows:        readyRows,
-          bookingUrl:  bookingUrl.trim() || undefined,
-          quoteUrl:    quoteUrl.trim()   || undefined,
-          websiteUrl:  websiteUrl.trim() || undefined,
-          phoneNumber: phoneNumber.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -779,20 +778,22 @@ export default function LeadsImport() {
               {/* Send Mode */}
               <div className="mb-4">
                 <label className="text-xs font-semibold text-slate-600 mb-2 block">Send Method</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setSendMode("gmail")}
-                    className={`flex items-center gap-2.5 p-3 rounded-xl border-2 text-left transition-all ${
-                      sendMode === "gmail" ? "border-blue-500 bg-blue-50" : "border-slate-200 hover:border-slate-300"
-                    }`}
-                  >
-                    <Mail className={`h-4 w-4 flex-shrink-0 ${sendMode === "gmail" ? "text-blue-600" : "text-slate-400"}`} />
-                    <div>
-                      <p className={`text-xs font-semibold ${sendMode === "gmail" ? "text-blue-800" : "text-slate-700"}`}>Gmail Drafts</p>
-                      <p className="text-xs text-slate-400">Create drafts with AI</p>
-                    </div>
-                    {sendMode === "gmail" && <CheckCircle2 className="h-3.5 w-3.5 text-blue-600 ml-auto flex-shrink-0" />}
-                  </button>
+                <div className={`grid gap-2 ${gmailConnected ? "grid-cols-2" : "grid-cols-1"}`}>
+                  {gmailConnected && (
+                    <button
+                      onClick={() => setSendMode("gmail")}
+                      className={`flex items-center gap-2.5 p-3 rounded-xl border-2 text-left transition-all ${
+                        sendMode === "gmail" ? "border-blue-500 bg-blue-50" : "border-slate-200 hover:border-slate-300"
+                      }`}
+                    >
+                      <Mail className={`h-4 w-4 flex-shrink-0 ${sendMode === "gmail" ? "text-blue-600" : "text-slate-400"}`} />
+                      <div>
+                        <p className={`text-xs font-semibold ${sendMode === "gmail" ? "text-blue-800" : "text-slate-700"}`}>Gmail Drafts</p>
+                        <p className="text-xs text-slate-400">Create drafts with AI</p>
+                      </div>
+                      {sendMode === "gmail" && <CheckCircle2 className="h-3.5 w-3.5 text-blue-600 ml-auto flex-shrink-0" />}
+                    </button>
+                  )}
                   <button
                     onClick={() => setSendMode("smtp")}
                     disabled={!mailboxConnected}
@@ -809,7 +810,12 @@ export default function LeadsImport() {
                     {sendMode === "smtp" && <CheckCircle2 className="h-3.5 w-3.5 text-blue-600 ml-auto flex-shrink-0" />}
                   </button>
                 </div>
-                {!mailboxConnected && (
+                {!mailboxConnected && !gmailConnected && (
+                  <p className="text-xs text-slate-400 mt-1.5">
+                    <Link href="/mailbox" className="text-blue-500 hover:underline">Configure SMTP mailbox</Link> to enable direct sending.
+                  </p>
+                )}
+                {!mailboxConnected && gmailConnected && sendMode === "smtp" && (
                   <p className="text-xs text-slate-400 mt-1.5">
                     <Link href="/mailbox" className="text-blue-500 hover:underline">Configure SMTP mailbox</Link> to enable direct sending.
                   </p>
@@ -832,29 +838,6 @@ export default function LeadsImport() {
                       <p className={`text-xs font-semibold leading-tight ${emailStyle === s.value ? "text-blue-800" : "text-slate-800"}`}>{s.label}</p>
                       {emailStyle === s.value && <CheckCircle2 className="absolute top-1.5 right-1.5 h-3 w-3 text-blue-600" />}
                     </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Campaign Links */}
-              <div className="mb-4 p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
-                <p className="text-xs font-semibold text-slate-700">Campaign Links <span className="text-slate-400 font-normal">— used in CTA buttons</span></p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {[
-                    { label: "Booking URL", value: bookingUrl, set: setBookingUrl, placeholder: "https://book.example.com" },
-                    { label: "Quote URL",   value: quoteUrl,   set: setQuoteUrl,   placeholder: "https://quote.example.com" },
-                    { label: "Website URL", value: websiteUrl, set: setWebsiteUrl, placeholder: "https://www.example.com" },
-                    { label: "Phone",       value: phoneNumber, set: setPhoneNumber, placeholder: "+1 (555) 123-4567" },
-                  ].map(f => (
-                    <div key={f.label}>
-                      <label className="text-xs text-slate-500 mb-1 block">{f.label}</label>
-                      <input
-                        type="text" value={f.value}
-                        onChange={e => f.set(e.target.value)}
-                        placeholder={f.placeholder}
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400 placeholder:text-slate-300"
-                      />
-                    </div>
                   ))}
                 </div>
               </div>

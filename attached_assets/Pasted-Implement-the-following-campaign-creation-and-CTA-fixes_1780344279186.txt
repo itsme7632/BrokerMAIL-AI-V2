@@ -1,0 +1,124 @@
+Implement the following campaign creation and CTA fixes.
+
+=========================================
+ISSUE 1 — CTA PHONE URL GENERATION
+=========================================
+
+Open tracking is now working correctly.
+
+The remaining problem is CTA URL generation.
+
+Current behavior:
+The Call Now button generates:
+
+url=%2B18323048468
+
+instead of:
+
+url=tel%3A%2B18323048468
+
+As a result, clicking the button redirects to the tracking URL or Replit page instead of opening the phone dialer.
+
+Trace the full path:
+
+Template CTA
+→ CTA variable resolution
+→ buildCtaButtonsHtml()
+→ click-tracking wrapper
+→ final email HTML
+
+Fix all CTA variable types so they generate fully-qualified URLs BEFORE tracking is applied:
+
+Phone:
+tel:+18323048468
+
+Email:
+mailto:someone@example.com
+
+SMS:
+sms:+18323048468
+
+Website:
+https://example.com
+
+Booking:
+https://...
+
+Quote:
+https://...
+
+The click tracker should only wrap a valid destination URL and never receive a raw phone number.
+
+Show the final generated HTML for:
+- Call Now button
+- Email button
+- Website button
+
+=========================================
+ISSUE 2 — GMAIL DRAFTS SHOULD ONLY SHOW WHEN CONNECTED
+=========================================
+
+In the Create Campaign screen, "Gmail Drafts" is automatically selected by default.
+
+This should NOT happen.
+
+Requirements:
+
+1. If Gmail is NOT connected:
+   - Hide or disable Gmail Drafts completely.
+   - Show only SMTP Direct.
+   - SMTP Direct should be auto-selected.
+
+2. If Gmail IS connected:
+   - Show both Gmail Drafts and SMTP Direct.
+   - User must manually choose.
+   - Do not auto-select Gmail Drafts.
+
+3. Prevent creating Gmail Draft campaigns when Gmail is disconnected.
+
+=========================================
+ISSUE 3 — REMOVE DUPLICATE CTA URL SECTION
+=========================================
+
+Currently CTA URLs appear in TWO places:
+
+A) Template Editor
+B) Create Campaign screen
+
+This is confusing.
+
+Requirements:
+
+1. CTA buttons and CTA URLs should be managed ONLY in the Template Editor.
+
+2. Remove the "Campaign Links — used in CTA buttons" section from the Create Campaign page.
+
+Remove:
+- Booking URL
+- Quote URL
+- Website URL
+- Phone
+
+from campaign creation.
+
+3. Campaign creation should focus only on:
+- Campaign name
+- Send method
+- Template selection
+- Signature settings
+
+4. Existing templates with CTA buttons must continue to work.
+
+=========================================
+VALIDATION
+=========================================
+
+After implementation verify:
+
+✓ Call Now button opens tel: links correctly
+✓ Email button opens mailto:
+✓ Website button opens correct URL
+✓ Gmail Drafts only appears when Gmail is connected
+✓ SMTP Direct becomes default when Gmail is not connected
+✓ No duplicate CTA URL section exists on campaign creation
+✓ Existing template CTA buttons still render correctly
