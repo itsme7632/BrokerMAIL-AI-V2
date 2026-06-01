@@ -12,6 +12,7 @@ import {
 import { sendEmail } from "../lib/smtp";
 import { randomUUID } from "crypto";
 import type { User } from "@workspace/db";
+import { getTrackingSettings } from "../lib/tracking-settings";
 
 const router: IRouter = Router();
 
@@ -373,9 +374,8 @@ router.post("/sent-emails/:id/retry", requireAuth, async (req, res): Promise<voi
   }
 
   const trackingId = randomUUID();
-  const publicBase = process.env.REPLIT_DEV_DOMAIN
-    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-    : (process.env.PUBLIC_URL ?? "http://localhost:3000");
+  const retryTracking  = await getTrackingSettings();
+  const publicBase     = retryTracking.trackingUrl;
 
   const ctaButtons = (() => {
     try { return template.ctaButtonsJson ? JSON.parse(template.ctaButtonsJson) : []; }
@@ -388,14 +388,16 @@ router.post("/sent-emails/:id/retry", requireAuth, async (req, res): Promise<voi
     style: validStyle(item.style),
     useSignatureBuilder: item.useSignatureBuilder,
     ctaButtons,
-    trackingId,
-    publicBase,
+    trackingId: retryTracking.clickTrackingEnabled ? trackingId : undefined,
+    publicBase: retryTracking.clickTrackingEnabled ? publicBase : undefined,
   });
 
-  const pixelTag   = `<img src="${publicBase}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none!important;width:1px!important;height:1px!important;border:0;" />`;
-  const trackedHtml = bodyHtml.includes("</body>")
-    ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`)
-    : bodyHtml + pixelTag;
+  const pixelTag   = retryTracking.openTrackingEnabled
+    ? `<img src="${publicBase}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none!important;width:1px!important;height:1px!important;border:0;" />`
+    : "";
+  const trackedHtml = pixelTag
+    ? (bodyHtml.includes("</body>") ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`) : bodyHtml + pixelTag)
+    : bodyHtml;
 
   logger.info({ id, trackingId, email: item.email, ctaCount: ctaButtons.length }, "[RETRY] Building email with tracking and CTA buttons");
 
@@ -475,9 +477,8 @@ router.post("/sent-emails/:id/edit-resend", requireAuth, async (req, res): Promi
   }
 
   const trackingId = randomUUID();
-  const publicBase = process.env.REPLIT_DEV_DOMAIN
-    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-    : (process.env.PUBLIC_URL ?? "http://localhost:3000");
+  const resendTracking = await getTrackingSettings();
+  const publicBase     = resendTracking.trackingUrl;
 
   const ctaButtons = (() => {
     try { return template.ctaButtonsJson ? JSON.parse(template.ctaButtonsJson) : []; }
@@ -496,14 +497,16 @@ router.post("/sent-emails/:id/edit-resend", requireAuth, async (req, res): Promi
     style: validStyle(item.style),
     useSignatureBuilder: item.useSignatureBuilder,
     ctaButtons,
-    trackingId,
-    publicBase,
+    trackingId: resendTracking.clickTrackingEnabled ? trackingId : undefined,
+    publicBase: resendTracking.clickTrackingEnabled ? publicBase : undefined,
   });
 
-  const pixelTag  = `<img src="${publicBase}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none!important;width:1px!important;height:1px!important;border:0;" />`;
-  const trackedHtml = bodyHtml.includes("</body>")
-    ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`)
-    : bodyHtml + pixelTag;
+  const pixelTag  = resendTracking.openTrackingEnabled
+    ? `<img src="${publicBase}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none!important;width:1px!important;height:1px!important;border:0;" />`
+    : "";
+  const trackedHtml = pixelTag
+    ? (bodyHtml.includes("</body>") ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`) : bodyHtml + pixelTag)
+    : bodyHtml;
 
   logger.info({ id, trackingId, email: recipientEmail, ctaCount: ctaButtons.length }, "[EDIT-RESEND] Building email with tracking and CTA buttons");
 

@@ -1378,13 +1378,22 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
           price: lead.price ?? "", notes: lead.notes ?? "",
         };
 
+        const trackingId      = randomUUID();
+        const gmailTracking   = await getTrackingSettings();
+        const gmailPublicBase = gmailTracking.trackingUrl;
         const bodyHtml = buildHtmlEmail(generated.body, leadRow, branding, {
           style: emailStyle as any,
           useSignatureBuilder: useSig,
+          trackingId: gmailTracking.clickTrackingEnabled ? trackingId : undefined,
+          publicBase: gmailTracking.clickTrackingEnabled ? gmailPublicBase : undefined,
         });
-
-        const trackingId   = randomUUID();
-        const gmailDraftId = await createGmailDraft(freshUser, lead.email, generated.subject, generated.body, bodyHtml);
+        const gmailPixelTag  = gmailTracking.openTrackingEnabled
+          ? `<img src="${gmailPublicBase}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none!important;width:1px!important;height:1px!important;border:0;" />`
+          : "";
+        const gmailTrackedHtml = gmailPixelTag
+          ? (bodyHtml.includes("</body>") ? bodyHtml.replace(/<\/body>/i, `${gmailPixelTag}</body>`) : bodyHtml + gmailPixelTag)
+          : bodyHtml;
+        const gmailDraftId = await createGmailDraft(freshUser, lead.email, generated.subject, generated.body, gmailTrackedHtml);
 
         await db.insert(draftsTable).values({
           userId: user.id, campaignId, leadId: lead.id,
@@ -1998,13 +2007,22 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
         price: lead.price ?? "", notes: lead.notes ?? "",
       };
 
+      const trackingId       = randomUUID();
+      const gDraftTracking   = await getTrackingSettings();
+      const gDraftPublicBase = gDraftTracking.trackingUrl;
       const bodyHtml = buildHtmlEmail(generated.body, leadRow, branding, {
         style: emailStyle,
         useSignatureBuilder: useSig,
+        trackingId: gDraftTracking.clickTrackingEnabled ? trackingId : undefined,
+        publicBase: gDraftTracking.clickTrackingEnabled ? gDraftPublicBase : undefined,
       });
-
-      const trackingId   = randomUUID();
-      const gmailDraftId = await createGmailDraft(freshUser, lead.email, generated.subject, generated.body, bodyHtml);
+      const gDraftPixelTag  = gDraftTracking.openTrackingEnabled
+        ? `<img src="${gDraftPublicBase}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none!important;width:1px!important;height:1px!important;border:0;" />`
+        : "";
+      const gDraftTrackedHtml = gDraftPixelTag
+        ? (bodyHtml.includes("</body>") ? bodyHtml.replace(/<\/body>/i, `${gDraftPixelTag}</body>`) : bodyHtml + gDraftPixelTag)
+        : bodyHtml;
+      const gmailDraftId = await createGmailDraft(freshUser, lead.email, generated.subject, generated.body, gDraftTrackedHtml);
 
       await db.insert(draftsTable).values({
         userId: user.id, campaignId: campaign.id, leadId: lead.id,
