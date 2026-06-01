@@ -1,0 +1,238 @@
+ADD TRACKING & DELIVERABILITY SETTINGS TO ADMIN PANEL
+
+We need to eliminate all hardcoded tracking URLs and bounce configuration from the codebase and move them into the Admin Panel so future domain changes, hosting migrations, or tracking domain changes do not require code changes or Replit assistance.
+
+====================================================
+GOAL
+====
+
+Currently:
+
+* Open tracking depends on REPLIT_DEV_DOMAIN
+* Click tracking depends on REPLIT_DEV_DOMAIN
+* Bounce scanner depends on mailbox configuration hidden in code/database
+* Moving domains breaks tracking and CTA links
+
+We need all of this to be configurable from the Admin Panel.
+
+====================================================
+NEW ADMIN SECTION
+=================
+
+Create:
+
+Admin Panel
+→ Settings
+→ Tracking & Deliverability
+
+====================================================
+SECTION 1 — APPLICATION URLS
+============================
+
+Add:
+
+Application URL
+Example:
+https://app.brokermail.ai
+
+Tracking URL
+Example:
+https://track.brokermail.ai
+
+Rules:
+
+* Open tracking uses Tracking URL
+* Click tracking uses Tracking URL
+* CTA tracking wrappers use Tracking URL
+* Email links must never use REPLIT_DEV_DOMAIN directly
+* REPLIT_DEV_DOMAIN should only be a fallback when settings are empty
+
+====================================================
+SECTION 2 — OPEN TRACKING
+=========================
+
+Settings:
+
+Enable Open Tracking
+☑ ON/OFF
+
+Pixel Endpoint
+/api/track/open
+
+Current Pixel Preview
+
+https://track.brokermail.ai/api/track/open/{tracking_id}
+
+Add:
+
+Test Open Tracking Button
+
+When clicked:
+
+* Generate test tracking URL
+* Verify endpoint responds correctly
+* Show success/failure
+
+====================================================
+SECTION 3 — CLICK TRACKING
+==========================
+
+Settings:
+
+Enable Click Tracking
+☑ ON/OFF
+
+Click Endpoint
+/api/track/click
+
+Current Preview
+
+https://track.brokermail.ai/api/track/click/{tracking_id}
+
+Add:
+
+Test Click Tracking Button
+
+Verify:
+
+* URL generation
+* Redirect works
+* Tracking event records successfully
+
+====================================================
+SECTION 4 — BOUNCE PROCESSING
+=============================
+
+Settings:
+
+Enable Bounce Processing
+☑ ON/OFF
+
+IMAP Host
+
+Port
+
+Username
+
+Password
+
+Folder
+
+Scan Interval
+
+Example:
+
+mail.vertexcarship.com
+993
+[bounces@vertexcarship.com](mailto:bounces@vertexcarship.com)
+
+---
+
+INBOX
+60 seconds
+
+Add:
+
+Test Bounce Scanner Button
+
+Verify:
+
+* IMAP connection
+* Authentication
+* Folder access
+* Mailbox availability
+
+Display:
+
+Connected
+Authentication Failed
+Mailbox Not Found
+Connection Timeout
+
+====================================================
+SECTION 5 — DATABASE SETTINGS
+=============================
+
+Create a system_settings table (or equivalent).
+
+Store:
+
+app_url
+tracking_url
+open_tracking_enabled
+click_tracking_enabled
+bounce_enabled
+bounce_imap_host
+bounce_imap_port
+bounce_username
+bounce_password
+bounce_folder
+bounce_scan_interval
+
+The application must read from database settings first.
+
+Environment variables should only be fallback values.
+
+====================================================
+SECTION 6 — DOMAIN MIGRATION SUPPORT
+====================================
+
+After implementation:
+
+If we move from:
+
+https://old-domain.com
+
+to
+
+https://new-domain.com
+
+Admin should only update:
+
+Application URL
+Tracking URL
+
+and all future emails should automatically use:
+
+https://new-domain.com/api/track/open/...
+https://new-domain.com/api/track/click/...
+
+No code changes required.
+
+====================================================
+SECTION 7 — MULTI-DOMAIN USERS
+==============================
+
+Tracking must work regardless of sender domain.
+
+Examples:
+
+[sales@vertexcarship.com](mailto:sales@vertexcarship.com)
+[dispatch@abc-logistics.com](mailto:dispatch@abc-logistics.com)
+[claims@xyztransport.com](mailto:claims@xyztransport.com)
+
+All should still use the platform tracking domain configured in Admin Settings.
+
+====================================================
+SECTION 8 — VALIDATION
+======================
+
+After implementation verify:
+
+✓ Open tracking uses Admin Tracking URL
+✓ Click tracking uses Admin Tracking URL
+✓ CTA buttons use Admin Tracking URL
+✓ No generated emails contain REPLIT_DEV_DOMAIN
+✓ Bounce scanner reads Admin settings
+✓ Domain changes require no code modifications
+✓ Test Open Tracking works
+✓ Test Click Tracking works
+✓ Test Bounce Scanner works
+
+Provide:
+
+* Database schema changes
+* Admin UI screenshots
+* API endpoints added
+* Runtime verification results
+* Proof that generated emails now use Admin-configured URLs instead of hardcoded Replit domains.

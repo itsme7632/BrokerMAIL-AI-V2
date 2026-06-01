@@ -16,6 +16,7 @@ import {
 import { and, eq, isNotNull } from "drizzle-orm";
 import { decrypt } from "./crypto";
 import { logger } from "./logger";
+import { getTrackingSettings } from "./tracking-settings";
 
 // ---------------------------------------------------------------------------
 // DSN / bounce message parsing helpers
@@ -84,12 +85,17 @@ async function _scanMailbox(
     imapUser: string;
     imapPassEncrypted: string;
   },
+  overridePlainPass?: string,
 ): Promise<number> {
   let pass: string;
-  try {
-    pass = decrypt(mailbox.imapPassEncrypted);
-  } catch {
-    return 0;
+  if (overridePlainPass !== undefined) {
+    pass = overridePlainPass;
+  } else {
+    try {
+      pass = decrypt(mailbox.imapPassEncrypted);
+    } catch {
+      return 0;
+    }
   }
 
   const port = mailbox.imapPort ?? 993;
@@ -152,17 +158,23 @@ async function _scanMailbox(
 
         const reason = extractBounceReason(source);
 
-        // Find the most-recently-sent (status=success) email to this address for this user
-        const [item] = await db
-          .select({ id: emailQueueTable.id })
-          .from(emailQueueTable)
-          .where(
-            and(
+        // Find the most-recently-sent (status=success) email to this address.
+        // When scanning the admin bounce mailbox (userId < 0), search across all users.
+        const whereConditions = mailbox.userId > 0
+          ? and(
               eq(emailQueueTable.userId, mailbox.userId),
               eq(emailQueueTable.email, recipient),
               eq(emailQueueTable.status, "success"),
-            ),
-          )
+            )
+          : and(
+              eq(emailQueueTable.email, recipient),
+              eq(emailQueueTable.status, "success"),
+            );
+
+        const [item] = await db
+          .select({ id: emailQueueTable.id })
+          .from(emailQueueTable)
+          .where(whereConditions)
           .limit(1);
 
         if (item) {
@@ -255,5 +267,28 @@ export async function runBounceScanner(): Promise<void> {
     }
   } catch (err) {
     logger.warn({ err }, "[BOUNCE-SCAN] Scanner skipped (non-fatal)");
+  }
+
+  // ── Admin-configured dedicated bounce mailbox ──────────────────────────────
+  try {
+    const ts = await getTrackingSettings();
+    if (ts.bounceEnabled && ts.bounceImapHost && ts.bounceImapUser && ts.bounceImapPass) {
+      const adminCount = await _scanMailbox(
+        {
+          id:                -1,
+          userId:            -1,
+          imapHost:          ts.bounceImapHost,
+          imapPort:          ts.bounceImapPort,
+          imapUser:          ts.bounceImapUser,
+          imapPassEncrypted: "",
+        },
+        ts.bounceImapPass,
+      );
+      if (adminCount > 0) {
+        logger.info({ count: adminCount }, "[BOUNCE-SCAN] Admin bounce mailbox: bounces detected and marked");
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, "[BOUNCE-SCAN] Admin bounce mailbox scan failed (non-fatal)");
   }
 }

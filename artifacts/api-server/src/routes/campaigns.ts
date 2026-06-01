@@ -20,6 +20,7 @@ import type { User } from "@workspace/db";
 import { randomUUID } from "crypto";
 import { sendEmail } from "../lib/smtp";
 import { saveToSent, buildRawMessage } from "../lib/imap";
+import { getTrackingSettings } from "../lib/tracking-settings";
 
 const router: IRouter = Router();
 
@@ -164,6 +165,7 @@ export async function processCampaignJobQueue(
     phoneNumber: campaignsTable.phoneNumber,
   }).from(campaignsTable).where(eq(campaignsTable.id, campaignId));
 
+  const trackingSettings = await getTrackingSettings();
   let batchSent = 0;
   let batchFailed = 0;
 
@@ -289,9 +291,7 @@ export async function processCampaignJobQueue(
       if (campaignRow?.phoneNumber) row.phone_link   = campaignRow.phoneNumber;
 
       const trackingId = randomUUID();
-      const publicBase = process.env.REPLIT_DEV_DOMAIN
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : (process.env.PUBLIC_URL ?? "http://localhost:3000");
+      const publicBase = trackingSettings.trackingUrl;
 
       const ctaButtons = (() => {
         try { return template.ctaButtonsJson ? JSON.parse(template.ctaButtonsJson) : []; }
@@ -307,14 +307,16 @@ export async function processCampaignJobQueue(
         style: resolvedStyle,
         useSignatureBuilder: item.useSignatureBuilder,
         ctaButtons,
-        trackingId,
-        publicBase,
+        trackingId: trackingSettings.clickTrackingEnabled ? trackingId : undefined,
+        publicBase: trackingSettings.clickTrackingEnabled ? publicBase : undefined,
       });
 
-      const pixelTag    = `<img src="${publicBase}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none!important;width:1px!important;height:1px!important;border:0;" />`;
-      const trackedHtml = bodyHtml.includes("</body>")
-        ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`)
-        : bodyHtml + pixelTag;
+      const pixelTag    = trackingSettings.openTrackingEnabled
+        ? `<img src="${publicBase}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none!important;width:1px!important;height:1px!important;border:0;" />`
+        : "";
+      const trackedHtml = pixelTag
+        ? (bodyHtml.includes("</body>") ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`) : bodyHtml + pixelTag)
+        : bodyHtml;
 
       logger.info({ jobId, campaignId, queueItemId: item.id, to: item.email, subject, ctaCount: ctaButtons.length, smtpHost: box.smtpHost, smtpPort: box.smtpPort, encryption: box.smtpSecure }, "[SMTP SEND] sendMail starting — host/port/ctaCount for verification");
 
@@ -578,6 +580,8 @@ export async function processCampaignFully(
     phoneNumber: campaignsTable.phoneNumber,
   }).from(campaignsTable).where(eq(campaignsTable.id, campaignId));
 
+  const trackingSettings = await getTrackingSettings();
+
   try {
     while (activeJobs.get(key)) {
       const [camp] = await db.select({ status: campaignsTable.status })
@@ -722,9 +726,7 @@ export async function processCampaignFully(
       if (campaignUrlRow?.phoneNumber) row.phone_link   = campaignUrlRow.phoneNumber;
 
       const trackingId = randomUUID();
-      const publicBase = process.env.REPLIT_DEV_DOMAIN
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : (process.env.PUBLIC_URL ?? "http://localhost:3000");
+      const publicBase = trackingSettings.trackingUrl;
 
       const ctaButtonsFull = (() => {
         try { return template.ctaButtonsJson ? JSON.parse(template.ctaButtonsJson) : []; }
@@ -740,14 +742,16 @@ export async function processCampaignFully(
         style: resolvedStyleFull,
         useSignatureBuilder: item.useSignatureBuilder,
         ctaButtons:          ctaButtonsFull,
-        trackingId,
-        publicBase,
+        trackingId: trackingSettings.clickTrackingEnabled ? trackingId : undefined,
+        publicBase: trackingSettings.clickTrackingEnabled ? publicBase : undefined,
       });
 
-      const pixelTag    = `<img src="${publicBase}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none!important;width:1px!important;height:1px!important;border:0;" />`;
-      const trackedHtml = bodyHtml.includes("</body>")
-        ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`)
-        : bodyHtml + pixelTag;
+      const pixelTag    = trackingSettings.openTrackingEnabled
+        ? `<img src="${publicBase}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none!important;width:1px!important;height:1px!important;border:0;" />`
+        : "";
+      const trackedHtml = pixelTag
+        ? (bodyHtml.includes("</body>") ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`) : bodyHtml + pixelTag)
+        : bodyHtml;
 
       logger.info({ campaignId, queueItemId: item.id, to: item.email, subject, ctaCount: ctaButtonsFull.length, smtpHost: box.smtpHost, smtpPort: box.smtpPort, encryption: box.smtpSecure }, "[SMTP SEND] sendMail starting — host/port/ctaCount for verification");
 

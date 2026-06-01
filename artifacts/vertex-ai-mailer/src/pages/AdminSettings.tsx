@@ -12,7 +12,7 @@ import {
   ToggleLeft, Sliders, Lock, HelpCircle, Download, Bell,
   Coins, MailCheck, Trash2, MessageSquare, Send, Reply,
   UserCheck, Zap, Scale, PlusCircle, MinusCircle, X,
-  Upload, RotateCcw, Archive, HardDrive, ClipboardList, ShieldCheck,
+  Upload, RotateCcw, Archive, HardDrive, ClipboardList, ShieldCheck, Target,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ type SubTab =
   | "users" | "billing" | "security" | "cms" | "analytics"
   | "providers" | "emailControls" | "planPerms" | "credits"
   | "notifications" | "legal" | "support" | "features"
-  | "backup" | "superadmin";
+  | "backup" | "superadmin" | "tracking";
 
 interface SupportTicket {
   id: number; userEmail: string; userName: string | null;
@@ -170,6 +170,18 @@ const DEFAULTS: SettingsMap = {
   featureGmailDrafts:        "true",
   featureQueueSystem:        "true",
   featureAnalytics:          "true",
+  // Tracking & Deliverability
+  appUrl:               "",
+  trackingUrl:          "",
+  openTrackingEnabled:  "true",
+  clickTrackingEnabled: "true",
+  bounceEnabled:        "false",
+  bounceImapHost:       "",
+  bounceImapPort:       "993",
+  bounceImapUser:       "",
+  bounceImapPass:       "",
+  bounceImapFolder:     "INBOX",
+  bounceScanInterval:   "60",
   // Super Admin
   superAdminEmail:         "",
   auditAllActions:         "true",
@@ -380,6 +392,7 @@ const SUB_TABS: { id: SubTab; label: string; icon: React.ElementType; group?: st
   { id: "providers",    label: "Providers",     icon: MailCheck,     group: "Email" },
   { id: "smtp",         label: "SMTP",          icon: Server,        group: "Email" },
   { id: "emailControls",label: "Email Controls",icon: Sliders,       group: "Email" },
+  { id: "tracking",     label: "Tracking",      icon: Target,        group: "Email" },
   { id: "ai",           label: "AI",            icon: Bot,           group: "Email" },
   { id: "users",        label: "Users",         icon: Users,         group: "Users & Plans" },
   { id: "planPerms",    label: "Plan Perms",    icon: UserCheck,     group: "Users & Plans" },
@@ -437,6 +450,14 @@ export function AdminSettings() {
   type VerifyResult = { ok: boolean; checks: Record<string, VerifyCheck>; verifiedAt: string };
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
   const [verifying, setVerifying]       = useState(false);
+
+  // Tracking test state
+  const [testingOpen,   setTestingOpen]   = useState(false);
+  const [testOpenResult,  setTestOpenResult]  = useState<{ ok: boolean; message: string } | null>(null);
+  const [testingClick,  setTestingClick]  = useState(false);
+  const [testClickResult, setTestClickResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [testingBounce, setTestingBounce] = useState(false);
+  const [testBounceResult, setTestBounceResult] = useState<{ ok: boolean; message: string; detail?: string } | null>(null);
 
   const set = (key: string, val: string) => setSettings(s => ({ ...s, [key]: val }));
 
@@ -552,6 +573,48 @@ export function AdminSettings() {
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed", description: err.message });
     }
+  }
+
+  async function testOpenTracking() {
+    setTestingOpen(true);
+    setTestOpenResult(null);
+    try {
+      const data = await apiFetch("test-open-tracking", { method: "POST", body: "{}" });
+      setTestOpenResult({ ok: data.ok, message: data.message });
+    } catch (err: any) {
+      setTestOpenResult({ ok: false, message: err.message });
+    } finally { setTestingOpen(false); }
+  }
+
+  async function testClickTracking() {
+    setTestingClick(true);
+    setTestClickResult(null);
+    try {
+      const data = await apiFetch("test-click-tracking", { method: "POST", body: "{}" });
+      setTestClickResult({ ok: data.ok, message: data.message });
+    } catch (err: any) {
+      setTestClickResult({ ok: false, message: err.message });
+    } finally { setTestingClick(false); }
+  }
+
+  async function testBounceImap() {
+    setTestingBounce(true);
+    setTestBounceResult(null);
+    try {
+      const data = await apiFetch("test-bounce-imap", {
+        method: "POST",
+        body: JSON.stringify({
+          host:     settings.bounceImapHost,
+          port:     parseInt(settings.bounceImapPort || "993", 10),
+          username: settings.bounceImapUser,
+          password: settings.bounceImapPass,
+          folder:   settings.bounceImapFolder || "INBOX",
+        }),
+      });
+      setTestBounceResult({ ok: data.ok, message: data.message, detail: data.detail });
+    } catch (err: any) {
+      setTestBounceResult({ ok: false, message: err.message });
+    } finally { setTestingBounce(false); }
   }
 
   async function doExport(type: string) {
@@ -1854,6 +1917,158 @@ export function AdminSettings() {
                 "featureLandingPage", "featurePublicRegistration", "featureAiWriter",
                 "featureSmtpSending", "featureGmailDrafts", "featureQueueSystem", "featureAnalytics",
               ])} label="Save Feature Toggles" />
+            </div>
+          )}
+
+          {/* ── TRACKING & DELIVERABILITY ──────────────────────────────────── */}
+          {activeTab === "tracking" && (
+            <div className="space-y-6">
+              <SectionHeader icon={Target} title="Tracking & Deliverability" color="bg-cyan-50 text-cyan-600"
+                desc="Configure tracking URLs, open/click tracking, and bounce detection. Changes apply to all future emails immediately." />
+
+              {/* ── Application URLs ──────────────────────────────────────── */}
+              <div className="space-y-4">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Application URLs</p>
+                <div className="p-4 rounded-xl bg-blue-50 border border-blue-100 flex gap-3">
+                  <AlertCircle className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-blue-900">Domain Migration Support</p>
+                    <p className="text-xs text-blue-700 mt-0.5">
+                      Update the Tracking URL to instantly change all future email tracking links — no code changes required.
+                      Leave blank to use the automatically detected platform domain.
+                    </p>
+                  </div>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <Field label="Application URL" settingsKey="appUrl" settings={settings} onChange={set}
+                    placeholder="https://app.brokermail.ai"
+                    hint="Main app URL. Used for links that point back to the app." mono />
+                  <Field label="Tracking URL" settingsKey="trackingUrl" settings={settings} onChange={set}
+                    placeholder="https://app.brokermail.ai"
+                    hint="All open/click tracking links use this domain. Leave blank to auto-detect." mono />
+                </div>
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Live URL Preview</p>
+                  <div className="space-y-1.5 font-mono text-xs text-slate-600 break-all">
+                    <p><span className="text-slate-400">Open pixel:  </span>
+                      {(settings.trackingUrl || settings.appUrl || "https://[auto-detected]").replace(/\/+$/, "")}/api/track/open/<span className="text-blue-600">{"{tracking_id}"}</span>
+                    </p>
+                    <p><span className="text-slate-400">Click wrap:  </span>
+                      {(settings.trackingUrl || settings.appUrl || "https://[auto-detected]").replace(/\/+$/, "")}/api/track/click/<span className="text-blue-600">{"{tracking_id}"}</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Open Tracking ─────────────────────────────────────────── */}
+              <div className="space-y-4">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Open Tracking</p>
+                <Toggle label="Enable Open Tracking"
+                  desc="Injects a 1×1 tracking pixel into every sent email. Duplicate opens are deduplicated automatically."
+                  settingsKey="openTrackingEnabled" settings={settings} onChange={set} />
+                {settings.openTrackingEnabled !== "false" && (
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                    <p className="text-xs text-slate-400 mb-1">Tracking pixel endpoint</p>
+                    <p className="font-mono text-xs text-slate-700 break-all">
+                      {(settings.trackingUrl || settings.appUrl || "https://[auto-detected]").replace(/\/+$/, "")}/api/track/open/<span className="text-blue-600">{"{tracking_id}"}</span>
+                    </p>
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button variant="outline" size="sm" onClick={testOpenTracking} disabled={testingOpen} className="rounded-xl gap-1.5">
+                    {testingOpen ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                    Test Open Tracking
+                  </Button>
+                  {testOpenResult && (
+                    <span className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl ${testOpenResult.ok ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+                      {testOpenResult.ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+                      {testOpenResult.message}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Click Tracking ────────────────────────────────────────── */}
+              <div className="space-y-4">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Click Tracking</p>
+                <Toggle label="Enable Click Tracking"
+                  desc="Wraps all CTA button links in a tracking redirect. Click events are recorded with label and destination URL."
+                  settingsKey="clickTrackingEnabled" settings={settings} onChange={set} />
+                {settings.clickTrackingEnabled !== "false" && (
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                    <p className="text-xs text-slate-400 mb-1">Click redirect endpoint</p>
+                    <p className="font-mono text-xs text-slate-700 break-all">
+                      {(settings.trackingUrl || settings.appUrl || "https://[auto-detected]").replace(/\/+$/, "")}/api/track/click/<span className="text-blue-600">{"{tracking_id}"}</span>?url=<span className="text-emerald-600">{"{destination}"}</span>
+                    </p>
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button variant="outline" size="sm" onClick={testClickTracking} disabled={testingClick} className="rounded-xl gap-1.5">
+                    {testingClick ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                    Test Click Tracking
+                  </Button>
+                  {testClickResult && (
+                    <span className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl ${testClickResult.ok ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+                      {testClickResult.ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+                      {testClickResult.message}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Bounce Processing ─────────────────────────────────────── */}
+              <div className="space-y-4">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Bounce Processing</p>
+                <Toggle label="Enable Dedicated Bounce Mailbox"
+                  desc="Scans the IMAP inbox below for DSN bounce notifications and marks affected records automatically. Independent of user mailboxes."
+                  settingsKey="bounceEnabled" settings={settings} onChange={set} />
+                {settings.bounceEnabled === "true" && (
+                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
+                    <p className="text-xs font-semibold text-slate-600">Bounce Mailbox (IMAP)</p>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <Field label="IMAP Host" settingsKey="bounceImapHost" settings={settings} onChange={set}
+                        placeholder="mail.yourdomain.com" mono />
+                      <Field label="Port" settingsKey="bounceImapPort" settings={settings} onChange={set}
+                        type="number" placeholder="993" mono hint="993 = SSL, 143 = STARTTLS" />
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <Field label="Username / Email" settingsKey="bounceImapUser" settings={settings} onChange={set}
+                        placeholder="bounces@yourdomain.com" mono />
+                      <SecretField label="Password" settingsKey="bounceImapPass" settings={settings} onChange={set}
+                        placeholder="IMAP password" />
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <Field label="Folder" settingsKey="bounceImapFolder" settings={settings} onChange={set}
+                        placeholder="INBOX" mono hint="Folder to scan for bounce messages." />
+                      <Field label="Scan Interval (seconds)" settingsKey="bounceScanInterval" settings={settings} onChange={set}
+                        type="number" placeholder="60" mono hint="How often the scanner checks for new bounces." />
+                    </div>
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button variant="outline" size="sm" onClick={testBounceImap}
+                    disabled={testingBounce || settings.bounceEnabled !== "true"}
+                    className="rounded-xl gap-1.5">
+                    {testingBounce ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                    Test IMAP Connection
+                  </Button>
+                  {testBounceResult && (
+                    <span className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl ${testBounceResult.ok ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+                      {testBounceResult.ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+                      {testBounceResult.message}
+                    </span>
+                  )}
+                </div>
+                {testBounceResult && !testBounceResult.ok && testBounceResult.detail && (
+                  <p className="text-xs text-red-600 font-mono bg-red-50 rounded-lg px-3 py-2 break-all">{testBounceResult.detail}</p>
+                )}
+              </div>
+
+              <SaveBar saving={saving} onSave={() => saveSection([
+                "appUrl", "trackingUrl", "openTrackingEnabled", "clickTrackingEnabled",
+                "bounceEnabled", "bounceImapHost", "bounceImapPort", "bounceImapUser",
+                "bounceImapPass", "bounceImapFolder", "bounceScanInterval",
+              ])} label="Save Tracking & Deliverability" />
             </div>
           )}
 

@@ -5,7 +5,7 @@ import {
   plansTable, subscriptionsTable, planRequestsTable, supportTicketsTable,
   templatesTable,
 } from "@workspace/db";
-import { count, desc, sql, eq, gte, and, or, ilike, isNotNull } from "drizzle-orm";
+import { count, desc, sql, eq, gte, and, or, ilike, isNotNull, inArray } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
 import { logger } from "../lib/logger";
 import multer from "multer";
@@ -390,6 +390,18 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   featureGmailDrafts:        "true",
   featureQueueSystem:        "true",
   featureAnalytics:          "true",
+  // Tracking & Deliverability
+  appUrl:               "",
+  trackingUrl:          "",
+  openTrackingEnabled:  "true",
+  clickTrackingEnabled: "true",
+  bounceEnabled:        "false",
+  bounceImapHost:       "",
+  bounceImapPort:       "993",
+  bounceImapUser:       "",
+  bounceImapPass:       "",
+  bounceImapFolder:     "INBOX",
+  bounceScanInterval:   "60",
   // Super Admin Protection
   superAdminEmail:        "",
   auditAllActions:        "true",
@@ -430,9 +442,11 @@ router.put("/admin/settings", requireAdmin, async (req, res): Promise<void> => {
       });
   }
 
-  // Invalidate the in-memory maintenance cache immediately
+  // Invalidate in-memory caches immediately
   const { invalidateMaintenanceCache } = await import("../lib/maintenance");
   invalidateMaintenanceCache();
+  const { invalidateTrackingSettingsCache } = await import("../lib/tracking-settings");
+  invalidateTrackingSettingsCache();
 
   await db.insert(systemLogsTable).values({
     userId:      admin.id,
@@ -1399,6 +1413,128 @@ router.post("/admin/users/:id/assign-plan", requireAdmin, async (req, res): Prom
   });
 
   res.json({ ok: true });
+});
+
+// ─── Tracking & Deliverability Test Endpoints ────────────────────────────────
+
+router.post("/admin/test-open-tracking", requireAdmin, async (req, res): Promise<void> => {
+  try {
+    const rows = await db.select().from(adminSettingsTable)
+      .where(inArray(adminSettingsTable.key, ["trackingUrl", "appUrl"]));
+    const map     = Object.fromEntries(rows.map(r => [r.key, r.value]));
+    const envBase = process.env.PUBLIC_URL
+      ?? (process.env.REPLIT_DOMAINS ? `https://${process.env.REPLIT_DOMAINS.split(",")[0].trim()}` : null)
+      ?? (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null)
+      ?? "http://localhost:3000";
+    const trackingBase = (map.trackingUrl || map.appUrl || envBase).replace(/\/+$/, "");
+    const testUrl      = `${trackingBase}/api/track/open/_admin_test_`;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8_000);
+    try {
+      const resp = await fetch(testUrl, { signal: controller.signal });
+      clearTimeout(timer);
+      const ok = resp.status >= 200 && resp.status < 400;
+      res.json({ ok, trackingBase, testUrl, status: resp.status,
+        message: ok ? `Endpoint reachable — HTTP ${resp.status}` : `Unexpected status: ${resp.status}` });
+    } catch (fetchErr: any) {
+      clearTimeout(timer);
+      const timedOut = (fetchErr as Error).name === "AbortError";
+      res.json({ ok: false, trackingBase, testUrl, status: null,
+        message: timedOut
+          ? "Request timed out — verify the Tracking URL is correct and the server is reachable"
+          : `Connection error: ${(fetchErr as Error).message}` });
+    }
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message });
+  }
+});
+
+router.post("/admin/test-click-tracking", requireAdmin, async (req, res): Promise<void> => {
+  try {
+    const rows = await db.select().from(adminSettingsTable)
+      .where(inArray(adminSettingsTable.key, ["trackingUrl", "appUrl"]));
+    const map     = Object.fromEntries(rows.map(r => [r.key, r.value]));
+    const envBase = process.env.PUBLIC_URL
+      ?? (process.env.REPLIT_DOMAINS ? `https://${process.env.REPLIT_DOMAINS.split(",")[0].trim()}` : null)
+      ?? (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null)
+      ?? "http://localhost:3000";
+    const trackingBase = (map.trackingUrl || map.appUrl || envBase).replace(/\/+$/, "");
+    const testUrl      = `${trackingBase}/api/track/click/_admin_test_?url=https%3A%2F%2Fexample.com`;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8_000);
+    try {
+      const resp = await fetch(testUrl, { redirect: "manual", signal: controller.signal });
+      clearTimeout(timer);
+      // Expect a redirect (302) or a 400/404 (if trackingId not in DB) — both mean the endpoint exists
+      const ok = resp.status === 302 || resp.status === 400 || resp.status === 404;
+      res.json({ ok, trackingBase, testUrl, status: resp.status,
+        message: ok
+          ? "Click endpoint is reachable and responding correctly"
+          : `Unexpected status: ${resp.status}` });
+    } catch (fetchErr: any) {
+      clearTimeout(timer);
+      const timedOut = (fetchErr as Error).name === "AbortError";
+      res.json({ ok: false, trackingBase, testUrl, status: null,
+        message: timedOut
+          ? "Request timed out — verify the Tracking URL is correct"
+          : `Connection error: ${(fetchErr as Error).message}` });
+    }
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message });
+  }
+});
+
+router.post("/admin/test-bounce-imap", requireAdmin, async (req, res): Promise<void> => {
+  const { host, port, username, password, folder } = req.body as {
+    host?: string; port?: number; username?: string; password?: string; folder?: string;
+  };
+  if (!host || !username || !password) {
+    res.status(400).json({ ok: false, message: "host, username, and password are required" });
+    return;
+  }
+  const imapPort   = Number(port) || 993;
+  const imapFolder = folder || "INBOX";
+
+  const { ImapFlow } = await import("imapflow");
+  const client = new ImapFlow({
+    host,
+    port: imapPort,
+    secure: imapPort === 993,
+    auth: { user: username, pass: password },
+    tls:  { rejectUnauthorized: false },
+    logger: false,
+    connectionTimeout: 10_000,
+    socketTimeout:     15_000,
+  });
+  client.on("error", () => {});
+
+  try {
+    await client.connect();
+    const lock = await client.getMailboxLock(imapFolder);
+    let messageCount = 0;
+    try {
+      const st = await client.status(imapFolder, { messages: true });
+      messageCount = st?.messages ?? 0;
+    } finally { lock.release(); }
+    client.logout().catch(() => {});
+    res.json({
+      ok: true,
+      message: `Connected successfully. "${imapFolder}" has ${messageCount} message(s).`,
+      host, port: imapPort, username, folder: imapFolder, messageCount,
+    });
+  } catch (err: any) {
+    client.logout().catch(() => {});
+    const msg = String(err?.message ?? "Connection failed");
+    const category =
+      /auth|login|credential|password/i.test(msg) ? "Authentication failed" :
+      /timeout/i.test(msg)                         ? "Connection timed out" :
+      /ENOTFOUND|getaddrinfo/i.test(msg)           ? "Host not found" :
+      /mailbox|folder|no such/i.test(msg)          ? "Folder not found" :
+      "Connection failed";
+    res.json({ ok: false, message: category, detail: msg, host, port: imapPort, username, folder: imapFolder });
+  }
 });
 
 export default router;
