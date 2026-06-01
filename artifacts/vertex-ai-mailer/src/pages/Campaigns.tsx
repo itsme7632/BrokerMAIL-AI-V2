@@ -121,10 +121,13 @@ function SummaryCard({
 }
 
 async function campaignPost(id: number, action: string): Promise<void> {
+  const token = localStorage.getItem("auth_token");
   const res = await fetch(`/api/campaigns/${id}/${action}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
   });
   if (!res.ok) {
     const d = await res.json().catch(() => ({}));

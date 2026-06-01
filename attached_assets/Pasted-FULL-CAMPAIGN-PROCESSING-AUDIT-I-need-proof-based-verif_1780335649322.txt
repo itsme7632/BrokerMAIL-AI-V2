@@ -1,0 +1,132 @@
+FULL CAMPAIGN PROCESSING AUDIT
+
+I need proof-based verification, not assumptions.
+
+ISSUE 1 — FALSE "SEND PAUSED" BANNER
+
+Current screenshots show:
+
+campaign.status = sending
+jobActive = true
+queued = 1
+
+but UI displays:
+
+"Send paused — Click retry to resume sending"
+
+Audit CampaignDetail.tsx and identify the exact condition that renders the paused banner.
+
+Show:
+
+1. the current render condition
+2. the values used
+3. why the banner appears while campaign is still sending
+4. the exact code fix
+
+The paused banner must only show when:
+
+- campaign.status === "paused"
+
+OR
+
+- jobActive === false AND queued > 0
+
+Never during active sending.
+
+--------------------------------------------------
+
+ISSUE 2 — CAMPAIGN ACTIONS MENU
+
+Audit every action inside the 3-dot menu.
+
+For each action:
+
+- Open Campaign
+- Duplicate
+- Archive
+- Pause
+- Resume
+- Cancel
+
+Show:
+
+1. frontend handler
+2. API endpoint called
+3. backend implementation
+4. database update performed
+5. whether it is fully functional or currently mock
+
+If any action is UI-only, implement the missing backend logic.
+
+--------------------------------------------------
+
+ISSUE 3 — RESUME CAMPAIGN
+
+Verify:
+
+- pause actually stops processing
+- resume actually restarts processing
+- queued emails continue sending
+
+Show the exact API route and queue restart logic.
+
+--------------------------------------------------
+
+ISSUE 4 — COOLDOWN TIMER
+
+Audit cooldown calculations.
+
+Verify whether countdown can loop:
+
+60 → 59 → 60
+
+Show:
+
+- cooldown source value
+- countdown calculation
+- frontend refresh logic
+
+Provide proof from code.
+
+--------------------------------------------------
+
+ISSUE 5 — BROWSER CLOSE / BACKGROUND PROCESSING
+
+Verify campaign behavior when:
+
+1. campaign starts
+2. user closes browser
+3. user logs out
+4. user refreshes page
+
+Answer:
+
+A. Does sending continue on the server?
+
+B. Is sending tied to a websocket or frontend state?
+
+C. Can a campaign become stuck in "sending" while no worker is processing it?
+
+D. What mechanism detects abandoned jobs?
+
+Show exact code paths.
+
+--------------------------------------------------
+
+REQUIRED OUTPUT
+
+Do not give a plan.
+
+Show:
+
+- file names
+- function names
+- code snippets
+- proof of implementation
+
+and explicitly mark each issue as:
+
+FIXED
+PARTIALLY FIXED
+NOT IMPLEMENTED
+BROKEN

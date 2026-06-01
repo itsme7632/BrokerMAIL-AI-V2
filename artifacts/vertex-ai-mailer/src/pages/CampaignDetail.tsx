@@ -223,7 +223,13 @@ export default function CampaignDetail() {
       const data: CampaignProgress = await res.json();
       setProgress(data);
       setProgressError(null);
-      if (data.currentJobId) setActiveJobId(data.currentJobId);
+      // NOTE: do NOT set activeJobId from currentJobId here.
+      // activeJobId is only set by handleSendBatch (legacy per-batch flow).
+      // For automated campaigns (start-campaign), the campaign-controls panel
+      // provides all status info. Setting activeJobId from currentJobId caused
+      // SendProgressPanel to call /api/mailbox/send/status/:jobId, which checks
+      // activeJobs.has(jobId) — but the processor runs under key
+      // "campaign:${campaignId}", not the UUID → always returned "paused".
     } catch (err: any) {
       setProgressError(err.message);
     }
