@@ -130,6 +130,7 @@ function formatItem(item: any, tracking: Record<string, any>) {
     quoteId:         item.quoteId ?? row.quote_id ?? null,
     subject:         item.subject,
     sentAt:          item.sentAt?.toISOString() ?? null,
+    bounceAt:        item.bounceAt?.toISOString() ?? null,
     mailboxEmail:    item.mailboxEmail ?? null,
     mailboxFromName: item.mailboxFromName ?? null,
     status:          item.status,
@@ -161,8 +162,10 @@ router.get("/sent-emails", requireAuth, async (req, res): Promise<void> => {
   let statusCond: any;
   if (statusFilter === "failed") {
     statusCond = eq(emailQueueTable.status, "failed");
+  } else if (statusFilter === "bounced") {
+    statusCond = eq(emailQueueTable.status, "bounced");
   } else if (statusFilter === "all") {
-    statusCond = inArray(emailQueueTable.status, ["success", "failed"]);
+    statusCond = inArray(emailQueueTable.status, ["success", "failed", "bounced"]);
   } else {
     // "delivered", "opened", "unopened" — all start from success
     statusCond = eq(emailQueueTable.status, "success");
@@ -177,8 +180,10 @@ router.get("/sent-emails", requireAuth, async (req, res): Promise<void> => {
     rowDataJson: emailQueueTable.rowDataJson, templateId: emailQueueTable.templateId,
     style: emailQueueTable.style, useSignatureBuilder: emailQueueTable.useSignatureBuilder,
     status: emailQueueTable.status, lastError: emailQueueTable.lastError,
-    sentAt: emailQueueTable.sentAt, quoteId: emailQueueTable.quoteId,
-    trackingId: emailQueueTable.trackingId,
+    sentAt: emailQueueTable.sentAt, bounceAt: emailQueueTable.bounceAt,
+    quoteId: emailQueueTable.quoteId, trackingId: emailQueueTable.trackingId,
+    deferredCount: emailQueueTable.deferredCount, retryAfter: emailQueueTable.retryAfter,
+    attempts: emailQueueTable.attempts,
     mailboxEmail: mailboxesTable.smtpUser, mailboxFromName: mailboxesTable.fromName,
   };
 

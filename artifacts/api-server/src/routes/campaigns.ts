@@ -1788,7 +1788,7 @@ router.get("/campaigns/:id/diagnostics", requireAuth, async (req, res): Promise<
     leadCounts[s] = row?.count ?? 0;
   }
 
-  const queueStatuses = ["pending", "sending", "success", "failed", "deferred"] as const;
+  const queueStatuses = ["pending", "sending", "success", "failed", "deferred", "bounced"] as const;
   const queueCounts: Record<string, number> = {};
   for (const s of queueStatuses) {
     const [row] = await db.select({ count: sql<number>`count(*)::int` })

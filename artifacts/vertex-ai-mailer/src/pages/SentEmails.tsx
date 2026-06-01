@@ -20,6 +20,7 @@ type SentEmail = {
   quoteId: string | null;
   subject: string;
   sentAt: string | null;
+  bounceAt: string | null;
   mailboxEmail: string | null;
   mailboxFromName: string | null;
   status: string;
@@ -36,7 +37,7 @@ type SentEmail = {
 };
 
 type TimelineEvent = { type: string; timestamp: string; detail?: string };
-type StatusFilter = "all" | "delivered" | "failed" | "opened" | "unopened";
+type StatusFilter = "all" | "delivered" | "bounced" | "failed" | "opened" | "unopened";
 
 function formatRelativeTime(iso: string): string {
   const ts = iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z";
@@ -82,10 +83,25 @@ async function apiPatch(path: string): Promise<void> {
   if (!res.ok) throw new Error(`Request failed (${res.status})`);
 }
 
-function TrackingBadge({ status, trackingId, openCount, errorLabel, retryMinutes, deferredCount }: {
+function TrackingBadge({ status, trackingId, openCount, errorLabel, retryMinutes, deferredCount, bounceAt, lastError }: {
   status: string; trackingId: string | null; openCount: number; errorLabel: string | null;
-  retryMinutes?: number | null; deferredCount?: number;
+  retryMinutes?: number | null; deferredCount?: number; bounceAt?: string | null; lastError?: string | null;
 }) {
+  if (status === "bounced") {
+    return (
+      <div>
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-orange-50 text-orange-700 border border-orange-200">
+          <AlertTriangle className="h-3 w-3" /> Bounced
+        </span>
+        {lastError && (
+          <p className="text-xs text-orange-500 mt-1 max-w-[160px] leading-tight">{lastError}</p>
+        )}
+        {bounceAt && (
+          <p className="text-xs text-orange-400 mt-0.5">{formatRelativeTime(bounceAt)}</p>
+        )}
+      </div>
+    );
+  }
   if (status === "deferred") {
     return (
       <div>
@@ -119,14 +135,14 @@ function TrackingBadge({ status, trackingId, openCount, errorLabel, retryMinutes
   if (!trackingId) {
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-50 text-slate-500 border border-slate-200">
-        <CheckCircle2 className="h-3 w-3" /> Sent
+        <CheckCircle2 className="h-3 w-3" /> Accepted
       </span>
     );
   }
   if (openCount === 0) {
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-        <CheckCircle2 className="h-3 w-3" /> Delivered
+        <CheckCircle2 className="h-3 w-3" /> Accepted
       </span>
     );
   }
@@ -352,7 +368,8 @@ function EmailPreviewModal({ emailId, open, onClose }: { emailId: number | null;
 
 const STATUS_TABS: { value: StatusFilter; label: string; icon: React.ReactNode }[] = [
   { value: "all",       label: "All",       icon: <Filter className="h-3 w-3" /> },
-  { value: "delivered", label: "Delivered", icon: <CheckCircle2 className="h-3 w-3" /> },
+  { value: "delivered", label: "Accepted",  icon: <CheckCircle2 className="h-3 w-3" /> },
+  { value: "bounced",   label: "Bounced",   icon: <AlertTriangle className="h-3 w-3" /> },
   { value: "failed",    label: "Failed",    icon: <AlertCircle className="h-3 w-3" /> },
   { value: "opened",    label: "Opened",    icon: <Eye className="h-3 w-3" /> },
   { value: "unopened",  label: "Unopened",  icon: <Mail className="h-3 w-3" /> },
@@ -544,10 +561,12 @@ export default function SentEmails() {
                         : <Mail className="h-8 w-8 text-slate-200" />}
                       <p className="text-sm font-medium">
                         {statusFilter === "failed" ? "No failed emails" :
+                         statusFilter === "bounced" ? "No bounced emails" :
                          activeSearch ? "No emails match your search" : "No emails yet"}
                       </p>
                       <p className="text-xs">
                         {statusFilter === "failed" ? "All your emails delivered successfully." :
+                         statusFilter === "bounced" ? "No bounce-backs detected in the last 30 days." :
                          activeSearch ? "Try a different search term" : "Emails sent via SMTP campaigns will appear here."}
                       </p>
                     </div>
@@ -560,7 +579,9 @@ export default function SentEmails() {
                     className={`group transition-colors ${
                       email.status === "failed"
                         ? "bg-red-50/30 hover:bg-red-50/60"
-                        : "hover:bg-slate-50/60 cursor-pointer"
+                        : email.status === "bounced"
+                          ? "bg-orange-50/20 hover:bg-orange-50/40 cursor-pointer"
+                          : "hover:bg-slate-50/60 cursor-pointer"
                     }`}
                     onClick={email.status !== "failed" ? () => setSelectedId(email.id) : undefined}
                   >
@@ -600,7 +621,7 @@ export default function SentEmails() {
                       ) : <span className="text-slate-400 text-sm">—</span>}
                     </TableCell>
                     <TableCell>
-                      <TrackingBadge status={email.status} trackingId={email.trackingId} openCount={email.openCount} errorLabel={email.errorLabel} retryMinutes={email.retryMinutes} deferredCount={email.deferredCount} />
+                      <TrackingBadge status={email.status} trackingId={email.trackingId} openCount={email.openCount} errorLabel={email.errorLabel} retryMinutes={email.retryMinutes} deferredCount={email.deferredCount} bounceAt={email.bounceAt} lastError={email.lastError} />
                       {email.openCount > 0 && email.lastOpenedAt && (
                         <div className="text-xs text-slate-400 mt-1 leading-tight">
                           {email.openCount > 1 && email.firstOpenedAt

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, mailboxesTable, templatesTable, draftsTable, usersTable, emailQueueTable } from "@workspace/db";
-import { eq, and, gte, sql, or, isNull, lte, isNotNull } from "drizzle-orm";
+import { eq, and, gte, sql, or, isNull, lte, isNotNull, desc, count } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { encrypt, decrypt } from "../lib/crypto";
 import { testSmtp, sendEmail } from "../lib/smtp";

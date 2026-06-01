@@ -7,6 +7,7 @@ import { logger } from "./lib/logger";
 import { db, pool, usersTable, plansTable, campaignsTable, emailQueueTable, leadsTable } from "@workspace/db";
 import { eq, and, inArray, isNotNull } from "drizzle-orm";
 import { startCampaignProcessor } from "./routes/campaigns";
+import { runBounceScanner } from "./lib/bounce-scanner";
 import { hashPassword } from "./lib/auth";
 import { maintenanceMiddleware } from "./lib/maintenance";
 
@@ -215,9 +216,14 @@ async function runWatchdog(): Promise<void> {
 }
 
 // Start watchdog 10 s after boot, then every 60 s
+// Also runs bounce scanner on each cycle (IMAP-based DSN detection)
 setTimeout(() => {
   runWatchdog().catch(() => {});
-  setInterval(() => runWatchdog().catch(() => {}), 60_000);
+  runBounceScanner().catch(() => {});
+  setInterval(() => {
+    runWatchdog().catch(() => {});
+    runBounceScanner().catch(() => {});
+  }, 60_000);
 }, 10_000);
 
 // ---------------------------------------------------------------------------
@@ -230,7 +236,7 @@ const EXPECTED_SCHEMA: Record<string, string[]> = {
     "campaign_id", "lead_id", "email", "subject", "row_data_json",
     "style", "use_signature_builder", "status", "attempts",
     "deferred_count", "last_error", "quote_id", "tracking_id",
-    "first_attempt_at", "retry_after", "sent_at", "created_at",
+    "first_attempt_at", "retry_after", "sent_at", "bounce_at", "created_at",
   ],
   campaigns: [
     "id", "user_id", "name", "status", "template_id",

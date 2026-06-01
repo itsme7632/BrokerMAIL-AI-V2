@@ -133,7 +133,17 @@ router.get("/track/click/:trackingId", async (req, res): Promise<void> => {
     logger.error({ trackingId, url, err }, "[TRACK/CLICK] Error recording click");
   }
 
-  res.redirect(url);
+  // Use direct header assignment (not res.redirect) so Express's encodeUrl()
+  // does not mangle non-HTTP schemes such as tel: and mailto:
+  // Only allow explicitly safe schemes to prevent open redirect to javascript: etc.
+  const ALLOWED = /^(https?|tel|mailto|sms):/i;
+  if (!ALLOWED.test(url)) {
+    logger.warn({ trackingId, url }, "[TRACK/CLICK] Disallowed URL scheme — redirect blocked");
+    res.status(400).send("Disallowed URL scheme");
+    return;
+  }
+  res.writeHead(302, { Location: url });
+  res.end();
 });
 
 export default router;

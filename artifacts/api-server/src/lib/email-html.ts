@@ -578,7 +578,7 @@ ${quoteBox}
   <td class="em-corp-foot" style="padding:14px 40px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
       <tr>
-        <td><p style="margin:0;font-family:${FONT};color:#94a3b8;font-size:11px;letter-spacing:0.5px;">CONFIDENTIAL AUTO TRANSPORT QUOTE</p></td>
+        <td><p style="margin:0;font-family:${FONT};color:#94a3b8;font-size:11px;letter-spacing:0.5px;">AUTO TRANSPORT QUOTE</p></td>
         <td align="right"><p style="margin:0;font-family:${FONT};color:#cbd5e1;font-size:11px;">${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p></td>
       </tr>
     </table>
@@ -614,8 +614,8 @@ function urgentTemplate(
             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
               <tr>
                 <td style="vertical-align:top;padding-right:12px;">
-                  <p style="margin:0 0 4px;font-family:${FONT};color:#9a3412;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;">&#9888; Availability Alert</p>
-                  <p style="margin:0;font-family:${FONT};color:#7c2d12;font-size:13px;line-height:1.5;">Limited transport slots remain this week. Please reply within <strong>24 hours</strong> to secure your booking at this rate.</p>
+                  <p style="margin:0 0 4px;font-family:${FONT};color:#9a3412;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;">Quote Status</p>
+                  <p style="margin:0;font-family:${FONT};color:#7c2d12;font-size:13px;line-height:1.5;">This quote reflects current carrier availability. Please confirm at your convenience to proceed at this rate.</p>
                 </td>
                 ${price ? `<td align="right" style="vertical-align:middle;white-space:nowrap;">
                   <p style="margin:0 0 2px;font-family:${FONT};color:#9a3412;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Your Rate</p>
@@ -655,7 +655,7 @@ function urgentTemplate(
           ${company ? `<p style="margin:0 0 2px;font-family:${FONT};color:#ffffff;font-size:16px;font-weight:700;">${company}</p>` : ""}
         </td>
         <td align="right">
-          <span style="display:inline-block;padding:4px 10px;background-color:rgba(255,255,255,0.18);font-family:${FONT};color:#ffffff;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;border:1px solid rgba(255,255,255,0.35);">&#9889; TIME-SENSITIVE</span>
+          <span style="display:inline-block;padding:4px 10px;background-color:rgba(255,255,255,0.12);font-family:${FONT};color:rgba(255,255,255,0.85);font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;border:1px solid rgba(255,255,255,0.25);">FOLLOW-UP</span>
         </td>
       </tr>
     </table>
@@ -862,7 +862,7 @@ ${greetingBox}
       <tr>
         <td><p style="margin:0;font-family:${FONT};color:#0ea5e9;font-size:12px;">Questions? We're always here to help. Just reply to this email.</p></td>
         <td align="right">
-          <p style="margin:0;font-family:${FONT};color:#7dd3fc;font-size:11px;">&#128274; Insured &nbsp;&#128338; Fast Response</p>
+          <p style="margin:0;font-family:${FONT};color:#7dd3fc;font-size:11px;">Licensed &amp; Insured &nbsp;&middot;&nbsp; Fast Response</p>
         </td>
       </tr>
     </table>
@@ -1028,7 +1028,7 @@ ${quoteRef}
   <td style="background-color:#0f172a;padding:14px 40px;border-top:1px solid #1e293b;">
     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
       <tr>
-        <td><p style="margin:0;font-family:${FONT};color:#475569;font-size:11px;">Auto Transport Quote &mdash; Sent via BrokerMail</p></td>
+        <td><p style="margin:0;font-family:${FONT};color:#475569;font-size:11px;">Auto Transport Quote</p></td>
         <td align="right"><p style="margin:0;font-family:${FONT};color:#334155;font-size:11px;">${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p></td>
       </tr>
     </table>

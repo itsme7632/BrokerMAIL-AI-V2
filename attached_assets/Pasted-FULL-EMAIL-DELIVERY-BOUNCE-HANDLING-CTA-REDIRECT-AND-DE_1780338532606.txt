@@ -1,0 +1,204 @@
+FULL EMAIL DELIVERY, BOUNCE HANDLING, CTA REDIRECT, AND DELIVERABILITY AUDIT
+
+I need a complete audit and implementation. Do not provide assumptions or plans. Show actual code changes, file names, and proof.
+
+====================================================
+ISSUE 1 — FALSE "DELIVERED" STATUS FOR BOUNCED EMAILS
+====================================================
+
+Current behavior:
+
+SMTP accepts email →
+System marks email as Sent/Delivered →
+
+Later recipient server returns:
+
+"Message discarded as high-probability spam"
+
+But BrokerMAIL AI still shows the email as Delivered.
+
+This is incorrect.
+
+Implement proper bounce handling:
+
+1. Monitor the connected mailbox via IMAP.
+2. Detect DSN/bounce messages.
+3. Match bounce to original sent email.
+4. Update database:
+   status = bounced
+5. Store:
+   bounce reason
+   bounce timestamp
+   original recipient
+6. Campaign analytics must include:
+   Sent
+   Opened
+   Clicked
+   Failed
+   Bounced
+7. Sent Emails page must show bounce reason.
+
+Example:
+
+"Message discarded as high-probability spam"
+
+must be visible inside email details.
+
+Show:
+- files modified
+- IMAP detection logic
+- database updates
+- UI changes
+
+====================================================
+ISSUE 2 — CTA BUTTON REDIRECT BUG
+====================================================
+
+Current behavior:
+
+CTA button URL becomes:
+
+https://xxxxx.replit.dev/api/track/click/...
+
+The click is tracked but the button redirects to Replit instead of the final destination.
+
+Example:
+
+Call Now button should open:
+
+tel:+18323048468
+
+But it opens the Replit tracking URL.
+
+Audit:
+
+/api/track/click
+
+Verify:
+
+1. URL decoding
+2. URL encoding
+3. Redirect logic
+4. tel:
+5. mailto:
+6. https:
+7. http:
+
+After click tracking:
+
+res.redirect(finalDestination)
+
+must always execute.
+
+Provide proof with test URLs.
+
+====================================================
+ISSUE 3 — TEMPLATE DELIVERABILITY AUDIT
+====================================================
+
+Current observation:
+
+Clean template delivers.
+
+Modern/Urgent templates frequently go to spam or get rejected.
+
+Compare:
+
+- Clean
+- Modern
+- Urgent
+- Mobile
+- Corporate
+
+Generate report showing:
+
+1. HTML size
+2. Total links
+3. CTA count
+4. Tracking pixel count
+5. Image count
+6. Spam trigger phrases
+7. CSS size
+8. Spam score estimate
+
+Identify why Clean succeeds while others fail.
+
+Remove or reduce obvious spam triggers:
+
+Examples:
+- Limited availability
+- Reply now
+- Secure your rate
+- Time-sensitive
+- Urgent action wording
+
+Show exact findings.
+
+====================================================
+ISSUE 4 — SMTP ACCEPTED VS ACTUALLY DELIVERED
+====================================================
+
+Current logic appears to be:
+
+SMTP accepted →
+status = sent
+
+Need proper lifecycle:
+
+Queued
+→ Sending
+→ SMTP Accepted
+→ Delivered (if confirmed)
+→ Opened
+→ Clicked
+
+OR
+
+Queued
+→ Sending
+→ SMTP Accepted
+→ Bounced
+
+Show current implementation and improve accuracy.
+
+====================================================
+ISSUE 5 — DIAGNOSTICS PANEL
+====================================================
+
+Add new diagnostics section:
+
+Last SMTP Result
+
+Display:
+
+SMTP Host
+Port
+Encryption
+SMTP Response Code
+SMTP Response Message
+Bounce Status
+Bounce Reason
+Last Attempt
+Last Successful Send
+Last Failed Send
+
+====================================================
+REQUIRED OUTPUT
+====================================================
+
+Do not provide a plan.
+
+Show:
+
+- files modified
+- exact code changes
+- git diff
+- test results
+- proof that all fixes are implemented
+
+For each issue explicitly mark:
+
+FIXED
+PARTIALLY FIXED
+NOT IMPLEMENTED
+BROKEN
