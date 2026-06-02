@@ -1399,7 +1399,12 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
           vehicle: lead.vehicle ?? "", route: lead.route ?? "",
           pickup: lead.pickup ?? "", delivery: lead.delivery ?? "",
           price: lead.price ?? "", notes: lead.notes ?? "",
+          quote_id: lead.quoteId ?? "",
         };
+        if (campaign.bookingUrl)  leadRow.booking_link = campaign.bookingUrl;
+        if (campaign.quoteUrl)    leadRow.quote_link   = campaign.quoteUrl;
+        if (campaign.websiteUrl)  leadRow.website_link = campaign.websiteUrl;
+        if (campaign.phoneNumber) leadRow.phone_link   = campaign.phoneNumber;
 
         // Try AI personalisation; fall back to template substitution when no API key is configured
         let generated: { subject: string; body: string };
@@ -1427,9 +1432,14 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
         const trackingId      = randomUUID();
         const gmailTracking   = await getTrackingSettings();
         const gmailPublicBase = gmailTracking.trackingUrl;
-        const bodyHtml = buildHtmlEmail(generated.body, leadRow, branding, {
+        const gmailCtaButtons = (() => {
+          try { return template.ctaButtonsJson ? JSON.parse(template.ctaButtonsJson) : []; }
+          catch { return []; }
+        })();
+        const bodyHtml = buildHtmlEmail(template.body, leadRow, branding, {
           style: emailStyle as any,
           useSignatureBuilder: useSig,
+          ctaButtons: gmailCtaButtons,
           trackingId: gmailTracking.clickTrackingEnabled ? trackingId : undefined,
           publicBase: gmailTracking.clickTrackingEnabled ? gmailPublicBase : undefined,
         });
@@ -1443,7 +1453,7 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
 
         await db.insert(draftsTable).values({
           userId: user.id, campaignId, leadId: lead.id,
-          gmailDraftId, subject: generated.subject, body: generated.body,
+          gmailDraftId, email: lead.email, subject: generated.subject, body: generated.body,
           status: "success", trackingId,
         });
         await db.update(leadsTable)
@@ -1455,7 +1465,7 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
         const errMsg = err instanceof Error ? err.message : String(err);
         await db.insert(draftsTable).values({
           userId: user.id, campaignId, leadId: lead.id,
-          subject: "", body: "", status: "failed", errorMessage: errMsg,
+          email: lead.email, subject: "", body: "", status: "failed", errorMessage: errMsg,
         });
         await db.update(leadsTable)
           .set({ status: "failed", errorMessage: errMsg, updatedAt: new Date() })
@@ -2041,7 +2051,12 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
         vehicle: lead.vehicle ?? "", route: lead.route ?? "",
         pickup: lead.pickup ?? "", delivery: lead.delivery ?? "",
         price: lead.price ?? "", notes: lead.notes ?? "",
+        quote_id: lead.quoteId ?? "",
       };
+      if (campaign.bookingUrl)  leadRow.booking_link = campaign.bookingUrl;
+      if (campaign.quoteUrl)    leadRow.quote_link   = campaign.quoteUrl;
+      if (campaign.websiteUrl)  leadRow.website_link = campaign.websiteUrl;
+      if (campaign.phoneNumber) leadRow.phone_link   = campaign.phoneNumber;
 
       // Try AI personalisation; fall back to template substitution when no API key is set
       let generated: { subject: string; body: string };
@@ -2070,9 +2085,14 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
       const trackingId       = randomUUID();
       const gDraftTracking   = await getTrackingSettings();
       const gDraftPublicBase = gDraftTracking.trackingUrl;
-      const bodyHtml = buildHtmlEmail(generated.body, leadRow, branding, {
+      const gDraftCtaButtons = (() => {
+        try { return template.ctaButtonsJson ? JSON.parse(template.ctaButtonsJson) : []; }
+        catch { return []; }
+      })();
+      const bodyHtml = buildHtmlEmail(template.body, leadRow, branding, {
         style: emailStyle,
         useSignatureBuilder: useSig,
+        ctaButtons: gDraftCtaButtons,
         trackingId: gDraftTracking.clickTrackingEnabled ? trackingId : undefined,
         publicBase: gDraftTracking.clickTrackingEnabled ? gDraftPublicBase : undefined,
       });
@@ -2086,7 +2106,7 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
 
       await db.insert(draftsTable).values({
         userId: user.id, campaignId: campaign.id, leadId: lead.id,
-        gmailDraftId, subject: generated.subject, body: generated.body,
+        gmailDraftId, email: lead.email, subject: generated.subject, body: generated.body,
         status: "success", trackingId,
       });
       await db.update(leadsTable)
@@ -2097,7 +2117,7 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
       const errMsg = err instanceof Error ? err.message : String(err);
       await db.insert(draftsTable).values({
         userId: user.id, campaignId: campaign.id, leadId: lead.id,
-        subject: "", body: "", status: "failed", errorMessage: errMsg,
+        email: lead.email, subject: "", body: "", status: "failed", errorMessage: errMsg,
       });
       await db.update(leadsTable)
         .set({ status: "failed", errorMessage: errMsg, updatedAt: new Date() })
@@ -2190,6 +2210,7 @@ router.post("/campaigns/:id/leads/:leadId/retry", requireAuth, async (req, res):
       vehicle: lead.vehicle ?? "", route: lead.route ?? "",
       pickup: lead.pickup ?? "", delivery: lead.delivery ?? "",
       price: lead.price ? formatPrice(lead.price) : "", notes: lead.notes ?? "",
+      quote_id: lead.quoteId ?? "",
     };
     if (campaign.bookingUrl)  gLeadRow.booking_link = campaign.bookingUrl;
     if (campaign.quoteUrl)    gLeadRow.quote_link   = campaign.quoteUrl;
@@ -2219,7 +2240,7 @@ router.post("/campaigns/:id/leads/:leadId/retry", requireAuth, async (req, res):
       } else { throw aiErr; }
     }
 
-    const gBodyHtml = buildHtmlEmail(gGenerated.body, gLeadRow, gBranding, {
+    const gBodyHtml = buildHtmlEmail(gTemplate.body, gLeadRow, gBranding, {
       style: gStyle as any, useSignatureBuilder: gUseSig, ctaButtons: gCtaButtons,
       trackingId: gTracking.clickTrackingEnabled ? gTrackingId : undefined,
       publicBase: gTracking.clickTrackingEnabled ? gPublicBase : undefined,

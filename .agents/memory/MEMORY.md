@@ -4,3 +4,4 @@
 - [Campaign completion logic](campaign-completion-logic.md) — correct completion check is sent+failed===totalLeads via leadsTable, NOT emailQueue.pending===0
 - [Cooldown timer pattern](cooldown-timer-pattern.md) — use ISO timestamp not pre-calculated seconds; useCooldownTimerUntil hook; startCampaignProcessor for recovery
 - [Tracking settings pattern](tracking-settings.md) — DB-driven tracking URL with 30s cache; invalidate on every admin settings save; both processor functions need getTrackingSettings() before their while loop
+- [Gmail Draft variable/formatting fixes](gmail-draft-audit.md) — all 3 Gmail Draft paths had missing quote_id, missing campaign URL vars, wrong body to buildHtmlEmail, missing ctaButtons, missing email field on insert; sentAt column gates tracking

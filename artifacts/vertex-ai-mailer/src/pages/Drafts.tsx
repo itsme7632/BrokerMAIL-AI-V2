@@ -4,7 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { UploadCloud, Eye, MousePointerClick, AtSign, Clock, Mail } from "lucide-react";
+import { UploadCloud, Eye, MousePointerClick, AtSign, Clock, Mail, Send, CheckCircle2 } from "lucide-react";
 
 type DraftWithTracking = {
   id: number;
@@ -12,6 +12,7 @@ type DraftWithTracking = {
   email?: string | null;
   status: string;
   errorMessage?: string | null;
+  sentAt?: string | null;
   createdAt: string;
   opens: number;
   clicks: number;
@@ -30,13 +31,32 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function getAuthHeaders(): Record<string, string> {
+  const t = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
+
 export default function Drafts() {
   const [page, setPage] = useState(1);
-  const { data, isLoading } = useGetDrafts({ page, limit: 20 });
+  const { data, isLoading, refetch } = useGetDrafts({ page, limit: 20 });
+  const [markingSent, setMarkingSent] = useState<Set<number>>(new Set());
 
   const drafts = (data?.data ?? []) as unknown as DraftWithTracking[];
   const total  = data?.total ?? 0;
   const pages  = Math.max(1, Math.ceil(total / 20));
+
+  async function handleMarkSent(draftId: number) {
+    setMarkingSent(prev => new Set(prev).add(draftId));
+    try {
+      await fetch(`/api/drafts/${draftId}/mark-sent`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      });
+      refetch();
+    } finally {
+      setMarkingSent(prev => { const s = new Set(prev); s.delete(draftId); return s; });
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -70,20 +90,21 @@ export default function Drafts() {
                   <span className="flex items-center justify-center gap-1"><MousePointerClick className="h-3.5 w-3.5" /> Clicks</span>
                 </TableHead>
                 <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide hidden lg:table-cell">Created</TableHead>
+                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide hidden md:table-cell">Tracking</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 Array(5).fill(0).map((_, i) => (
                   <TableRow key={i}>
-                    {[1, 2, 3, 4, 5, 6].map(j => (
+                    {[1, 2, 3, 4, 5, 6, 7].map(j => (
                       <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                     ))}
                   </TableRow>
                 ))
               ) : drafts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center h-40 text-slate-400">
+                  <TableCell colSpan={7} className="text-center h-40 text-slate-400">
                     <div className="flex flex-col items-center gap-3">
                       <Mail className="h-8 w-8 text-slate-200" />
                       <p className="text-sm">No drafts created yet.</p>
@@ -141,6 +162,27 @@ export default function Drafts() {
                         <Clock className="h-3 w-3" />
                         {new Date(draft.createdAt).toLocaleTimeString()}
                       </div>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      {draft.status === "success" && (
+                        draft.sentAt ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium">
+                            <CheckCircle2 className="h-3 w-3" /> Sent
+                          </span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={markingSent.has(draft.id)}
+                            onClick={() => handleMarkSent(draft.id)}
+                            className="rounded-lg text-xs h-7 px-2.5 gap-1"
+                            title="Click after sending this draft from Gmail to activate open tracking"
+                          >
+                            <Send className="h-3 w-3" />
+                            {markingSent.has(draft.id) ? "Saving…" : "Mark Sent"}
+                          </Button>
+                        )
+                      )}
                     </TableCell>
                   </TableRow>
                 ))

@@ -30,12 +30,14 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
 
   try {
     const [draft] = await db
-      .select({ id: draftsTable.id })
+      .select({ id: draftsTable.id, sentAt: draftsTable.sentAt })
       .from(draftsTable)
       .where(eq(draftsTable.trackingId, trackingId));
 
     if (!draft) {
       logger.warn({ trackingId, ip, ua }, "[TRACK/OPEN] No draft found for trackingId — pixel served but not recorded");
+    } else if (!draft.sentAt) {
+      logger.info({ trackingId, draftId: draft.id }, "[TRACK/OPEN] Draft not yet marked as sent — preview open ignored");
     } else {
       // Deduplication: skip if this exact draft got an open from the same IP
       // within the last 5 seconds (prevents duplicate HTTP retries / Apple Mail
