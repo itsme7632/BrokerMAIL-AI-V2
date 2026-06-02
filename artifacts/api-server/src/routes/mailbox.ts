@@ -13,6 +13,7 @@ import {
 } from "../lib/email-html";
 import type { User, Mailbox, Template } from "@workspace/db";
 import { randomUUID } from "crypto";
+import { getTrackingSettings } from "../lib/tracking-settings";
 
 const router: IRouter = Router();
 
@@ -66,6 +67,10 @@ async function processJobQueue(jobId: string, box: Mailbox, template: Template, 
   const fromAddress = box.fromName
     ? `"${box.fromName.replace(/"/g, "")}" <${box.smtpUser}>`
     : box.smtpUser;
+
+  // Load tracking settings once before the loop — same pattern as processCampaignFully
+  const trackingSettings = await getTrackingSettings();
+  const publicBase = trackingSettings.trackingUrl;
 
   try {
     while (activeJobs.get(jobId)) {
@@ -123,55 +128,84 @@ async function processJobQueue(jobId: string, box: Mailbox, template: Template, 
       const delay = (box.delaySeconds ?? 15) * 1000;
       await sleep(delay);
 
-      // ── Send email ──────────────────────────────────────────────────────
+      // ── Build email content ──────────────────────────────────────────────
       const row = JSON.parse(item.rowDataJson) as Record<string, string>;
       if (row.price) row.price = formatPrice(row.price);
 
-      const subject  = replaceVarsText(template.subject, row);
-      const bodyText = replaceVarsText(template.body, row);
+      const subject    = replaceVarsText(template.subject, row);
+      const bodyText   = replaceVarsText(template.body, row);
+
+      // trackingId must be generated BEFORE building HTML so it can be embedded in the pixel
+      const trackingId = randomUUID();
+
+      const ctaButtons = (() => {
+        try { return template.ctaButtonsJson ? JSON.parse(template.ctaButtonsJson) : []; }
+        catch { return []; }
+      })();
+
       const bodyHtml = buildHtmlEmail(template.body, row, branding, {
-        style: (item.style ?? "clean") as any,
+        style:               (item.style ?? "clean") as any,
         useSignatureBuilder: item.useSignatureBuilder,
+        ctaButtons,
+        trackingId:  trackingSettings.clickTrackingEnabled ? trackingId : undefined,
+        publicBase:  trackingSettings.clickTrackingEnabled ? publicBase : undefined,
       });
 
+      // Inject open-tracking pixel
+      const pixelTag = trackingSettings.openTrackingEnabled
+        ? `<img src="${publicBase}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none!important;width:1px!important;height:1px!important;border:0;" />`
+        : "";
+      const trackedHtml = pixelTag
+        ? (bodyHtml.includes("</body>") ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`) : bodyHtml + pixelTag)
+        : bodyHtml;
+
       try {
-        const info = await sendEmail(box, { to: item.email, subject, text: bodyText, html: bodyHtml });
+        const info = await sendEmail(box, { to: item.email, subject, text: bodyText, html: trackedHtml });
 
         if (box.imapHost && box.imapUser && box.imapPassEncrypted) {
           const raw = buildRawMessage({
             from: fromAddress, to: item.email, subject,
-            html: bodyHtml, text: bodyText, messageId: info.messageId,
+            html: trackedHtml, text: bodyText, messageId: info.messageId,
           });
           saveToSent(box, raw).catch(() => {});
         }
 
-        const trackingId = randomUUID();
-        await db.insert(draftsTable).values({
-          userId: user.id,
-          subject,
-          body: bodyText,
-          status: "success",
-          trackingId,
-          gmailDraftId: `smtp:${info.messageId}`,
-        });
-
+        // Critical: mark queue item success with trackingId FIRST (idempotency guard)
         await db
           .update(emailQueueTable)
-          .set({ status: "success", sentAt: new Date(), retryAfter: null })
+          .set({ status: "success", sentAt: new Date(), trackingId, retryAfter: null })
           .where(eq(emailQueueTable.id, item.id));
+
+        // Non-fatal: insert draft record with sentAt set so tracking pixel hits are recorded
+        try {
+          await db.insert(draftsTable).values({
+            userId:       user.id,
+            campaignId:   item.campaignId  ?? null,
+            leadId:       item.leadId      ?? null,
+            email:        item.email,
+            subject,
+            body:         bodyText,
+            status:       "success",
+            trackingId,
+            gmailDraftId: `smtp:${info.messageId}`,
+            sentAt:       new Date(),
+          });
+        } catch (draftErr) {
+          // Non-fatal — email was delivered, queue already marked success
+        }
 
       } catch (err: any) {
         const errMsg        = String(err?.message ?? "Send failed");
         const attempts      = item.attempts + 1;
         const newDeferred   = (item.deferredCount ?? 0) + 1;
 
-        await db.insert(draftsTable).values({
-          userId: user.id,
-          subject,
-          body: bodyText,
-          status: "failed",
-          errorMessage: errMsg,
-        });
+        try {
+          await db.insert(draftsTable).values({
+            userId: user.id, campaignId: item.campaignId ?? null,
+            leadId: item.leadId ?? null,
+            subject, body: bodyText, status: "failed", errorMessage: errMsg,
+          });
+        } catch { /* non-fatal */ }
 
         if (isProviderRateLimitError(errMsg)) {
           // Provider hit its own hourly cap — defer for a full hour and stop sending
@@ -201,13 +235,28 @@ async function processJobQueue(jobId: string, box: Mailbox, template: Template, 
   }
 }
 
-// ─── On server start: reset any stuck "sending" rows left from prior crash ───
+// ─── On server start: reset genuinely stuck "sending" rows left from prior crash ───
+// Guard: only reset items where firstAttemptAt is NULL (never actually attempted) OR
+// where the attempt started more than 10 minutes ago (safely past any SMTP timeout).
+// This prevents resending emails whose SMTP call succeeded but whose DB update was
+// interrupted — those items were already delivered and must not be re-queued.
 (async () => {
   try {
-    await db
+    const stuckCutoff = new Date(Date.now() - 10 * 60_000);
+    const reset = await db
       .update(emailQueueTable)
       .set({ status: "pending" })
-      .where(eq(emailQueueTable.status, "sending"));
+      .where(and(
+        eq(emailQueueTable.status, "sending"),
+        or(
+          isNull(emailQueueTable.firstAttemptAt),
+          lte(emailQueueTable.firstAttemptAt, stuckCutoff),
+        ),
+      ))
+      .returning({ id: emailQueueTable.id });
+    if (reset.length > 0) {
+      console.log(`[MAILBOX STARTUP] Reset ${reset.length} genuinely stuck sending item(s) → pending`);
+    }
   } catch { /* DB may not exist yet */ }
 })();
 
