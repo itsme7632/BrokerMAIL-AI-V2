@@ -1,0 +1,134 @@
+We have narrowed the remaining platform issues to TWO specific areas.
+
+DO NOT make assumptions and DO NOT patch blindly.
+
+Perform a full audit first and return findings before applying changes.
+
+==================================================
+ISSUE #1 — Gmail Drafts Page Still Empty
+========================================
+
+Current behavior:
+
+* Gmail drafts are successfully created.
+* Drafts appear inside Gmail.
+* Gmail Drafts page shows 0 drafts.
+* Historical drafts are missing.
+* Newly created drafts are also not appearing.
+
+Audit required:
+
+1. Query database directly:
+
+SELECT count(*) FROM drafts;
+
+SELECT id,
+user_id,
+gmail_draft_id,
+email,
+subject,
+status,
+tracking_id,
+created_at
+FROM drafts
+ORDER BY created_at DESC
+LIMIT 50;
+
+2. Verify createGmailDraft flow:
+
+* Gmail API call succeeds?
+* Draft row inserted?
+* gmail_draft_id stored?
+* user_id stored correctly?
+* tracking_id stored correctly?
+
+3. Verify every place that writes to drafts table.
+
+Check:
+
+* /api/drafts/from-template
+* Gmail send-batch mode
+* Campaign Gmail mode
+
+4. Verify GET /api/drafts endpoint:
+
+Return:
+
+* Exact query used
+* All WHERE filters
+* User filtering
+* Pagination logic
+
+5. Explain:
+
+Why drafts exist in Gmail but do not appear in the Gmail Drafts page.
+
+==================================================
+ISSUE #2 — Tracking Events + Notification Bell
+==============================================
+
+Current behavior:
+
+* Tracking pixel is injected correctly.
+* Pixel URL exists in email source.
+* Sent Emails page shows old opens.
+* New opens are not increasing.
+* Notification bell remains empty.
+
+Audit required:
+
+1. Trace entire tracking flow:
+
+GET /api/track/open/:trackingId
+
+Show:
+
+trackingId received
+↓
+draft lookup
+↓
+email_queue lookup
+↓
+email_tracking_events insert
+↓
+notification creation
+
+2. Add temporary logs:
+
+TRACK OPEN RECEIVED
+TRACK OPEN DRAFT FOUND
+TRACK OPEN QUEUE FOUND
+TRACK OPEN EVENT INSERTED
+TRACK OPEN NOTIFICATION CREATED
+TRACK OPEN FAILED
+
+3. Query database:
+
+SELECT count(*) FROM email_tracking_events;
+
+SELECT *
+FROM email_tracking_events
+ORDER BY created_at DESC
+LIMIT 50;
+
+4. Explain exactly why:
+
+* Open count is not increasing.
+* Notification bell remains empty.
+* Tracking pixel loads but events are not recorded.
+
+==================================================
+IMPORTANT
+=========
+
+Before applying any fixes:
+
+Return:
+
+A) Root cause of Gmail Drafts page issue.
+B) Root cause of notification/open tracking issue.
+C) Exact failing route, query, or condition.
+D) Whether old draft/open history can be recovered.
+E) Whether Sent Emails, Drafts, Notifications, and Tracking are all using the SAME DATABASE_URL.
+
+Only after returning the audit should fixes be applied.
