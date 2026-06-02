@@ -1,0 +1,97 @@
+We have isolated the remaining bugs.
+
+BUG #1 — Gmail Drafts page is empty
+
+Facts:
+- Gmail drafts are successfully being created inside Gmail.
+- Gmail Drafts page shows 0 drafts.
+- This affects both historical and newly created drafts.
+- SMTP Sent Emails page is populating correctly.
+
+Audit required:
+
+1. Query database directly:
+   SELECT count(*) FROM drafts;
+
+2. Query Gmail-created draft rows specifically:
+   SELECT id,user_id,gmail_draft_id,email,subject,status,created_at
+   FROM drafts
+   WHERE gmail_draft_id IS NOT NULL
+   ORDER BY created_at DESC
+   LIMIT 50;
+
+3. Verify createGmailDraft path:
+   - Is a drafts row inserted?
+   - Is gmail_draft_id saved?
+   - Is user_id correct?
+   - Is status correct?
+
+4. Verify GET /api/drafts:
+   - Show exact query.
+   - Show all filters.
+   - Verify it is not accidentally excluding Gmail drafts.
+
+5. Explain exactly why Gmail drafts exist in Gmail but do not appear in the Drafts page.
+
+----------------------------------------------------
+
+BUG #2 — Tracking pixel is injected but opens are not recorded
+
+Facts:
+
+- Pixel exists in email source:
+  /api/track/open/{trackingId}
+
+- Sent Emails page still shows old opens.
+- New opens do not increase.
+- Notification bell remains empty.
+
+Audit required:
+
+1. Open tracking.ts
+
+Trace exact flow:
+
+GET /api/track/open/:trackingId
+
+Show:
+- trackingId lookup
+- draft lookup
+- fallback emailQueue lookup
+- email_tracking_events insert
+
+2. Add logging:
+
+TRACK OPEN RECEIVED
+trackingId=...
+
+TRACK OPEN DRAFT FOUND
+draftId=...
+
+TRACK OPEN EVENT INSERTED
+eventId=...
+
+TRACK OPEN FAILED
+reason=...
+
+3. Verify table:
+
+SELECT count(*) FROM email_tracking_events;
+
+4. Open a real tracked email yourself and confirm:
+
+- Route hit?
+- Draft found?
+- Event inserted?
+
+5. Explain precisely where the chain breaks.
+
+----------------------------------------------------
+
+Do not patch anything yet.
+
+First return:
+
+A) Why Gmail Drafts page is empty.
+B) Why open tracking events are not being recorded.
+C) Exact failing query, route, or condition.
