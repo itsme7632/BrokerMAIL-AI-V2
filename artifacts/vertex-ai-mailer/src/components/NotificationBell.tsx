@@ -10,7 +10,7 @@ import { Link } from "wouter";
 
 type NotifType = "open" | "failed_delivery" | "campaign_completed" | "smtp_error" | "draft_completed";
 
-interface Notification {
+interface NotifItem {
   id: string;
   type: NotifType;
   title: string;
@@ -39,21 +39,22 @@ function getAuthHeaders(): Record<string, string> {
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
-const LS_SEEN_KEY = "notif_last_seen_v2";
+const LS_SEEN_KEY    = "notif_last_seen_v2";
+const POLL_INTERVAL  = 20_000; // ms
 
 function getIconForType(type: NotifType, isAppleMail?: boolean) {
   switch (type) {
     case "open":
       return {
-        bg: isAppleMail ? "bg-slate-100" : "bg-emerald-50",
+        bg:   isAppleMail ? "bg-slate-100" : "bg-emerald-50",
         icon: <Eye className={cn("h-3.5 w-3.5", isAppleMail ? "text-slate-400" : "text-emerald-600")} />,
       };
     case "failed_delivery":
-      return { bg: "bg-red-50", icon: <AlertCircle className="h-3.5 w-3.5 text-red-500" /> };
+      return { bg: "bg-red-50",    icon: <AlertCircle className="h-3.5 w-3.5 text-red-500" /> };
     case "campaign_completed":
-      return { bg: "bg-blue-50", icon: <CheckCircle2 className="h-3.5 w-3.5 text-blue-600" /> };
+      return { bg: "bg-blue-50",   icon: <CheckCircle2 className="h-3.5 w-3.5 text-blue-600" /> };
     case "smtp_error":
-      return { bg: "bg-amber-50", icon: <AlertCircle className="h-3.5 w-3.5 text-amber-500" /> };
+      return { bg: "bg-amber-50",  icon: <AlertCircle className="h-3.5 w-3.5 text-amber-500" /> };
     case "draft_completed":
       return { bg: "bg-violet-50", icon: <Mail className="h-3.5 w-3.5 text-violet-600" /> };
     default:
@@ -61,21 +62,92 @@ function getIconForType(type: NotifType, isAppleMail?: boolean) {
   }
 }
 
+// ─── Sound (Web Audio API — no file needed) ───────────────────────────────────
+
+function playNotifSound() {
+  try {
+    const ctx = new AudioContext();
+    const now = ctx.currentTime;
+
+    // Two-tone ding: 880 Hz → 660 Hz
+    [
+      { freq: 880, start: 0,    duration: 0.18 },
+      { freq: 660, start: 0.20, duration: 0.22 },
+    ].forEach(({ freq, start, duration }) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.25, now + start);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + start + duration);
+      osc.start(now + start);
+      osc.stop(now + start + duration);
+    });
+
+    // Close the context when done (after ~0.5 s)
+    setTimeout(() => ctx.close().catch(() => {}), 600);
+  } catch {
+    // AudioContext not available (SSR / sandboxed)
+  }
+}
+
+// ─── Browser Notification ─────────────────────────────────────────────────────
+
+function fireBrowserNotification(item: NotifItem) {
+  if (typeof window === "undefined") return;
+  if (!("Notification" in window))  return;
+  if (window.Notification.permission !== "granted") return;
+
+  try {
+    const bn = new window.Notification(item.title, {
+      body: item.body,
+      icon: "/favicon.ico",
+      tag:  item.id,
+      requireInteraction: false,
+    });
+    bn.onclick = () => {
+      window.focus();
+      if (item.href) window.location.href = item.href;
+      bn.close();
+    };
+  } catch {
+    // Some browsers block programmatic Notification creation
+  }
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function NotificationBell() {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<NotifItem[]>([]);
   const [open,    setOpen]    = useState(false);
   const [loading, setLoading] = useState(false);
-  const dropRef = useRef<HTMLDivElement>(null);
+  const [unread,  setUnread]  = useState(0); // tracked as state so badge updates reliably
 
-  const lastSeen = useRef<string | null>(
+  const dropRef     = useRef<HTMLDivElement>(null);
+  const lastSeenRef = useRef<string | null>(
     typeof window !== "undefined" ? localStorage.getItem(LS_SEEN_KEY) : null
   );
+  // IDs already processed for browser-notification / sound (survives re-renders)
+  const shownIds    = useRef<Set<string>>(new Set());
+  // True until the first successful fetch completes (don't fire notifs on load)
+  const isFirstLoad = useRef(true);
 
-  const unreadCount = notifications.filter(n =>
-    !lastSeen.current || n.timestamp > lastSeen.current
-  ).length;
+  // ── Recompute unread badge whenever notifications or lastSeen change ────────
+  function recomputeUnread(notifs: NotifItem[], seenTs: string | null) {
+    const count = notifs.filter(n => !seenTs || n.timestamp > seenTs).length;
+    setUnread(count);
+  }
+
+  // ── Request browser notification permission once ────────────────────────────
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("Notification" in window))  return;
+    if (window.Notification.permission === "default") {
+      window.Notification.requestPermission();
+    }
+  }, []);
 
   // ─── Fetch ────────────────────────────────────────────────────────────────
   const fetchNotifications = useCallback(async () => {
@@ -85,21 +157,21 @@ export function NotificationBell() {
         fetch("/api/sent-emails?statusFilter=failed&limit=8&page=1", { headers: getAuthHeaders() }),
       ]);
 
-      const notifs: Notification[] = [];
+      const notifs: NotifItem[] = [];
 
       // Email opens
       if (opensRes.ok) {
         const data = await opensRes.json();
         for (const e of (data.events ?? [])) {
           notifs.push({
-            id:         `open-${e.id}`,
-            type:       "open",
-            title:      e.customerName ?? e.email ?? "Someone",
-            body:       e.isAppleMail
+            id:          `open-${e.id}`,
+            type:        "open",
+            title:       e.customerName ?? e.email ?? "Someone",
+            body:        e.isAppleMail
               ? `Possibly opened your email${e.subject ? ` — ${e.subject}` : ""}`
               : `Opened your email${e.subject ? ` — ${e.subject}` : ""}`,
-            timestamp:  e.openedAt,
-            href:       "/sent-emails",
+            timestamp:   e.openedAt,
+            href:        "/sent-emails",
             isAppleMail: e.isAppleMail,
           });
         }
@@ -122,7 +194,27 @@ export function NotificationBell() {
 
       // Sort newest first
       notifs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      setNotifications(notifs.slice(0, 30));
+      const sliced = notifs.slice(0, 30);
+
+      // ── Detect genuinely new notifications (not present on first load) ──────
+      if (!isFirstLoad.current) {
+        const brandNew = sliced.filter(n => !shownIds.current.has(n.id));
+        if (brandNew.length > 0) {
+          // Play sound once per poll cycle (not per item)
+          playNotifSound();
+          // Fire a browser notification for each new item
+          for (const n of brandNew) {
+            fireBrowserNotification(n);
+          }
+        }
+      }
+
+      // Record all current IDs so we don't fire again on the next poll
+      for (const n of sliced) shownIds.current.add(n.id);
+      isFirstLoad.current = false;
+
+      setNotifications(sliced);
+      recomputeUnread(sliced, lastSeenRef.current);
     } catch {
       // silent — notifications are non-critical
     } finally {
@@ -130,18 +222,19 @@ export function NotificationBell() {
     }
   }, []);
 
-  // Initial load + polling
+  // ── Initial load ────────────────────────────────────────────────────────────
   useEffect(() => {
     setLoading(true);
     fetchNotifications();
   }, [fetchNotifications]);
 
+  // ── Background polling every 20 s ───────────────────────────────────────────
   useEffect(() => {
-    const id = setInterval(fetchNotifications, 20_000);
+    const id = setInterval(fetchNotifications, POLL_INTERVAL);
     return () => clearInterval(id);
   }, [fetchNotifications]);
 
-  // Close on outside click
+  // ── Close on outside click ──────────────────────────────────────────────────
   useEffect(() => {
     function handle(e: MouseEvent) {
       if (dropRef.current && !dropRef.current.contains(e.target as Node)) {
@@ -152,24 +245,33 @@ export function NotificationBell() {
     return () => document.removeEventListener("mousedown", handle);
   }, [open]);
 
-  // Mark all as seen when opening
+  // ── Manual refresh ──────────────────────────────────────────────────────────
+  function handleRefresh() {
+    setLoading(true);
+    fetchNotifications();
+  }
+
+  // ── Toggle panel open/closed ────────────────────────────────────────────────
   function handleToggle() {
     if (!open) {
+      // Mark all current notifications as seen
       const now = new Date().toISOString();
       localStorage.setItem(LS_SEEN_KEY, now);
-      lastSeen.current = now;
+      lastSeenRef.current = now;
+      recomputeUnread(notifications, now);
     }
     setOpen(v => !v);
   }
 
+  // ── Mark all read button ────────────────────────────────────────────────────
   function handleMarkAllRead() {
     const now = new Date().toISOString();
     localStorage.setItem(LS_SEEN_KEY, now);
-    lastSeen.current = now;
-    setNotifications(prev => [...prev]); // re-render
+    lastSeenRef.current = now;
+    recomputeUnread(notifications, now);
   }
 
-  const badge = unreadCount > 9 ? "9+" : unreadCount > 0 ? String(unreadCount) : null;
+  const badge = unread > 9 ? "9+" : unread > 0 ? String(unread) : null;
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
@@ -203,14 +305,14 @@ export function NotificationBell() {
             <div className="flex items-center gap-2">
               <Bell className="h-4 w-4 text-slate-700" />
               <span className="text-sm font-semibold text-slate-900">Notifications</span>
-              {unreadCount > 0 && (
+              {unread > 0 && (
                 <span className="px-1.5 py-0.5 text-[10px] font-bold bg-blue-600 text-white rounded-full leading-none">
-                  {unreadCount}
+                  {unread}
                 </span>
               )}
             </div>
             <div className="flex items-center gap-1">
-              {unreadCount > 0 && (
+              {unread > 0 && (
                 <button
                   onClick={handleMarkAllRead}
                   className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors font-medium"
@@ -219,9 +321,11 @@ export function NotificationBell() {
                 </button>
               )}
               <button
-                onClick={() => fetchNotifications()}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-                aria-label="Refresh"
+                onClick={handleRefresh}
+                disabled={loading}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
+                aria-label="Refresh notifications"
+                title="Refresh notifications"
               >
                 <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
               </button>
@@ -261,7 +365,7 @@ export function NotificationBell() {
             ) : (
               <div className="p-2 space-y-0.5">
                 {notifications.map(n => {
-                  const isUnread = !lastSeen.current || n.timestamp > lastSeen.current;
+                  const isUnread = !lastSeenRef.current || n.timestamp > lastSeenRef.current;
                   const { bg, icon } = getIconForType(n.type, n.isAppleMail);
                   return (
                     <a
