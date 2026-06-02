@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, draftsTable, emailTrackingEventsTable } from "@workspace/db";
+import { db, draftsTable, emailTrackingEventsTable, emailQueueTable } from "@workspace/db";
 import { eq, and, gte, desc, count } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
@@ -29,13 +29,62 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
   const ts = new Date();
 
   try {
-    const [draft] = await db
+    let draft = await db
       .select({ id: draftsTable.id, sentAt: draftsTable.sentAt })
       .from(draftsTable)
-      .where(eq(draftsTable.trackingId, trackingId));
+      .where(eq(draftsTable.trackingId, trackingId))
+      .then(rows => rows[0] as { id: number; sentAt: Date | null } | undefined);
+
+    // ── SMTP fallback: if no draft row exists for this trackingId, check whether
+    // a successfully-sent SMTP queue item owns it (can happen when the non-fatal
+    // drafts table insert was silently skipped in the processor).  Lazy-create
+    // a minimal draft row so the event can be recorded and shown in the UI.
+    if (!draft) {
+      const [queueItem] = await db
+        .select({
+          id:         emailQueueTable.id,
+          userId:     emailQueueTable.userId,
+          campaignId: emailQueueTable.campaignId,
+          leadId:     emailQueueTable.leadId,
+          email:      emailQueueTable.email,
+          subject:    emailQueueTable.subject,
+        })
+        .from(emailQueueTable)
+        .where(and(
+          eq(emailQueueTable.trackingId, trackingId),
+          eq(emailQueueTable.status, "success"),
+        ))
+        .limit(1);
+
+      if (queueItem) {
+        logger.info({ trackingId, queueItemId: queueItem.id },
+          "[TRACK/OPEN] No draft row found — lazy-creating from SMTP queue item");
+        try {
+          const [lazyDraft] = await db.insert(draftsTable).values({
+            userId:      queueItem.userId,
+            campaignId:  queueItem.campaignId ?? null,
+            leadId:      queueItem.leadId     ?? null,
+            email:       queueItem.email,
+            subject:     queueItem.subject ?? "",
+            body:        "",
+            status:      "success",
+            trackingId,
+            gmailDraftId: `smtp:recovered:${trackingId}`,
+            sentAt:      new Date(),
+          }).returning({ id: draftsTable.id, sentAt: draftsTable.sentAt });
+          if (lazyDraft) draft = lazyDraft;
+        } catch (lazyErr) {
+          logger.warn({ trackingId, lazyErr },
+            "[TRACK/OPEN] Lazy-create draft failed — open not recorded");
+        }
+      } else {
+        logger.warn({ trackingId, ip, ua },
+          "[TRACK/OPEN] No draft or queue item found for trackingId — pixel served but not recorded");
+      }
+    }
 
     if (!draft) {
-      logger.warn({ trackingId, ip, ua }, "[TRACK/OPEN] No draft found for trackingId — pixel served but not recorded");
+      // nothing to record — fall through to sendPixel
     } else if (!draft.sentAt) {
       logger.info({ trackingId, draftId: draft.id }, "[TRACK/OPEN] Draft not yet marked as sent — preview open ignored");
     } else {

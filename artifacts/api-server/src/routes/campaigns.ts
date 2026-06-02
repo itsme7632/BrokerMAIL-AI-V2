@@ -371,11 +371,14 @@ export async function processCampaignJobQueue(
         }
 
         // ── Non-fatal: drafts tracking record — failure here must never revert a sent email ──
+        // sentAt is set to now() because the email is already delivered; this makes
+        // the open-tracking pixel record events immediately without needing "Mark Sent".
         try {
           await db.insert(draftsTable).values({
             userId: user.id, campaignId, leadId: item.leadId ?? null,
             email: item.email, subject, body: bodyText, status: "success",
             trackingId, gmailDraftId: `smtp:${info.messageId}`,
+            sentAt: new Date(),
           });
         } catch (draftErr) {
           logger.warn({ draftErr, jobId, campaignId, queueItemId: item.id },
@@ -834,11 +837,14 @@ export async function processCampaignFully(
         }
 
         // ── Non-fatal: drafts tracking record — failure here must never revert a sent email ──
+        // sentAt is set to now() because the email is already delivered; this makes
+        // the open-tracking pixel record events immediately without needing "Mark Sent".
         try {
           await db.insert(draftsTable).values({
             userId: user.id, campaignId, leadId: item.leadId ?? null,
             email: item.email, subject, body: bodyText, status: "success",
             trackingId, gmailDraftId: `smtp:${info.messageId}`,
+            sentAt: new Date(),
           });
         } catch (draftErr) {
           logger.warn({ draftErr, campaignId, queueItemId: item.id },
