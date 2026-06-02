@@ -340,20 +340,9 @@ export async function processCampaignJobQueue(
         const info = await sendEmailWithTimeout(box, { to: item.email, subject, text: bodyText, html: trackedHtml });
         logger.info({ jobId, campaignId, queueItemId: item.id, messageId: info.messageId }, "[QUEUE] 6. sendMail() returned successfully");
 
-        if (box.imapHost && box.imapUser && box.imapPassEncrypted) {
-          const raw = buildRawMessage({
-            from: fromAddress, to: item.email, subject,
-            html: trackedHtml, text: bodyText, messageId: info.messageId,
-          });
-          saveToSent(box, raw).catch(() => {});
-        }
-
-        await db.insert(draftsTable).values({
-          userId: user.id, campaignId, leadId: item.leadId ?? null,
-          email: item.email, subject, body: bodyText, status: "success",
-          trackingId, gmailDraftId: `smtp:${info.messageId}`,
-        });
-
+        // ── Critical state updates first — these must succeed before anything optional ──
+        // Updating the queue item to "success" is the idempotency guard: if the process
+        // crashes after this point, the startup recovery will NOT re-send this email.
         await db.update(emailQueueTable)
           .set({ status: "success", sentAt: new Date(), trackingId })
           .where(eq(emailQueueTable.id, item.id));
@@ -372,6 +361,27 @@ export async function processCampaignJobQueue(
           updatedAt: new Date(),
         }).where(eq(campaignsTable.id, campaignId));
 
+        // ── Non-fatal: IMAP sent-folder copy ──
+        if (box.imapHost && box.imapUser && box.imapPassEncrypted) {
+          const raw = buildRawMessage({
+            from: fromAddress, to: item.email, subject,
+            html: trackedHtml, text: bodyText, messageId: info.messageId,
+          });
+          saveToSent(box, raw).catch(() => {});
+        }
+
+        // ── Non-fatal: drafts tracking record — failure here must never revert a sent email ──
+        try {
+          await db.insert(draftsTable).values({
+            userId: user.id, campaignId, leadId: item.leadId ?? null,
+            email: item.email, subject, body: bodyText, status: "success",
+            trackingId, gmailDraftId: `smtp:${info.messageId}`,
+          });
+        } catch (draftErr) {
+          logger.warn({ draftErr, jobId, campaignId, queueItemId: item.id },
+            "[QUEUE] Non-fatal: drafts table insert failed — email WAS sent and queue/lead already marked success");
+        }
+
         batchSent++;
       } catch (err: any) {
         const errMsg   = String(err?.message ?? "Send failed");
@@ -380,10 +390,12 @@ export async function processCampaignJobQueue(
         const errorJson = buildSmtpErrorJson(err, box);
         logger.error({ jobId, campaignId, queueItemId: item.id, to: item.email, errMsg, attempts }, "[QUEUE] 7. sendMail() threw exception");
 
-        await db.insert(draftsTable).values({
-          userId: user.id, campaignId, leadId: item.leadId ?? null,
-          subject, body: bodyText, status: "failed", errorMessage: errMsg,
-        });
+        try {
+          await db.insert(draftsTable).values({
+            userId: user.id, campaignId, leadId: item.leadId ?? null,
+            subject, body: bodyText, status: "failed", errorMessage: errMsg,
+          });
+        } catch { /* non-fatal */ }
 
         if (isProviderRateLimitError(errMsg)) {
           const retryAfter = new Date(Date.now() + 60 * 60_000);
@@ -791,20 +803,9 @@ export async function processCampaignFully(
         const info = await sendEmailWithTimeout(box, { to: item.email, subject, text: bodyText, html: trackedHtml });
         logger.info({ campaignId, queueItemId: item.id, messageId: info.messageId }, "[CAMPAIGN] 6. sendMail() returned successfully");
 
-        if (box.imapHost && box.imapUser && box.imapPassEncrypted) {
-          const raw = buildRawMessage({
-            from: fromAddress, to: item.email, subject,
-            html: trackedHtml, text: bodyText, messageId: info.messageId,
-          });
-          saveToSent(box, raw).catch(() => {});
-        }
-
-        await db.insert(draftsTable).values({
-          userId: user.id, campaignId, leadId: item.leadId ?? null,
-          email: item.email, subject, body: bodyText, status: "success",
-          trackingId, gmailDraftId: `smtp:${info.messageId}`,
-        });
-
+        // ── Critical state updates first — these must succeed before anything optional ──
+        // Updating the queue item to "success" is the idempotency guard: if the process
+        // crashes after this point, the startup recovery will NOT re-send this email.
         await db.update(emailQueueTable)
           .set({ status: "success", sentAt: new Date(), trackingId })
           .where(eq(emailQueueTable.id, item.id));
@@ -823,6 +824,27 @@ export async function processCampaignFully(
           updatedAt: new Date(),
         }).where(eq(campaignsTable.id, campaignId));
 
+        // ── Non-fatal: IMAP sent-folder copy ──
+        if (box.imapHost && box.imapUser && box.imapPassEncrypted) {
+          const raw = buildRawMessage({
+            from: fromAddress, to: item.email, subject,
+            html: trackedHtml, text: bodyText, messageId: info.messageId,
+          });
+          saveToSent(box, raw).catch(() => {});
+        }
+
+        // ── Non-fatal: drafts tracking record — failure here must never revert a sent email ──
+        try {
+          await db.insert(draftsTable).values({
+            userId: user.id, campaignId, leadId: item.leadId ?? null,
+            email: item.email, subject, body: bodyText, status: "success",
+            trackingId, gmailDraftId: `smtp:${info.messageId}`,
+          });
+        } catch (draftErr) {
+          logger.warn({ draftErr, campaignId, queueItemId: item.id },
+            "[CAMPAIGN] Non-fatal: drafts table insert failed — email WAS sent and queue/lead already marked success");
+        }
+
       } catch (err: any) {
         const errMsg      = String(err?.message ?? "Send failed");
         const attempts    = item.attempts + 1;
@@ -830,10 +852,12 @@ export async function processCampaignFully(
         const errorJson   = buildSmtpErrorJson(err, box);
         logger.error({ campaignId, queueItemId: item.id, to: item.email, errMsg, attempts }, "[CAMPAIGN] 7. sendMail() threw exception");
 
-        await db.insert(draftsTable).values({
-          userId: user.id, campaignId, leadId: item.leadId ?? null,
-          subject, body: bodyText, status: "failed", errorMessage: errMsg,
-        });
+        try {
+          await db.insert(draftsTable).values({
+            userId: user.id, campaignId, leadId: item.leadId ?? null,
+            subject, body: bodyText, status: "failed", errorMessage: errMsg,
+          });
+        } catch { /* non-fatal */ }
 
         if (isProviderRateLimitError(errMsg)) {
           const retryAfter = new Date(Date.now() + 60 * 60_000);
@@ -1393,6 +1417,16 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
     }).returning();
 
     for (const lead of nextLeads) {
+      // ── Phase 1: Build the email + create the Gmail draft ──────────────────
+      // This is separated from Phase 2 (DB recording) so that a DB write failure
+      // after a successful draft creation does not make the draft appear as "failed"
+      // in the UI (which was the state-sync bug: draft in Gmail but error toast shown).
+      let gmailDraftId: string | null = null;
+      let generatedSubject = "";
+      let generatedBody    = "";
+      let trackingId       = "";
+      let phase1Error: string | null = null;
+
       try {
         const leadRow: Record<string, string> = {
           name: lead.name ?? "", email: lead.email,
@@ -1406,7 +1440,6 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
         if (campaign.websiteUrl)  leadRow.website_link = campaign.websiteUrl;
         if (campaign.phoneNumber) leadRow.phone_link   = campaign.phoneNumber;
 
-        // Try AI personalisation; fall back to template substitution when no API key is configured
         let generated: { subject: string; body: string };
         try {
           generated = await generatePersonalizedEmail({
@@ -1429,7 +1462,10 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
           }
         }
 
-        const trackingId      = randomUUID();
+        generatedSubject = generated.subject;
+        generatedBody    = generated.body;
+        trackingId       = randomUUID();
+
         const gmailTracking   = await getTrackingSettings();
         const gmailPublicBase = gmailTracking.trackingUrl;
         const gmailCtaButtons = (() => {
@@ -1449,29 +1485,52 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
         const gmailTrackedHtml = gmailPixelTag
           ? (bodyHtml.includes("</body>") ? bodyHtml.replace(/<\/body>/i, `${gmailPixelTag}</body>`) : bodyHtml + gmailPixelTag)
           : bodyHtml;
-        const gmailDraftId = await createGmailDraft(freshUser, lead.email, generated.subject, generated.body, gmailTrackedHtml);
 
-        await db.insert(draftsTable).values({
-          userId: user.id, campaignId, leadId: lead.id,
-          gmailDraftId, email: lead.email, subject: generated.subject, body: generated.body,
-          status: "success", trackingId,
-        });
-        await db.update(leadsTable)
-          .set({ status: "drafted", gmailDraftId, updatedAt: new Date() })
-          .where(eq(leadsTable.id, lead.id));
-
-        succeeded++;
+        gmailDraftId = await createGmailDraft(freshUser, lead.email, generatedSubject, generatedBody, gmailTrackedHtml);
       } catch (err) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        await db.insert(draftsTable).values({
-          userId: user.id, campaignId, leadId: lead.id,
-          email: lead.email, subject: "", body: "", status: "failed", errorMessage: errMsg,
-        });
-        await db.update(leadsTable)
-          .set({ status: "failed", errorMessage: errMsg, updatedAt: new Date() })
-          .where(eq(leadsTable.id, lead.id));
-        errors.push(`Lead ${lead.email}: ${errMsg}`);
+        phase1Error = err instanceof Error ? err.message : String(err);
+      }
+
+      // ── Phase 2: Record outcome in DB ──────────────────────────────────────
+      // DB write failures here are non-fatal for the drafts table but critical for leads.
+      // If the draft was created, we always count it as succeeded — regardless of DB errors.
+      if (phase1Error !== null || gmailDraftId === null) {
+        // Draft creation genuinely failed
+        try {
+          await db.insert(draftsTable).values({
+            userId: user.id, campaignId, leadId: lead.id,
+            email: lead.email, subject: generatedSubject, body: generatedBody,
+            status: "failed", errorMessage: phase1Error ?? "Unknown error",
+          });
+        } catch { /* non-fatal */ }
+        try {
+          await db.update(leadsTable)
+            .set({ status: "failed", errorMessage: phase1Error ?? "Unknown error", updatedAt: new Date() })
+            .where(eq(leadsTable.id, lead.id));
+        } catch { /* non-fatal */ }
+        errors.push(`Lead ${lead.email}: ${phase1Error ?? "Unknown error"}`);
         failed++;
+      } else {
+        // Draft confirmed created in Gmail — record success (DB writes here are non-fatal)
+        try {
+          await db.insert(draftsTable).values({
+            userId: user.id, campaignId, leadId: lead.id,
+            gmailDraftId, email: lead.email, subject: generatedSubject, body: generatedBody,
+            status: "success", trackingId,
+          });
+        } catch (draftErr) {
+          logger.warn({ draftErr, campaignId, leadId: lead.id },
+            "[GMAIL] Non-fatal: drafts table insert failed — draft WAS created in Gmail");
+        }
+        try {
+          await db.update(leadsTable)
+            .set({ status: "drafted", gmailDraftId, updatedAt: new Date() })
+            .where(eq(leadsTable.id, lead.id));
+        } catch (leadErr) {
+          logger.warn({ leadErr, campaignId, leadId: lead.id },
+            "[GMAIL] Non-fatal: lead status update failed — draft WAS created in Gmail");
+        }
+        succeeded++;
       }
     }
 

@@ -356,20 +356,35 @@ router.post("/drafts/from-template", requireAuth, async (req, res): Promise<void
       ? (bodyHtml.includes("</body>") ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`) : bodyHtml + pixelTag)
       : bodyHtml;
 
+    // Phase 1: create the draft in Gmail
+    let gmailDraftId: string | null = null;
+    let phase1Err: string | null = null;
     try {
-      const gmailDraftId = await createGmailDraft(freshUser, email, subject, bodyText, trackedHtml);
-      await db.insert(draftsTable).values({
-        userId: user.id, gmailDraftId, email, subject, body: bodyText, status: "success", trackingId,
-      });
+      gmailDraftId = await createGmailDraft(freshUser, email, subject, bodyText, trackedHtml);
+    } catch (err: any) {
+      phase1Err = String(err?.message ?? "Unknown error");
+    }
+
+    // Phase 2: record outcome — DB failures here must never flip a created draft to "failed"
+    if (phase1Err !== null || gmailDraftId === null) {
+      try {
+        await db.insert(draftsTable).values({
+          userId: user.id, subject, body: bodyText, status: "failed",
+          errorMessage: phase1Err ?? "Unknown error", trackingId,
+        });
+      } catch { /* non-fatal */ }
+      results.push({ email, subject, status: "failed", error: phase1Err ?? "Unknown error" });
+      failed++;
+    } else {
+      try {
+        await db.insert(draftsTable).values({
+          userId: user.id, gmailDraftId, email, subject, body: bodyText, status: "success", trackingId,
+        });
+      } catch (draftErr: any) {
+        logger.warn({ draftErr, email }, "[DRAFTS] Non-fatal: drafts table insert failed — draft WAS created in Gmail");
+      }
       results.push({ email, subject, status: "success", gmailDraftId });
       succeeded++;
-    } catch (err: any) {
-      const errMsg = String(err?.message ?? "Unknown error");
-      await db.insert(draftsTable).values({
-        userId: user.id, subject, body: bodyText, status: "failed", errorMessage: errMsg, trackingId,
-      });
-      results.push({ email, subject, status: "failed", error: errMsg });
-      failed++;
     }
   }
 

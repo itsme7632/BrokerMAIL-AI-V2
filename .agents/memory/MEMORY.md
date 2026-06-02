@@ -5,3 +5,4 @@
 - [Cooldown timer pattern](cooldown-timer-pattern.md) — use ISO timestamp not pre-calculated seconds; useCooldownTimerUntil hook; startCampaignProcessor for recovery
 - [Tracking settings pattern](tracking-settings.md) — DB-driven tracking URL with 30s cache; invalidate on every admin settings save; both processor functions need getTrackingSettings() before their while loop
 - [Gmail Draft variable/formatting fixes](gmail-draft-audit.md) — all 3 Gmail Draft paths had missing quote_id, missing campaign URL vars, wrong body to buildHtmlEmail, missing ctaButtons, missing email field on insert; sentAt column gates tracking
+- [State-sync bug: drafts table in the send try/catch](state-sync-send-fix.md) — db.insert(draftsTable) must never be inside the sendEmail/createGmailDraft try/catch; move critical state updates first, wrap drafts insert in its own non-fatal try/catch
