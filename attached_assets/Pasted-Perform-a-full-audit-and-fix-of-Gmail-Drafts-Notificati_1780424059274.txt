@@ -1,0 +1,98 @@
+Perform a full audit and fix of Gmail Drafts, Notifications, and Campaign Status issues.
+
+DO NOT assume anything is working. Verify each item with evidence.
+
+Issue 1 — Gmail Drafts failing
+
+Current error:
+"OPENAI_API_KEY is not set"
+
+Requirements:
+
+* Trace the exact code path used when creating Gmail Drafts.
+* Show which route/function throws this error.
+* Explain why Gmail Draft creation depends on OPENAI_API_KEY when AI generation is disabled.
+* If built-in templates are being used, Gmail Draft creation must NOT require OpenAI.
+* Remove all unnecessary OpenAI dependency from draft generation.
+* Show the exact file and code changed.
+
+Issue 2 — SMTP emails appearing in Gmail Drafts page
+
+Expected:
+
+* Gmail Drafts page should show only Gmail draft records.
+* SMTP Direct emails must never appear in Gmail Drafts.
+
+Audit:
+
+* Show the query used by Gmail Drafts page.
+* Show why SMTP records are being included.
+* Fix the filtering.
+* Provide before/after query.
+
+Issue 3 — Campaign Retry button
+
+Current:
+Campaign page Retry button redirects to Sent Emails page.
+
+Expected:
+Retry should actually retry the failed lead.
+
+Audit:
+
+* Trace Retry button click.
+* Show route called.
+* Show why it redirects.
+* Fix it so clicking Retry resends the failed lead directly.
+
+Issue 4 — Notification badge
+
+Current:
+Notifications list works.
+Bell badge count does not update correctly.
+
+Requirements:
+
+* Audit notification count query.
+* Audit unread count calculation.
+* Audit polling/websocket refresh logic.
+* Fix badge count so it matches unread notifications.
+* Badge should clear when notifications are marked read.
+
+Issue 5 — Gmail open tracking
+
+Verify with proof:
+
+* Gmail Draft email contains tracking pixel.
+* Pixel URL is correct.
+* Opening Gmail email records an open event.
+* Event appears in email_tracking_events table.
+* Event appears in Sent Emails page.
+* Event appears in Notifications.
+
+Show evidence from:
+
+* email HTML
+* tracking URL
+* database row
+* notification row
+
+Issue 6 — Draft campaign status
+
+Campaigns using Gmail Drafts currently show Failed.
+
+Audit:
+
+* Determine whether drafts were actually created in Gmail.
+* If drafts exist, campaign status should be Completed or Drafted, not Failed.
+* Show exact logic causing failure state.
+* Fix status calculation.
+
+Deliverables:
+
+1. Root cause for each issue
+2. Files changed
+3. Exact code diffs
+4. API routes affected
+5. Screenshots or logs proving each fix
+6. Final verification checklist showing PASS/FAIL for every issue.
