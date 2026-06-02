@@ -318,6 +318,22 @@ export async function processCampaignJobQueue(
         ? (bodyHtml.includes("</body>") ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`) : bodyHtml + pixelTag)
         : bodyHtml;
 
+      // ── [OPEN TRACKING] Diagnostics ────────────────────────────────────────
+      logger.info({
+        sendPath:             "processCampaignJobQueue",
+        jobId, campaignId, queueItemId: item.id,
+        trackingId,
+        openTrackingEnabled:  trackingSettings.openTrackingEnabled,
+        clickTrackingEnabled: trackingSettings.clickTrackingEnabled,
+        publicBase,
+        pixelTagLength:       pixelTag.length,
+        pixelTag:             pixelTag || "(EMPTY — pixel NOT injected)",
+        bodyHtmlHasBody:      bodyHtml.includes("</body>"),
+        trackedHtmlHasPixel:  trackedHtml.includes("/api/track/open/"),
+        htmlTail:             trackedHtml.slice(-600),
+      }, "[OPEN TRACKING] Pre-sendMail diagnostics");
+      // ── End diagnostics ────────────────────────────────────────────────────
+
       logger.info({ jobId, campaignId, queueItemId: item.id, to: item.email, subject, ctaCount: ctaButtons.length, smtpHost: box.smtpHost, smtpPort: box.smtpPort, encryption: box.smtpSecure }, "[SMTP SEND] sendMail starting — host/port/ctaCount for verification");
 
       try {
@@ -752,6 +768,22 @@ export async function processCampaignFully(
       const trackedHtml = pixelTag
         ? (bodyHtml.includes("</body>") ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`) : bodyHtml + pixelTag)
         : bodyHtml;
+
+      // ── [OPEN TRACKING] Diagnostics ────────────────────────────────────────
+      logger.info({
+        sendPath:             "processCampaignFully",
+        campaignId, queueItemId: item.id,
+        trackingId,
+        openTrackingEnabled:  trackingSettings.openTrackingEnabled,
+        clickTrackingEnabled: trackingSettings.clickTrackingEnabled,
+        publicBase,
+        pixelTagLength:       pixelTag.length,
+        pixelTag:             pixelTag || "(EMPTY — pixel NOT injected)",
+        bodyHtmlHasBody:      bodyHtml.includes("</body>"),
+        trackedHtmlHasPixel:  trackedHtml.includes("/api/track/open/"),
+        htmlTail:             trackedHtml.slice(-600),
+      }, "[OPEN TRACKING] Pre-sendMail diagnostics");
+      // ── End diagnostics ────────────────────────────────────────────────────
 
       logger.info({ campaignId, queueItemId: item.id, to: item.email, subject, ctaCount: ctaButtonsFull.length, smtpHost: box.smtpHost, smtpPort: box.smtpPort, encryption: box.smtpSecure }, "[SMTP SEND] sendMail starting — host/port/ctaCount for verification");
 
