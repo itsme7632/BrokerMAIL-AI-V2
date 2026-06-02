@@ -6,7 +6,8 @@ import {
   CreateLeadBody, UpdateLeadBody, GetLeadParams, UpdateLeadParams, DeleteLeadParams,
   BulkImportLeadsBody, RetryLeadDraftParams,
 } from "@workspace/api-zod";
-import { generatePersonalizedEmail } from "../lib/ai";
+import { generatePersonalizedEmail, AiConfigError } from "../lib/ai";
+import { replaceVarsText } from "../lib/email-html";
 import { createGmailDraft } from "../lib/gmail";
 
 const router: IRouter = Router();
@@ -146,12 +147,30 @@ router.post("/leads/:id/retry-draft", requireAuth, async (req, res): Promise<voi
   if (!template) { res.status(400).json({ error: "No template found" }); return; }
 
   try {
-    const generated = await generatePersonalizedEmail({
-      name: lead.name, email: lead.email, vehicle: lead.vehicle, route: lead.route,
-      pickup: lead.pickup, delivery: lead.delivery, price: lead.price, notes: lead.notes,
-      templateSubject: template.subject, templateBody: template.body, tone: "professional",
-    });
-    const gmailDraftId = await createGmailDraft(user, lead.email, generated.subject, generated.body);
+    // Build template-substituted content as fallback (no AI required)
+    const leadVars: Record<string, string> = {
+      name: lead.name ?? "", email: lead.email ?? "",
+      vehicle: lead.vehicle ?? "", route: lead.route ?? "",
+      pickup: lead.pickup ?? "", delivery: lead.delivery ?? "",
+      price: lead.price ?? "", notes: lead.notes ?? "",
+    };
+    let subject = replaceVarsText(template.subject, leadVars);
+    let body    = replaceVarsText(template.body,    leadVars);
+
+    try {
+      const generated = await generatePersonalizedEmail({
+        name: lead.name, email: lead.email, vehicle: lead.vehicle, route: lead.route,
+        pickup: lead.pickup, delivery: lead.delivery, price: lead.price, notes: lead.notes,
+        templateSubject: template.subject, templateBody: template.body, tone: "professional",
+      });
+      subject = generated.subject;
+      body    = generated.body;
+    } catch (aiErr) {
+      if (!(aiErr instanceof AiConfigError)) throw aiErr;
+      // No OPENAI_API_KEY — template substitution fallback already computed above
+    }
+
+    const gmailDraftId = await createGmailDraft(user, lead.email, subject, body);
     await db.update(leadsTable).set({ status: "drafted", gmailDraftId, errorMessage: null, updatedAt: new Date() }).where(eq(leadsTable.id, lead.id));
     res.json({ success: true, gmailDraftId, error: null });
   } catch (err) {

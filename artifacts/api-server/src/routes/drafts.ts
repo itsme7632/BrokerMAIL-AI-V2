@@ -1,6 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db, draftsTable, usersTable, templatesTable, activityTable, emailTrackingEventsTable } from "@workspace/db";
-import { eq, and, count, desc, inArray } from "drizzle-orm";
+import { eq, and, count, desc, inArray, sql } from "drizzle-orm";
+import { getTrackingSettings } from "../lib/tracking-settings";
+import { logger } from "../lib/logger";
 import { requireAuth } from "../lib/auth";
 import { GetDraftParams } from "@workspace/api-zod";
 import { createGmailDraft } from "../lib/gmail";
@@ -84,6 +86,8 @@ router.get("/drafts", requireAuth, async (req, res): Promise<void> => {
   const conditions: Parameters<typeof and>[0][] = [eq(draftsTable.userId, user.id)];
   if (status)     conditions.push(eq(draftsTable.status, status));
   if (campaignId) conditions.push(eq(draftsTable.campaignId, campaignId));
+  // Exclude SMTP-sent records (gmailDraftId starts with 'smtp:') — those belong to Sent Emails, not Gmail Drafts
+  conditions.push(sql`(${draftsTable.gmailDraftId} IS NULL OR ${draftsTable.gmailDraftId} NOT LIKE 'smtp:%')`);
 
   const [totalResult] = await db
     .select({ count: count() })
@@ -292,8 +296,10 @@ router.post("/drafts/from-template", requireAuth, async (req, res): Promise<void
     catch { return []; }
   })();
   logger.info({ templateId, ctaCount: ctaButtonsFromTemplate.length }, "[CTA LOAD] Gmail drafts from-template — loading CTA buttons");
-  const buildOpts = { style: emailStyle, useSignatureBuilder: useSig, ctaButtons: ctaButtonsFromTemplate };
-  const baseUrl   = `${req.protocol}://${req.get("host")}`;
+
+  // Load admin tracking settings so pixel/click URLs use the configured domain
+  const trackingSettings = await getTrackingSettings();
+  const publicBase = trackingSettings.trackingUrl;
 
   const results: {
     email: string; subject: string; status: string; gmailDraftId?: string; error?: string;
@@ -314,10 +320,21 @@ router.post("/drafts/from-template", requireAuth, async (req, res): Promise<void
 
     const subject  = replaceVarsText(template.subject, row);
     const bodyText = replaceVarsText(template.body, row);
-    const bodyHtml = buildHtmlEmail(template.body, row, branding, buildOpts);
 
-    const trackingId  = randomUUID();
-    const trackedHtml = injectTracking(bodyHtml, trackingId, baseUrl);
+    const trackingId = randomUUID();
+    const bodyHtml = buildHtmlEmail(template.body, row, branding, {
+      style: emailStyle,
+      useSignatureBuilder: useSig,
+      ctaButtons: ctaButtonsFromTemplate,
+      trackingId: trackingSettings.clickTrackingEnabled ? trackingId : undefined,
+      publicBase: trackingSettings.clickTrackingEnabled ? publicBase : undefined,
+    });
+    const pixelTag = trackingSettings.openTrackingEnabled
+      ? `<img src="${publicBase}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none!important;width:1px!important;height:1px!important;border:0;" />`
+      : "";
+    const trackedHtml = pixelTag
+      ? (bodyHtml.includes("</body>") ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`) : bodyHtml + pixelTag)
+      : bodyHtml;
 
     try {
       const gmailDraftId = await createGmailDraft(freshUser, email, subject, bodyText, trackedHtml);

@@ -13,7 +13,7 @@ import {
   UpdateCampaignParams, DeleteCampaignParams,
   GenerateCampaignDraftsParams, GenerateCampaignDraftsBody,
 } from "@workspace/api-zod";
-import { generatePersonalizedEmail } from "../lib/ai";
+import { generatePersonalizedEmail, AiConfigError } from "../lib/ai";
 import { createGmailDraft } from "../lib/gmail";
 import { buildHtmlEmail, replaceVarsText, formatPrice, type BrandingSettings } from "../lib/email-html";
 import type { User } from "@workspace/db";
@@ -2022,22 +2022,36 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
 
   for (const lead of leads) {
     try {
-      const generated = await generatePersonalizedEmail({
-        name: lead.name, email: lead.email,
-        vehicle: lead.vehicle, route: lead.route,
-        pickup: lead.pickup, delivery: lead.delivery,
-        price: lead.price, notes: lead.notes,
-        templateSubject: template.subject, templateBody: template.body,
-        tone: body.data.tone ?? "professional",
-        customPrompt: body.data.customPrompt,
-      });
-
       const leadRow: Record<string, string> = {
         name: lead.name ?? "", email: lead.email ?? "",
         vehicle: lead.vehicle ?? "", route: lead.route ?? "",
         pickup: lead.pickup ?? "", delivery: lead.delivery ?? "",
         price: lead.price ?? "", notes: lead.notes ?? "",
       };
+
+      // Try AI personalisation; fall back to template substitution when no API key is set
+      let generated: { subject: string; body: string };
+      try {
+        generated = await generatePersonalizedEmail({
+          name: lead.name, email: lead.email,
+          vehicle: lead.vehicle, route: lead.route,
+          pickup: lead.pickup, delivery: lead.delivery,
+          price: lead.price, notes: lead.notes,
+          templateSubject: template.subject, templateBody: template.body,
+          tone: body.data.tone ?? "professional",
+          customPrompt: body.data.customPrompt,
+        });
+      } catch (aiErr) {
+        if (aiErr instanceof AiConfigError) {
+          logger.info({ leadId: lead.id }, "[DRAFTS] OPENAI_API_KEY not set — using template substitution fallback");
+          generated = {
+            subject: replaceVarsText(template.subject, leadRow),
+            body:    replaceVarsText(template.body, leadRow),
+          };
+        } else {
+          throw aiErr;
+        }
+      }
 
       const trackingId       = randomUUID();
       const gDraftTracking   = await getTrackingSettings();
@@ -2094,6 +2108,118 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
   });
 
   res.json({ total: leads.length, succeeded, failed, errors });
+});
+
+// ─── Retry a failed lead (SMTP) ───────────────────────────────────────────────
+
+router.post("/campaigns/:id/leads/:leadId/retry", requireAuth, async (req, res): Promise<void> => {
+  const user       = req.user!;
+  const campaignId = parseInt(req.params.id, 10);
+  const leadId     = parseInt(req.params.leadId, 10);
+  if (!campaignId || !leadId) { res.status(400).json({ error: "Invalid campaign or lead id" }); return; }
+
+  const [campaign] = await db.select().from(campaignsTable)
+    .where(and(eq(campaignsTable.id, campaignId), eq(campaignsTable.userId, user.id)));
+  if (!campaign) { res.status(404).json({ error: "Campaign not found" }); return; }
+
+  const [lead] = await db.select().from(leadsTable)
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.campaignId, campaignId), eq(leadsTable.userId, user.id)));
+  if (!lead) { res.status(404).json({ error: "Lead not found" }); return; }
+
+  // Find the most recent failed queue item for this lead
+  const [queueItem] = await db.select().from(emailQueueTable)
+    .where(and(
+      eq(emailQueueTable.leadId, leadId),
+      eq(emailQueueTable.campaignId, campaignId),
+      eq(emailQueueTable.status, "failed"),
+    ))
+    .orderBy(desc(emailQueueTable.id))
+    .limit(1);
+  if (!queueItem) { res.status(404).json({ error: "No failed email found for this lead" }); return; }
+
+  const [mailbox] = await db.select().from(mailboxesTable)
+    .where(and(eq(mailboxesTable.id, queueItem.mailboxId), eq(mailboxesTable.userId, user.id)));
+  if (!mailbox?.smtpHost) { res.status(400).json({ error: "Mailbox not configured" }); return; }
+
+  const [template] = await db.select().from(templatesTable)
+    .where(and(eq(templatesTable.id, queueItem.templateId), eq(templatesTable.userId, user.id)));
+  if (!template) { res.status(404).json({ error: "Template not found" }); return; }
+
+  const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+  if (!freshUser) { res.status(404).json({ error: "User not found" }); return; }
+
+  const branding = userBranding(freshUser);
+  let row: Record<string, string> = {};
+  try { row = JSON.parse(queueItem.rowDataJson); } catch {}
+  if (row.price) row.price = formatPrice(row.price);
+  if (campaign.bookingUrl)  row.booking_link = campaign.bookingUrl;
+  if (campaign.quoteUrl)    row.quote_link   = campaign.quoteUrl;
+  if (campaign.websiteUrl)  row.website_link = campaign.websiteUrl;
+  if (campaign.phoneNumber) row.phone_link   = campaign.phoneNumber;
+
+  const trackingId     = randomUUID();
+  const retryTracking  = await getTrackingSettings();
+  const publicBase     = retryTracking.trackingUrl;
+
+  const ctaButtons = (() => {
+    try { return template.ctaButtonsJson ? JSON.parse(template.ctaButtonsJson) : []; }
+    catch { return []; }
+  })();
+
+  const subject  = replaceVarsText(template.subject, row);
+  const bodyText = replaceVarsText(template.body, row);
+  const bodyHtml = buildHtmlEmail(template.body, row, branding, {
+    style: (queueItem.style ?? "clean") as any,
+    useSignatureBuilder: queueItem.useSignatureBuilder,
+    ctaButtons,
+    trackingId: retryTracking.clickTrackingEnabled ? trackingId : undefined,
+    publicBase: retryTracking.clickTrackingEnabled ? publicBase : undefined,
+  });
+
+  const pixelTag    = retryTracking.openTrackingEnabled
+    ? `<img src="${publicBase}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none!important;width:1px!important;height:1px!important;border:0;" />`
+    : "";
+  const trackedHtml = pixelTag
+    ? (bodyHtml.includes("</body>") ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`) : bodyHtml + pixelTag)
+    : bodyHtml;
+
+  logger.info({ campaignId, leadId, queueItemId: queueItem.id, email: queueItem.email }, "[RETRY-LEAD] Retrying failed lead");
+
+  try {
+    await sendEmail(mailbox, { to: queueItem.email, subject, text: bodyText, html: trackedHtml });
+
+    await db.insert(draftsTable).values({
+      userId: user.id, campaignId, leadId,
+      email: queueItem.email, subject, body: bodyText,
+      status: "success", trackingId,
+      gmailDraftId: `smtp:retry:lead:${leadId}`,
+    });
+
+    const now = new Date();
+    await db.update(emailQueueTable)
+      .set({ status: "success", sentAt: now, trackingId, lastError: null, attempts: queueItem.attempts + 1 })
+      .where(eq(emailQueueTable.id, queueItem.id));
+
+    await db.update(leadsTable)
+      .set({ status: "sent", sentAt: now, errorMessage: null, updatedAt: now })
+      .where(eq(leadsTable.id, leadId));
+
+    await db.update(campaignsTable).set({
+      sentCount:   sql`${campaignsTable.sentCount} + 1`,
+      failedCount: sql`GREATEST(${campaignsTable.failedCount} - 1, 0)`,
+      updatedAt: new Date(),
+    }).where(eq(campaignsTable.id, campaignId));
+
+    logger.info({ campaignId, leadId, trackingId }, "[RETRY-LEAD] Lead retried successfully");
+    res.json({ ok: true, sentAt: now.toISOString(), trackingId });
+  } catch (err: any) {
+    const errMsg = String(err?.message ?? "Send failed");
+    await db.update(emailQueueTable)
+      .set({ attempts: queueItem.attempts + 1, lastError: errMsg })
+      .where(eq(emailQueueTable.id, queueItem.id));
+    logger.error({ campaignId, leadId, errMsg }, "[RETRY-LEAD] Retry failed");
+    res.status(500).json({ error: errMsg });
+  }
 });
 
 // ─── Campaign Analytics ───────────────────────────────────────────────────────

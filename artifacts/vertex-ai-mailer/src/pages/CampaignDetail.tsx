@@ -173,6 +173,7 @@ export default function CampaignDetail() {
   const [isCancelling, setIsCancelling]   = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [diagnostics, setDiagnostics]     = useState<CampaignDiagnostics | null>(null);
+  const [retryingLeadId, setRetryingLeadId] = useState<number | null>(null);
 
   const cooldownLeft = useCooldownTimerUntil(progress?.cooldownUntil ?? null);
 
@@ -424,6 +425,30 @@ export default function CampaignDetail() {
       toast({ variant: "destructive", title: "Cancel Error", description: err.message });
     } finally {
       setIsCancelling(false);
+    }
+  }
+
+  // ─── Retry a single failed lead ──────────────────────────────────────────────
+  async function handleRetryLead(leadId: number) {
+    setRetryingLeadId(leadId);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res   = await fetch(`/api/campaigns/${campaignId}/leads/${leadId}/retry`, {
+        method:  "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Retry failed");
+      toast({ title: "Email sent", description: "The lead's email was successfully retried." });
+      await Promise.all([
+        fetchProgress(),
+        queryClient.invalidateQueries({ queryKey: getGetLeadsQueryKey({ campaignId, page: leadsPage, limit: 10 }) }),
+        queryClient.invalidateQueries({ queryKey: getGetCampaignQueryKey(campaignId) }),
+      ]);
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Retry failed", description: err.message });
+    } finally {
+      setRetryingLeadId(null);
     }
   }
 
@@ -1045,10 +1070,16 @@ export default function CampaignDetail() {
                             </td>
                             <td className="px-4 py-3">
                               {lead.status === "failed" && (
-                                <Button asChild variant="ghost" size="sm" className="h-6 px-2 text-xs rounded-lg text-red-600 hover:bg-red-50 gap-1">
-                                  <Link href="/sent-emails">
-                                    <RotateCcw className="h-3 w-3" /> Retry
-                                  </Link>
+                                <Button
+                                  variant="ghost" size="sm"
+                                  className="h-6 px-2 text-xs rounded-lg text-red-600 hover:bg-red-50 gap-1"
+                                  disabled={retryingLeadId === lead.id}
+                                  onClick={() => handleRetryLead(lead.id)}
+                                >
+                                  {retryingLeadId === lead.id
+                                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                                    : <RotateCcw className="h-3 w-3" />}
+                                  {retryingLeadId === lead.id ? "Sending…" : "Retry"}
                                 </Button>
                               )}
                             </td>
