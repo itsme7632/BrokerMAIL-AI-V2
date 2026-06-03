@@ -360,7 +360,17 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  // Proxy-safe method override: convert PATCH/PUT/DELETE → POST + header so the
+  // request passes through reverse proxies (e.g. Replit deployment) that only
+  // forward GET and POST. The API server reads X-HTTP-Method-Override and routes
+  // accordingly. GET and POST are always sent as-is.
+  const wireMethod =
+    method === "PATCH" || method === "PUT" || method === "DELETE" ? "POST" : method;
+  if (wireMethod !== method) {
+    headers.set("x-http-method-override", method);
+  }
+
+  const response = await fetch(input, { ...init, method: wireMethod, headers });
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);

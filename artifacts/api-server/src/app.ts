@@ -32,6 +32,20 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+// Method-override: the API client sends PATCH/PUT/DELETE as POST +
+// X-HTTP-Method-Override so requests pass through deployment proxies that
+// only forward GET/POST. Remap the method here before routing so every
+// route handler sees the original semantic method.
+app.use((req, _res, next) => {
+  if (req.method === "POST") {
+    const override = req.headers["x-http-method-override"];
+    if (typeof override === "string" && /^(PATCH|PUT|DELETE)$/i.test(override)) {
+      req.method = override.toUpperCase();
+    }
+  }
+  next();
+});
+
 app.use(maintenanceMiddleware);
 app.use("/api", router);
 
