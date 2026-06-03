@@ -391,7 +391,7 @@ router.post("/drafts/from-template", requireAuth, async (req, res): Promise<void
     } else {
       try {
         await db.insert(draftsTable).values({
-          userId: user.id, gmailDraftId, email, subject, body: bodyText, status: "success", trackingId,
+          userId: user.id, gmailDraftId, email, subject, body: bodyText, status: "success", trackingId, sentAt: new Date(),
         });
       } catch (draftErr: any) {
         logger.warn({ draftErr, email }, "[DRAFTS] Non-fatal: drafts table insert failed — draft WAS created in Gmail");

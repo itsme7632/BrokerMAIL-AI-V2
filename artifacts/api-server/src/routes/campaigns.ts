@@ -1522,7 +1522,7 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
           await db.insert(draftsTable).values({
             userId: user.id, campaignId, leadId: lead.id,
             gmailDraftId, email: lead.email, subject: generatedSubject, body: generatedBody,
-            status: "success", trackingId,
+            status: "success", trackingId, sentAt: new Date(),
           });
         } catch (draftErr) {
           logger.warn({ draftErr, campaignId, leadId: lead.id },
@@ -2198,7 +2198,7 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
       await db.insert(draftsTable).values({
         userId: user.id, campaignId: campaign.id, leadId: lead.id,
         gmailDraftId, email: lead.email, subject: generated.subject, body: generated.body,
-        status: "success", trackingId,
+        status: "success", trackingId, sentAt: new Date(),
       });
       await db.update(leadsTable)
         .set({ status: "drafted", gmailDraftId, updatedAt: new Date() })
@@ -2349,7 +2349,7 @@ router.post("/campaigns/:id/leads/:leadId/retry", requireAuth, async (req, res):
       const gmailDraftId = await createGmailDraft(gFreshUser, lead.email!, gGenerated.subject, gGenerated.body, gTrackedHtml);
 
       await db.update(draftsTable)
-        .set({ status: "success", gmailDraftId, subject: gGenerated.subject, body: gGenerated.body, trackingId: gTrackingId, errorMessage: null })
+        .set({ status: "success", gmailDraftId, subject: gGenerated.subject, body: gGenerated.body, trackingId: gTrackingId, errorMessage: null, sentAt: new Date() })
         .where(eq(draftsTable.id, failedDraft.id));
 
       await db.update(leadsTable)
