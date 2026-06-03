@@ -47,10 +47,25 @@ async function handleUpdateTemplate(req: any, res: any): Promise<void> {
   res.json({ ...template, createdAt: template.createdAt.toISOString(), updatedAt: template.updatedAt.toISOString() });
 }
 
-// PATCH is the REST-correct method; POST is a proxy-safe alias for deployed environments
-// where reverse proxies may block non-GET/POST methods (Replit deployment proxy behavior)
 router.patch("/templates/:id", requireAuth, handleUpdateTemplate);
-router.post("/templates/:id", requireAuth, handleUpdateTemplate);
+
+// Proxy-safe aliases: POST with id in body (avoids numeric URL segments blocked by deployment proxy)
+router.post("/templates/save", requireAuth, async (req: any, res: any): Promise<void> => {
+  if (!req.body.id) { res.status(400).json({ error: "id is required" }); return; }
+  req.params.id = String(req.body.id);
+  return handleUpdateTemplate(req, res);
+});
+
+router.post("/templates/remove", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+  const id = parseInt(req.body.id, 10);
+  if (!id) { res.status(400).json({ error: "id is required" }); return; }
+  const [template] = await db.delete(templatesTable)
+    .where(and(eq(templatesTable.id, id), eq(templatesTable.userId, user.id)))
+    .returning();
+  if (!template) { res.status(404).json({ error: "Template not found" }); return; }
+  res.json({ message: "Template deleted" });
+});
 
 router.delete("/templates/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;

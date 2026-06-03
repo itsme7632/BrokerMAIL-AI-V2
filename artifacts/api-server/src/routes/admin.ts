@@ -160,9 +160,56 @@ router.patch("/admin/users/:id", requireAdmin, async (req, res): Promise<void> =
   res.json({ ok: true });
 });
 
+// Proxy-safe alias: POST /admin/users/save (id in body)
+router.post("/admin/users/save", requireAdmin, async (req, res): Promise<void> => {
+  const targetId = parseInt(req.body.id, 10);
+  const admin    = req.user!;
+  if (!targetId) { res.status(400).json({ error: "id is required" }); return; }
+  if (targetId === admin.id && req.body.role === "user") {
+    res.status(400).json({ error: "Cannot remove your own admin role." });
+    return;
+  }
+  const { plan, credits, role, status } = req.body as Record<string, string | number>;
+  await db.update(usersTable).set({
+    ...(plan    !== undefined && { plan:    String(plan) }),
+    ...(credits !== undefined && { credits: Number(credits) }),
+    ...(role    !== undefined && { role:    String(role) }),
+    ...(status  !== undefined && { status:  String(status) }),
+    updatedAt: new Date(),
+  }).where(eq(usersTable.id, targetId));
+
+  await db.insert(systemLogsTable).values({
+    userId:      admin.id,
+    type:        "admin_user_update",
+    severity:    "info",
+    description: `Admin updated user #${targetId} — ${JSON.stringify({ plan, credits, role, status })}`,
+  });
+
+  res.json({ ok: true });
+});
+
 router.delete("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => {
   const targetId = parseInt(req.params.id, 10);
   const admin    = req.user!;
+  if (targetId === admin.id) {
+    res.status(400).json({ error: "Cannot delete your own account from the admin panel." });
+    return;
+  }
+  await db.delete(usersTable).where(eq(usersTable.id, targetId));
+  await db.insert(systemLogsTable).values({
+    userId:      admin.id,
+    type:        "admin_user_delete",
+    severity:    "warn",
+    description: `Admin deleted user #${targetId}`,
+  });
+  res.json({ ok: true });
+});
+
+// Proxy-safe alias: POST /admin/users/remove (id in body)
+router.post("/admin/users/remove", requireAdmin, async (req, res): Promise<void> => {
+  const targetId = parseInt(req.body.id, 10);
+  const admin    = req.user!;
+  if (!targetId) { res.status(400).json({ error: "id is required" }); return; }
   if (targetId === admin.id) {
     res.status(400).json({ error: "Cannot delete your own account from the admin panel." });
     return;
@@ -414,6 +461,48 @@ router.get("/admin/settings", requireAdmin, async (_req, res): Promise<void> => 
   res.json({ ...DEFAULT_SETTINGS, ...stored });
 });
 
+// Proxy-safe alias: POST /admin/settings (same as PUT)
+router.post("/admin/settings", requireAdmin, async (req, res): Promise<void> => {
+  const admin   = req.user!;
+  const updates = req.body as Record<string, string>;
+
+  if (updates.maintenanceMode === "true") {
+    const [existing] = await db
+      .select({ value: adminSettingsTable.value })
+      .from(adminSettingsTable)
+      .where(eq(adminSettingsTable.key, "maintenanceMode"));
+    if (!existing || existing.value !== "true") {
+      updates.maintenanceStartedAt = new Date().toISOString();
+    }
+  }
+  if (updates.maintenanceMode === "false") {
+    updates.maintenanceStartedAt = "";
+  }
+
+  for (const [key, value] of Object.entries(updates)) {
+    await db.insert(adminSettingsTable)
+      .values({ key, value: String(value), updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: adminSettingsTable.key,
+        set:    { value: String(value), updatedAt: new Date() },
+      });
+  }
+
+  const { invalidateMaintenanceCache } = await import("../lib/maintenance");
+  invalidateMaintenanceCache();
+  const { invalidateTrackingSettingsCache } = await import("../lib/tracking-settings");
+  invalidateTrackingSettingsCache();
+
+  await db.insert(systemLogsTable).values({
+    userId:      admin.id,
+    type:        "admin_settings_update",
+    severity:    "info",
+    description: `Admin updated platform settings: ${Object.keys(updates).join(", ")}`,
+  });
+
+  res.json({ ok: true });
+});
+
 router.put("/admin/settings", requireAdmin, async (req, res): Promise<void> => {
   const admin   = req.user!;
   const updates = req.body as Record<string, string>;
@@ -489,6 +578,34 @@ router.put("/admin/plans/:id", requireAdmin, async (req, res): Promise<void> => 
     req.body as Record<string, number>;
 
   await db.update(plansTable).set({
+    ...(monthlyEmailLimit  !== undefined && { monthlyEmailLimit:  Number(monthlyEmailLimit) }),
+    ...(smtpAccountsLimit  !== undefined && { smtpAccountsLimit:  Number(smtpAccountsLimit) }),
+    ...(campaignsLimit     !== undefined && { campaignsLimit:     Number(campaignsLimit) }),
+    ...(batchSendLimit     !== undefined && { batchSendLimit:     Number(batchSendLimit) }),
+    updatedAt: new Date(),
+  }).where(eq(plansTable.id, id));
+
+  await db.insert(systemLogsTable).values({
+    userId:      admin.id,
+    type:        "admin_plan_update",
+    severity:    "info",
+    description: `Admin updated plan #${id}`,
+  });
+
+  res.json({ ok: true });
+});
+
+// Proxy-safe alias: POST /admin/plans/save (id in body)
+router.post("/admin/plans/save", requireAdmin, async (req, res): Promise<void> => {
+  const id    = parseInt(req.body.id, 10);
+  const admin = req.user!;
+  if (!id) { res.status(400).json({ error: "id is required" }); return; }
+  const { monthlyEmailLimit, smtpAccountsLimit, campaignsLimit, batchSendLimit, name, description } =
+    req.body as Record<string, string | number>;
+
+  await db.update(plansTable).set({
+    ...(name               !== undefined && { name:               String(name) }),
+    ...(description        !== undefined && { description:        String(description) }),
     ...(monthlyEmailLimit  !== undefined && { monthlyEmailLimit:  Number(monthlyEmailLimit) }),
     ...(smtpAccountsLimit  !== undefined && { smtpAccountsLimit:  Number(smtpAccountsLimit) }),
     ...(campaignsLimit     !== undefined && { campaignsLimit:     Number(campaignsLimit) }),
@@ -729,6 +846,32 @@ router.patch("/admin/support/:id", requireAdmin, async (req, res): Promise<void>
   res.json({ ok: true });
 });
 
+// Proxy-safe aliases: POST with id in body
+router.post("/admin/support/save", requireAdmin, async (req, res): Promise<void> => {
+  const id    = parseInt(req.body.id, 10);
+  const admin = req.user!;
+  if (!id) { res.status(400).json({ error: "id is required" }); return; }
+  const { status, priority, adminNote, assignedTo } = req.body as Record<string, string>;
+
+  await db.update(supportTicketsTable).set({
+    ...(status     !== undefined && { status }),
+    ...(priority   !== undefined && { priority }),
+    ...(adminNote  !== undefined && { adminNote }),
+    ...(assignedTo !== undefined && { assignedTo }),
+    ...(status === "resolved" && { resolvedAt: new Date() }),
+    updatedAt: new Date(),
+  }).where(eq(supportTicketsTable.id, id));
+
+  await db.insert(systemLogsTable).values({
+    userId:      admin.id,
+    type:        "support_ticket_update",
+    severity:    "info",
+    description: `Admin updated ticket #${id} — status: ${status ?? "—"}, priority: ${priority ?? "—"}`,
+  });
+
+  res.json({ ok: true });
+});
+
 router.post("/admin/support/:id/reply", requireAdmin, async (req, res): Promise<void> => {
   const id    = parseInt(req.params.id, 10);
   const admin = req.user!;
@@ -759,6 +902,13 @@ router.post("/admin/support/:id/reply", requireAdmin, async (req, res): Promise<
 
 router.delete("/admin/support/:id", requireAdmin, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
+  await db.delete(supportTicketsTable).where(eq(supportTicketsTable.id, id));
+  res.json({ ok: true });
+});
+
+router.post("/admin/support/remove", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.body.id, 10);
+  if (!id) { res.status(400).json({ error: "id is required" }); return; }
   await db.delete(supportTicketsTable).where(eq(supportTicketsTable.id, id));
   res.json({ ok: true });
 });

@@ -48,9 +48,10 @@ export default function Drafts() {
   async function handleMarkSent(draftId: number) {
     setMarkingSent(prev => new Set(prev).add(draftId));
     try {
-      await fetch(`/api/drafts/${draftId}/mark-sent`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      await fetch(`/api/drafts/mark-sent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("auth_token") ?? ""}` },
+        body: JSON.stringify({ id: draftId }),
       });
       refetch();
     } finally {

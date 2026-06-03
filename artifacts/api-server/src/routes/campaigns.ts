@@ -2076,6 +2076,32 @@ router.delete("/campaigns/:id", requireAuth, async (req, res): Promise<void> => 
   res.json({ message: "Campaign deleted" });
 });
 
+// Proxy-safe aliases: POST with id in body (avoids numeric URL segments blocked by deployment proxy)
+router.post("/campaigns/save", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+  const id = parseInt(req.body.id, 10);
+  if (!id) { res.status(400).json({ error: "id is required" }); return; }
+  const body = UpdateCampaignBody.safeParse(req.body);
+  if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+  const [campaign] = await db.update(campaignsTable)
+    .set({ ...body.data, updatedAt: new Date() })
+    .where(and(eq(campaignsTable.id, id), eq(campaignsTable.userId, user.id)))
+    .returning();
+  if (!campaign) { res.status(404).json({ error: "Campaign not found" }); return; }
+  res.json({ ...campaign, createdAt: campaign.createdAt.toISOString(), updatedAt: campaign.updatedAt.toISOString() });
+});
+
+router.post("/campaigns/remove", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+  const id = parseInt(req.body.id, 10);
+  if (!id) { res.status(400).json({ error: "id is required" }); return; }
+  const [campaign] = await db.delete(campaignsTable)
+    .where(and(eq(campaignsTable.id, id), eq(campaignsTable.userId, user.id)))
+    .returning();
+  if (!campaign) { res.status(404).json({ error: "Campaign not found" }); return; }
+  res.json({ message: "Campaign deleted" });
+});
+
 // ─── POST /api/campaigns/:id/generate-drafts ─────────────────────────────────
 router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;

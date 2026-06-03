@@ -155,7 +155,7 @@ export default function Settings() {
     try {
       const { logoUrl: _logo, ...brandingWithoutLogo } = branding;
       const res = await fetch("/api/users/branding", {
-        method: "PUT",
+        method: "POST",
         headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify(brandingWithoutLogo),
       });

@@ -25,6 +25,38 @@ router.get("/users/branding", requireAuth, async (req, res): Promise<void> => {
   });
 });
 
+// Proxy-safe alias (POST = same as PUT for deployment compatibility)
+router.post("/users/branding", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+  const {
+    agentName, companyName, companyTagline, companyWebsite, companyPhone,
+    usdot, mcNumber, accentColor, useSignature,
+  } = req.body as {
+    agentName?:      string;
+    companyName?:    string;
+    companyTagline?: string;
+    companyWebsite?: string;
+    companyPhone?:   string;
+    usdot?:          string;
+    mcNumber?:       string;
+    accentColor?:    string;
+    useSignature?:   boolean;
+  };
+  await db.update(usersTable).set({
+    agentName:      agentName?.trim()      || null,
+    companyName:    companyName?.trim()    || null,
+    companyTagline: companyTagline?.trim() || null,
+    companyWebsite: companyWebsite?.trim() || null,
+    companyPhone:   companyPhone?.trim()   || null,
+    usdot:          usdot?.trim()          || null,
+    mcNumber:       mcNumber?.trim()       || null,
+    accentColor:    accentColor?.trim()    || null,
+    useSignature:   useSignature === true,
+    updatedAt: new Date(),
+  }).where(eq(usersTable.id, user.id));
+  res.json({ ok: true });
+});
+
 router.put("/users/branding", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
   const {

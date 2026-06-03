@@ -562,4 +562,21 @@ router.patch("/sent-emails/:id/ignore", requireAuth, async (req, res): Promise<v
   res.json({ ok: true });
 });
 
+// Proxy-safe alias: POST with id in body
+router.post("/sent-emails/ignore", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+  const id   = parseInt(req.body.id, 10);
+  if (!id) { res.status(400).json({ error: "id is required" }); return; }
+
+  const [item] = await db.select({ id: emailQueueTable.id }).from(emailQueueTable)
+    .where(and(eq(emailQueueTable.id, id), eq(emailQueueTable.userId, user.id)));
+  if (!item) { res.status(404).json({ error: "Email not found" }); return; }
+
+  await db.update(emailQueueTable)
+    .set({ status: "ignored" })
+    .where(eq(emailQueueTable.id, id));
+
+  res.json({ ok: true });
+});
+
 export default router;

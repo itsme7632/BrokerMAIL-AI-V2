@@ -89,6 +89,32 @@ router.delete("/leads/:id", requireAuth, async (req, res): Promise<void> => {
   res.json({ message: "Lead deleted" });
 });
 
+// Proxy-safe aliases: POST with id in body (avoids numeric URL segments blocked by deployment proxy)
+router.post("/leads/save", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+  const id = parseInt(req.body.id, 10);
+  if (!id) { res.status(400).json({ error: "id is required" }); return; }
+  const body = UpdateLeadBody.safeParse(req.body);
+  if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+  const [lead] = await db.update(leadsTable)
+    .set({ ...body.data, updatedAt: new Date() })
+    .where(and(eq(leadsTable.id, id), eq(leadsTable.userId, user.id)))
+    .returning();
+  if (!lead) { res.status(404).json({ error: "Lead not found" }); return; }
+  res.json({ ...lead, createdAt: lead.createdAt.toISOString(), updatedAt: lead.updatedAt.toISOString() });
+});
+
+router.post("/leads/remove", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+  const id = parseInt(req.body.id, 10);
+  if (!id) { res.status(400).json({ error: "id is required" }); return; }
+  const [lead] = await db.delete(leadsTable)
+    .where(and(eq(leadsTable.id, id), eq(leadsTable.userId, user.id)))
+    .returning();
+  if (!lead) { res.status(404).json({ error: "Lead not found" }); return; }
+  res.json({ message: "Lead deleted" });
+});
+
 router.post("/leads/bulk-import", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
   const parsed = BulkImportLeadsBody.safeParse(req.body);

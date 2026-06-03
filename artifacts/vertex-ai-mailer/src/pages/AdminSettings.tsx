@@ -555,7 +555,7 @@ export function AdminSettings() {
 
   async function updateTicketStatus(id: number, status: string) {
     try {
-      await apiFetch(`support/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      await apiFetch(`support/save`, { method: "POST", body: JSON.stringify({ id, status }) });
       setTickets(ts => ts.map(t => t.id === id ? { ...t, status } : t));
       if (selectedTicket?.id === id) setSelectedTicket(t => t ? { ...t, status } : t);
       toast({ title: "Ticket updated" });
@@ -566,7 +566,7 @@ export function AdminSettings() {
 
   async function deleteTicket(id: number) {
     try {
-      await apiFetch(`support/${id}`, { method: "DELETE" });
+      await apiFetch(`support/remove`, { method: "POST", body: JSON.stringify({ id }) });
       setTickets(ts => ts.filter(t => t.id !== id));
       if (selectedTicket?.id === id) setSelectedTicket(null);
       toast({ title: "Ticket deleted" });
@@ -759,7 +759,7 @@ export function AdminSettings() {
     try {
       const patch: SettingsMap = {};
       keys.forEach(k => { patch[k] = settings[k] ?? DEFAULTS[k] ?? ""; });
-      await apiFetch("settings", { method: "PUT", body: JSON.stringify(patch) });
+      await apiFetch("settings", { method: "POST", body: JSON.stringify(patch) });
       toast({ title: "Settings saved", description: `${keys.length} setting${keys.length !== 1 ? "s" : ""} updated.` });
     } catch (err: any) {
       toast({ variant: "destructive", title: "Save failed", description: err.message });

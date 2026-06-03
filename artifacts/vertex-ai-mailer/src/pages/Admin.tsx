@@ -442,7 +442,7 @@ export default function Admin() {
   // ── User actions ───────────────────────────────────────────────────────────
 
   async function saveUser(id: number, updates: Partial<AdminUser>) {
-    await apiFetch(`users/${id}`, { method: "PATCH", body: JSON.stringify(updates) });
+    await apiFetch(`users/save`, { method: "POST", body: JSON.stringify({ id, ...updates }) });
     toast({ title: "User updated" });
     loadUsers();
   }
@@ -450,7 +450,7 @@ export default function Admin() {
   async function deleteUser(id: number, name: string) {
     if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
     try {
-      await apiFetch(`users/${id}`, { method: "DELETE" });
+      await apiFetch(`users/remove`, { method: "POST", body: JSON.stringify({ id }) });
       toast({ title: "User deleted" });
       loadUsers();
     } catch (err: any) {
@@ -493,7 +493,7 @@ export default function Admin() {
     if (!editPlan) return;
     setSavingPlan(true);
     try {
-      await apiFetch(`plans/${editPlan.id}`, { method: "PUT", body: JSON.stringify(editPlanForm) });
+      await apiFetch(`plans/save`, { method: "POST", body: JSON.stringify({ id: editPlan.id, ...editPlanForm }) });
       toast({ title: "Plan updated" });
       setEditPlan(null);
       loadBillingData();
@@ -516,7 +516,7 @@ export default function Admin() {
   async function saveSettings() {
     setSavingSettings(true);
     try {
-      await apiFetch("settings", { method: "PUT", body: JSON.stringify(settings) });
+      await apiFetch("settings", { method: "POST", body: JSON.stringify(settings) });
       toast({ title: "Settings saved" });
     } catch (err: any) {
       toast({ variant: "destructive", title: "Error", description: err.message });

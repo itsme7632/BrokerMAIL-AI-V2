@@ -78,8 +78,12 @@ async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function apiPatch(path: string): Promise<void> {
-  const res = await fetch(path, { method: "PATCH", headers: getAuthHeaders() });
+async function apiIgnore(id: number): Promise<void> {
+  const res = await fetch("/api/sent-emails/ignore", {
+    method: "POST",
+    headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
   if (!res.ok) throw new Error(`Request failed (${res.status})`);
 }
 
@@ -429,7 +433,7 @@ export default function SentEmails() {
   async function handleIgnore(email: SentEmail) {
     setIgnoringId(email.id);
     try {
-      await apiPatch(`/api/sent-emails/${email.id}/ignore`);
+      await apiIgnore(email.id);
       toast({ title: "Marked as ignored" });
       queryClient.invalidateQueries({ queryKey: ["sent-emails"] });
     } catch (err: any) {

@@ -420,6 +420,73 @@ router.delete("/mailbox", requireAuth, async (req, res): Promise<void> => {
   res.json({ ok: true });
 });
 
+// Proxy-safe alias: POST /mailbox/save duplicates PUT /mailbox logic
+router.post("/mailbox/save", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+  const {
+    smtpHost, smtpPort, smtpUser, smtpPass, smtpSecure,
+    imapHost, imapPort, imapUser, imapPass,
+    fromName, replyTo,
+    batchSize, delaySeconds, maxPerHour,
+  } = req.body as Record<string, string | number>;
+
+  if (!smtpHost || !smtpPort || !smtpUser) {
+    res.status(400).json({ error: "SMTP host, port, and username are required." });
+    return;
+  }
+
+  const [existing] = await db
+    .select({
+      id: mailboxesTable.id,
+      smtpPassEncrypted: mailboxesTable.smtpPassEncrypted,
+      imapPassEncrypted: mailboxesTable.imapPassEncrypted,
+    })
+    .from(mailboxesTable)
+    .where(eq(mailboxesTable.userId, user.id));
+
+  const smtpPassEncrypted = smtpPass
+    ? encrypt(String(smtpPass))
+    : (existing?.smtpPassEncrypted ?? "");
+
+  const imapPassEncrypted = imapPass
+    ? encrypt(String(imapPass))
+    : (existing?.imapPassEncrypted ?? "");
+
+  const values = {
+    userId:            user.id,
+    smtpHost:          String(smtpHost),
+    smtpPort:          Number(smtpPort),
+    smtpUser:          String(smtpUser),
+    smtpPassEncrypted,
+    smtpSecure:        String(smtpSecure ?? "tls"),
+    imapHost:          imapHost ? String(imapHost) : null,
+    imapPort:          imapPort ? Number(imapPort) : 993,
+    imapUser:          imapUser ? String(imapUser) : null,
+    imapPassEncrypted: imapPassEncrypted || null,
+    fromName:          fromName ? String(fromName) : null,
+    replyTo:           replyTo  ? String(replyTo)  : null,
+    isActive:          true,
+    batchSize:         batchSize    ? Number(batchSize)    : 10,
+    delaySeconds:      delaySeconds ? Number(delaySeconds) : 15,
+    maxPerHour:        maxPerHour   ? Number(maxPerHour)   : 100,
+    updatedAt:         new Date(),
+  };
+
+  if (existing) {
+    await db.update(mailboxesTable).set(values).where(eq(mailboxesTable.id, existing.id));
+  } else {
+    await db.insert(mailboxesTable).values(values);
+  }
+
+  res.json({ ok: true });
+});
+
+router.post("/mailbox/remove", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+  await db.delete(mailboxesTable).where(eq(mailboxesTable.userId, user.id));
+  res.json({ ok: true });
+});
+
 // ─── POST /api/mailbox/test-smtp ──────────────────────────────────────────────
 router.post("/mailbox/test-smtp", requireAuth, async (req, res): Promise<void> => {
   const { smtpHost, smtpPort, smtpUser, smtpPass, smtpSecure } = req.body as Record<string, string | number>;

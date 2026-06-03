@@ -133,10 +133,23 @@ router.get("/drafts/:id", requireAuth, async (req, res): Promise<void> => {
 
 // ─── Mark as sent (activates open tracking) ───────────────────────────────────
 /**
- * PATCH /api/drafts/:id/mark-sent
- * Sets sentAt = now() on the draft, which activates open-event recording.
- * Until this is called, tracking pixel hits from draft previews are silently ignored.
+ * PATCH /api/drafts/:id/mark-sent  — REST form
+ * POST  /api/drafts/mark-sent      — proxy-safe form (id in body)
  */
+router.post("/drafts/mark-sent", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+  const id   = parseInt(req.body.id, 10);
+  if (!id) { res.status(400).json({ error: "id is required" }); return; }
+
+  const [draft] = await db.update(draftsTable)
+    .set({ sentAt: new Date() })
+    .where(and(eq(draftsTable.id, id), eq(draftsTable.userId, user.id)))
+    .returning();
+
+  if (!draft) { res.status(404).json({ error: "Draft not found" }); return; }
+  res.json({ ok: true, draftId: id, sentAt: draft.sentAt?.toISOString() });
+});
+
 router.patch("/drafts/:id/mark-sent", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
   const id   = parseInt(req.params.id, 10);

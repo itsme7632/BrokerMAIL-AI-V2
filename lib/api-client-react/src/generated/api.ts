@@ -1393,12 +1393,12 @@ export function useGetCampaign<TData = Awaited<ReturnType<typeof getCampaign>>, 
 
 
 
-export const getUpdateCampaignUrl = (id: number,) => {
+export const getUpdateCampaignUrl = (_id: number,) => {
 
 
 
 
-  return `/api/campaigns/${id}`
+  return `/api/campaigns/save`
 }
 
 /**
@@ -1410,10 +1410,10 @@ export const updateCampaign = async (id: number,
   return customFetch<Campaign>(getUpdateCampaignUrl(id),
   {
     ...options,
-    method: 'PATCH',
+    method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(
-      campaignUpdate,)
+      { id, ...campaignUpdate },)
   }
 );}
 
@@ -1465,12 +1465,12 @@ export const useUpdateCampaign = <TError = ErrorType<unknown>,
       return useMutation(getUpdateCampaignMutationOptions(options));
     }
 
-export const getDeleteCampaignUrl = (id: number,) => {
+export const getDeleteCampaignUrl = (_id: number,) => {
 
 
 
 
-  return `/api/campaigns/${id}`
+  return `/api/campaigns/remove`
 }
 
 /**
@@ -1481,7 +1481,9 @@ export const deleteCampaign = async (id: number, options?: RequestInit): Promise
   return customFetch<MessageResponse>(getDeleteCampaignUrl(id),
   {
     ...options,
-    method: 'DELETE'
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify({ id })
 
 
   }
@@ -1839,12 +1841,12 @@ export function useGetLead<TData = Awaited<ReturnType<typeof getLead>>, TError =
 
 
 
-export const getUpdateLeadUrl = (id: number,) => {
+export const getUpdateLeadUrl = (_id: number,) => {
 
 
 
 
-  return `/api/leads/${id}`
+  return `/api/leads/save`
 }
 
 /**
@@ -1856,10 +1858,10 @@ export const updateLead = async (id: number,
   return customFetch<Lead>(getUpdateLeadUrl(id),
   {
     ...options,
-    method: 'PATCH',
+    method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(
-      leadUpdate,)
+      { id, ...leadUpdate },)
   }
 );}
 
@@ -1911,12 +1913,12 @@ export const useUpdateLead = <TError = ErrorType<unknown>,
       return useMutation(getUpdateLeadMutationOptions(options));
     }
 
-export const getDeleteLeadUrl = (id: number,) => {
+export const getDeleteLeadUrl = (_id: number,) => {
 
 
 
 
-  return `/api/leads/${id}`
+  return `/api/leads/remove`
 }
 
 /**
@@ -1927,7 +1929,9 @@ export const deleteLead = async (id: number, options?: RequestInit): Promise<Mes
   return customFetch<MessageResponse>(getDeleteLeadUrl(id),
   {
     ...options,
-    method: 'DELETE'
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify({ id })
 
 
   }
@@ -2347,12 +2351,12 @@ export function useGetTemplate<TData = Awaited<ReturnType<typeof getTemplate>>, 
 
 
 
-export const getUpdateTemplateUrl = (id: number,) => {
+export const getUpdateTemplateUrl = (_id: number,) => {
 
 
 
 
-  return `/api/templates/${id}`
+  return `/api/templates/save`
 }
 
 /**
@@ -2367,7 +2371,7 @@ export const updateTemplate = async (id: number,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(
-      emailTemplateUpdate,)
+      { id, ...emailTemplateUpdate },)
   }
 );}
 
@@ -2419,12 +2423,12 @@ export const useUpdateTemplate = <TError = ErrorType<unknown>,
       return useMutation(getUpdateTemplateMutationOptions(options));
     }
 
-export const getDeleteTemplateUrl = (id: number,) => {
+export const getDeleteTemplateUrl = (_id: number,) => {
 
 
 
 
-  return `/api/templates/${id}`
+  return `/api/templates/remove`
 }
 
 /**
@@ -2435,7 +2439,9 @@ export const deleteTemplate = async (id: number, options?: RequestInit): Promise
   return customFetch<MessageResponse>(getDeleteTemplateUrl(id),
   {
     ...options,
-    method: 'DELETE'
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify({ id })
 
 
   }

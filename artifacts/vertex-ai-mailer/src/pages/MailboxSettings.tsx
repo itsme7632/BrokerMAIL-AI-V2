@@ -348,8 +348,8 @@ export default function MailboxSettings() {
     setIsSaving(true);
     try {
       const token = localStorage.getItem("auth_token");
-      const res = await fetch("/api/mailbox", {
-        method: "PUT",
+      const res = await fetch("/api/mailbox/save", {
+        method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           smtpHost: form.smtpHost, smtpPort: Number(form.smtpPort),
@@ -376,7 +376,7 @@ export default function MailboxSettings() {
   async function handleDisconnect() {
     try {
       const token = localStorage.getItem("auth_token");
-      await fetch("/api/mailbox", { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      await fetch("/api/mailbox/remove", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
       setIsConnected(false);
       setForm(EMPTY_FORM);
       setSmtpTest("idle"); setImapTest("idle");
