@@ -2364,7 +2364,7 @@ export const updateTemplate = async (id: number,
   return customFetch<EmailTemplate>(getUpdateTemplateUrl(id),
   {
     ...options,
-    method: 'PATCH',
+    method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(
       emailTemplateUpdate,)

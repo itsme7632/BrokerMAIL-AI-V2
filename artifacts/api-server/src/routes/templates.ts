@@ -33,7 +33,7 @@ router.get("/templates/:id", requireAuth, async (req, res): Promise<void> => {
   res.json({ ...template, createdAt: template.createdAt.toISOString(), updatedAt: template.updatedAt.toISOString() });
 });
 
-router.patch("/templates/:id", requireAuth, async (req, res): Promise<void> => {
+async function handleUpdateTemplate(req: any, res: any): Promise<void> {
   const user = req.user!;
   const params = UpdateTemplateParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
@@ -45,7 +45,12 @@ router.patch("/templates/:id", requireAuth, async (req, res): Promise<void> => {
     .returning();
   if (!template) { res.status(404).json({ error: "Template not found" }); return; }
   res.json({ ...template, createdAt: template.createdAt.toISOString(), updatedAt: template.updatedAt.toISOString() });
-});
+}
+
+// PATCH is the REST-correct method; POST is a proxy-safe alias for deployed environments
+// where reverse proxies may block non-GET/POST methods (Replit deployment proxy behavior)
+router.patch("/templates/:id", requireAuth, handleUpdateTemplate);
+router.post("/templates/:id", requireAuth, handleUpdateTemplate);
 
 router.delete("/templates/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
