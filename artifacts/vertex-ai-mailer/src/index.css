@@ -519,4 +519,42 @@
   .dark ::-webkit-scrollbar-track  { background: #0f1a2e; }
   .dark ::-webkit-scrollbar-thumb  { background: #263248; border-radius: 4px; }
   .dark ::-webkit-scrollbar-thumb:hover { background: #334266; }
+
+  /* ── Logo: PNG has white background — add a minimal white pill in dark mode ── */
+  .dark img[alt="BrokerMail AI"] {
+    background-color: rgba(255, 255, 255, 0.90);
+    border-radius: 8px;
+    padding: 3px 10px;
+  }
+
+  /* ── Shadow/glow overrides — tone down light-tinted glows on dark bg ─── */
+  /* Slate-colored shadows (near-white on dark = ugly) → suppress */
+  .dark .shadow-slate-200\/60 { --tw-shadow-color: transparent; }
+  .dark .shadow-slate-200\/80 { --tw-shadow-color: transparent; }
+  /* Blue glows → keep but much more subtle */
+  .dark .shadow-blue-200       { --tw-shadow-color: rgba(37, 99, 235, 0.2); }
+  .dark .shadow-blue-100       { --tw-shadow-color: rgba(37, 99, 235, 0.14); }
+  .dark .shadow-blue-100\/60   { --tw-shadow-color: rgba(37, 99, 235, 0.10); }
+  .dark .shadow-blue-500\/20   { --tw-shadow-color: rgba(37, 99, 235, 0.12); }
+  /* Status shadow tints → suppress (already dark on dark bg) */
+  .dark .shadow-emerald-100\/60 { --tw-shadow-color: transparent; }
+  .dark .shadow-amber-100\/60   { --tw-shadow-color: transparent; }
+  .dark .shadow-red-100\/60     { --tw-shadow-color: transparent; }
+
+  /* ── Gray color scale — maps to dark-mode slate equivalents ──────────── */
+  .dark .bg-gray-50     { background-color: #080f1c; }
+  .dark .bg-gray-100    { background-color: #141e30; }
+  .dark .bg-gray-200    { background-color: #1e2c44; }
+  .dark .text-gray-900  { color: #f1f5f9; }
+  .dark .text-gray-800  { color: #e2e8f0; }
+  .dark .text-gray-700  { color: #cbd5e1; }
+  .dark .text-gray-600  { color: #94a3b8; }
+  .dark .text-gray-500  { color: #64748b; }
+  .dark .text-gray-400  { color: #475569; }
+  .dark .border-gray-100  { border-color: #1e2c44; }
+  .dark .border-gray-200  { border-color: #263248; }
+  .dark .border-gray-300  { border-color: #334266; }
+  .dark .hover\:bg-gray-50:hover   { background-color: #141e30; }
+  .dark .hover\:bg-gray-100:hover  { background-color: #1e2c44; }
+  .dark .hover\:text-gray-900:hover { color: #f1f5f9; }
 }

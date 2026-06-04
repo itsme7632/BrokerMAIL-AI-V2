@@ -11,9 +11,9 @@ const FEATURES = [
 
 export function AuthLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen flex bg-white">
+    <div className="min-h-screen flex bg-white dark:bg-slate-950">
       {/* Left: form panel */}
-      <div className="flex flex-col justify-center w-full lg:w-[480px] flex-shrink-0 px-8 py-12 lg:px-16 border-r border-slate-100">
+      <div className="flex flex-col justify-center w-full lg:w-[480px] flex-shrink-0 px-8 py-12 lg:px-16 border-r border-slate-100 dark:border-slate-700/60">
         <div className="w-full max-w-sm mx-auto">
           {/* Logo */}
           <Link href="/" className="flex items-center mb-10">

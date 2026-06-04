@@ -297,7 +297,7 @@ export function NotificationBell() {
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute right-0 top-11 z-50 w-[380px] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[520px]
+        <div className="absolute right-0 top-11 z-50 w-[380px] bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700/60 overflow-hidden flex flex-col max-h-[520px]
           max-[420px]:w-screen max-[420px]:right-[-1rem] max-[420px]:rounded-none max-[420px]:rounded-b-2xl">
 
           {/* Header */}

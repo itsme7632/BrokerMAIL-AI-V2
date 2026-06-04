@@ -102,14 +102,14 @@ function FadeUp({ children, delay = 0, className = "" }: { children: React.React
 
 function MockupCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-lg shadow-slate-200/60 overflow-hidden">
-      <div className="h-9 bg-slate-50 border-b border-slate-100 flex items-center px-3 gap-2">
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-800/60 shadow-lg shadow-slate-200/60 overflow-hidden">
+      <div className="h-9 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-700/60 flex items-center px-3 gap-2">
         <div className="flex gap-1.5">
           <div className="w-2.5 h-2.5 rounded-full bg-red-300/70" />
           <div className="w-2.5 h-2.5 rounded-full bg-yellow-300/70" />
           <div className="w-2.5 h-2.5 rounded-full bg-green-300/70" />
         </div>
-        <span className="text-xs text-slate-400 font-medium ml-1">{title}</span>
+        <span className="text-xs text-slate-400 dark:text-slate-500 font-medium ml-1">{title}</span>
       </div>
       <div className="p-4">{children}</div>
     </div>
@@ -315,8 +315,8 @@ export default function Home() {
     <PublicLayout>
       {/* Hero */}
       <section className="py-24 sm:py-32 px-5 relative overflow-hidden">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-gradient-to-b from-blue-50 to-transparent rounded-full blur-3xl -z-10 pointer-events-none opacity-70" />
-        <div className="absolute top-20 right-0 w-[400px] h-[400px] bg-violet-50 rounded-full blur-3xl -z-10 pointer-events-none opacity-50" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-gradient-to-b from-blue-50 dark:from-blue-950/30 to-transparent rounded-full blur-3xl -z-10 pointer-events-none opacity-70 dark:opacity-40" />
+        <div className="absolute top-20 right-0 w-[400px] h-[400px] bg-violet-50 dark:bg-violet-950/20 rounded-full blur-3xl -z-10 pointer-events-none opacity-50 dark:opacity-30" />
 
         <div className="container mx-auto max-w-4xl text-center">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
@@ -358,19 +358,19 @@ export default function Home() {
             transition={{ duration: 0.7, delay: 0.2 }}
             className="mt-16 relative mx-auto max-w-4xl"
           >
-            <div className="rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-200/80 overflow-hidden">
-              <div className="h-10 bg-slate-50 border-b border-slate-100 flex items-center px-4 gap-2">
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-800/70 shadow-2xl shadow-slate-200/80 overflow-hidden">
+              <div className="h-10 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-700/60 flex items-center px-4 gap-2">
                 <div className="flex gap-1.5">
                   <div className="w-2.5 h-2.5 rounded-full bg-red-300/70" />
                   <div className="w-2.5 h-2.5 rounded-full bg-yellow-300/70" />
                   <div className="w-2.5 h-2.5 rounded-full bg-green-300/70" />
                 </div>
                 <div className="flex-1 flex justify-center">
-                  <div className="h-5 w-44 bg-slate-100 rounded-md" />
+                  <div className="h-5 w-44 bg-slate-100 dark:bg-slate-700/60 rounded-md" />
                 </div>
               </div>
               <div className="flex">
-                <div className="w-40 bg-white border-r border-slate-100 p-3 space-y-1 hidden sm:block">
+                <div className="w-40 bg-white dark:bg-slate-800/80 border-r border-slate-100 dark:border-slate-700/60 p-3 space-y-1 hidden sm:block">
                   {["Dashboard", "Campaigns", "Upload & Send", "Templates", "Mailbox"].map((item, i) => (
                     <div key={item} className={`h-8 rounded-lg flex items-center px-3 gap-2 ${i === 0 ? "bg-blue-50" : ""}`}>
                       <div className={`h-2 w-2 rounded-full flex-shrink-0 ${i === 0 ? "bg-blue-500" : "bg-slate-200"}`} />
@@ -413,16 +413,16 @@ export default function Home() {
       </section>
 
       {/* Provider logos */}
-      <section className="py-12 px-5 border-y border-slate-100 bg-slate-50">
+      <section className="py-12 px-5 border-y border-slate-100 dark:border-slate-700/60 bg-slate-50 dark:bg-slate-900/50">
         <div className="container mx-auto max-w-5xl text-center">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-8">
+          <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-8">
             Works with your existing business email
           </p>
           <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-5">
             {providers.map(({ name, Logo }) => (
-              <div key={name} className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:shadow-md transition-shadow group">
+              <div key={name} className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 shadow-sm hover:shadow-md transition-shadow group">
                 <Logo className="h-7 w-7 flex-shrink-0" />
-                <span className="text-sm font-semibold text-slate-700 group-hover:text-slate-900 transition-colors">{name}</span>
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">{name}</span>
               </div>
             ))}
           </div>
@@ -433,18 +433,18 @@ export default function Home() {
       <section className="py-24 px-5">
         <div className="container mx-auto max-w-5xl">
           <div className="text-center mb-14">
-            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 mb-3">Everything you need for broker outreach</h2>
-            <p className="text-slate-500 max-w-xl mx-auto text-sm sm:text-base">From lead import to personalized sending — designed for the auto transport workflow.</p>
+            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-slate-100 mb-3">Everything you need for broker outreach</h2>
+            <p className="text-slate-500 dark:text-slate-400 max-w-xl mx-auto text-sm sm:text-base">From lead import to personalized sending — designed for the auto transport workflow.</p>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {features.map((feat, i) => (
               <FadeUp key={i} delay={i * 0.07}>
-                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 h-full">
+                <div className="bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 p-6 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 h-full">
                   <div className={`h-10 w-10 rounded-xl flex items-center justify-center mb-4 ${feat.color}`}>
                     <feat.icon className="h-5 w-5" />
                   </div>
-                  <h3 className="text-base font-bold text-slate-900 mb-1.5">{feat.title}</h3>
-                  <p className="text-slate-500 text-sm leading-relaxed">{feat.desc}</p>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-1.5">{feat.title}</h3>
+                  <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">{feat.desc}</p>
                 </div>
               </FadeUp>
             ))}
@@ -453,23 +453,23 @@ export default function Home() {
       </section>
 
       {/* Workflow */}
-      <section className="py-24 px-5 bg-gradient-to-b from-slate-50 to-white border-y border-slate-100">
+      <section className="py-24 px-5 bg-gradient-to-b from-slate-50 to-white dark:from-slate-900/80 dark:to-slate-950 border-y border-slate-100 dark:border-slate-700/60">
         <div className="container mx-auto max-w-5xl">
           <div className="text-center mb-14">
-            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 mb-3">How BrokerMail AI works</h2>
-            <p className="text-slate-500 max-w-xl mx-auto text-sm sm:text-base">Four simple steps from spreadsheet to delivered outreach.</p>
+            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-slate-100 mb-3">How BrokerMail AI works</h2>
+            <p className="text-slate-500 dark:text-slate-400 max-w-xl mx-auto text-sm sm:text-base">Four simple steps from spreadsheet to delivered outreach.</p>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 relative">
-            <div className="hidden lg:block absolute top-10 left-[12.5%] right-[12.5%] h-px bg-gradient-to-r from-blue-200 via-violet-200 to-orange-200 z-0" />
+            <div className="hidden lg:block absolute top-10 left-[12.5%] right-[12.5%] h-px bg-gradient-to-r from-blue-200 dark:from-blue-800/60 via-violet-200 dark:via-violet-800/60 to-orange-200 dark:to-orange-800/60 z-0" />
             {workflow.map((step, i) => (
               <FadeUp key={i} delay={i * 0.1} className="relative z-10">
                 <div className="flex flex-col items-center text-center">
                   <div className={`h-20 w-20 rounded-2xl bg-gradient-to-br ${step.color} flex items-center justify-center shadow-lg mb-5`}>
                     <step.icon className="h-8 w-8 text-white" />
                   </div>
-                  <span className="text-xs font-bold text-slate-300 tracking-widest mb-2">{step.step}</span>
-                  <h3 className="text-base font-bold text-slate-900 mb-2">{step.title}</h3>
-                  <p className="text-slate-500 text-sm leading-relaxed">{step.desc}</p>
+                  <span className="text-xs font-bold text-slate-300 dark:text-slate-500 tracking-widest mb-2">{step.step}</span>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-2">{step.title}</h3>
+                  <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">{step.desc}</p>
                 </div>
               </FadeUp>
             ))}
@@ -489,7 +489,7 @@ export default function Home() {
               <div>
                 <div className="mb-3 flex items-center gap-2">
                   <div className="h-7 w-7 rounded-lg bg-violet-50 flex items-center justify-center"><FileText className="h-4 w-4 text-violet-600" /></div>
-                  <span className="text-sm font-semibold text-slate-700">Template Builder</span>
+                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Template Builder</span>
                 </div>
                 <TemplateBuilderMockup />
               </div>
@@ -498,7 +498,7 @@ export default function Home() {
               <div>
                 <div className="mb-3 flex items-center gap-2">
                   <div className="h-7 w-7 rounded-lg bg-blue-50 flex items-center justify-center"><Upload className="h-4 w-4 text-blue-600" /></div>
-                  <span className="text-sm font-semibold text-slate-700">CSV Upload & Send</span>
+                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">CSV Upload & Send</span>
                 </div>
                 <CsvUploadMockup />
               </div>
@@ -509,7 +509,7 @@ export default function Home() {
               <div>
                 <div className="mb-3 flex items-center gap-2">
                   <div className="h-7 w-7 rounded-lg bg-emerald-50 flex items-center justify-center"><Settings2 className="h-4 w-4 text-emerald-600" /></div>
-                  <span className="text-sm font-semibold text-slate-700">SMTP / IMAP Setup</span>
+                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">SMTP / IMAP Setup</span>
                 </div>
                 <MailboxMockup />
               </div>
@@ -518,7 +518,7 @@ export default function Home() {
               <div>
                 <div className="mb-3 flex items-center gap-2">
                   <div className="h-7 w-7 rounded-lg bg-amber-50 flex items-center justify-center"><PanelLeft className="h-4 w-4 text-amber-600" /></div>
-                  <span className="text-sm font-semibold text-slate-700">Campaign Dashboard</span>
+                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Campaign Dashboard</span>
                 </div>
                 <DashboardMockup />
               </div>
@@ -565,8 +565,8 @@ export default function Home() {
       <section className="py-24 px-5">
         <div className="container mx-auto max-w-5xl">
           <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 mb-3">Built for the Auto Transport Industry</h2>
-            <p className="text-slate-500 max-w-xl mx-auto text-sm sm:text-base">Designed around how vehicle shipping teams actually work.</p>
+            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-slate-100 mb-3">Built for the Auto Transport Industry</h2>
+            <p className="text-slate-500 dark:text-slate-400 max-w-xl mx-auto text-sm sm:text-base">Designed around how vehicle shipping teams actually work.</p>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
@@ -576,11 +576,11 @@ export default function Home() {
               { icon: LayoutGrid, label: "Lead Generation Teams" },
             ].map((item, i) => (
               <FadeUp key={i} delay={i * 0.08}>
-                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col items-center text-center gap-4 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
+                <div className="bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 p-6 shadow-sm flex flex-col items-center text-center gap-4 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
                   <div className="h-12 w-12 rounded-2xl bg-blue-50 flex items-center justify-center">
                     <item.icon className="h-6 w-6 text-blue-600" />
                   </div>
-                  <p className="text-sm font-semibold text-slate-800 leading-snug">{item.label}</p>
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 leading-snug">{item.label}</p>
                 </div>
               </FadeUp>
             ))}
@@ -589,19 +589,19 @@ export default function Home() {
       </section>
 
       {/* Pricing preview */}
-      <section className="py-24 px-5 bg-slate-50 border-y border-slate-100">
+      <section className="py-24 px-5 bg-slate-50 dark:bg-slate-900/50 border-y border-slate-100 dark:border-slate-700/60">
         <div className="container mx-auto max-w-5xl">
           <div className="text-center mb-14">
-            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 mb-3">Simple, transparent pricing</h2>
-            <p className="text-slate-500 max-w-lg mx-auto text-sm sm:text-base">Plans built for every stage of your brokerage.</p>
+            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-slate-100 mb-3">Simple, transparent pricing</h2>
+            <p className="text-slate-500 dark:text-slate-400 max-w-lg mx-auto text-sm sm:text-base">Plans built for every stage of your brokerage.</p>
           </div>
           <div className="grid md:grid-cols-3 gap-5">
             {plans.map((plan, i) => (
               <FadeUp key={i} delay={i * 0.1}>
                 <div className={`rounded-2xl border p-7 flex flex-col h-full transition-all duration-200 ${
                   plan.highlight
-                    ? "bg-blue-600 border-blue-500 shadow-xl shadow-blue-200"
-                    : "bg-white border-slate-200 shadow-sm hover:shadow-md"
+                    ? "bg-blue-600 dark:bg-blue-700 border-blue-500 shadow-xl shadow-blue-200"
+                    : "bg-white dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/60 shadow-sm hover:shadow-md"
                 }`}>
                   {plan.highlight && (
                     <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/20 text-white text-xs font-semibold mb-4 self-start">
@@ -609,18 +609,18 @@ export default function Home() {
                       Most Popular
                     </div>
                   )}
-                  <h3 className={`text-xl font-bold mb-1 ${plan.highlight ? "text-white" : "text-slate-900"}`}>{plan.name}</h3>
-                  <p className={`text-sm mb-5 ${plan.highlight ? "text-blue-100" : "text-slate-500"}`}>{plan.desc}</p>
+                  <h3 className={`text-xl font-bold mb-1 ${plan.highlight ? "text-white" : "text-slate-900 dark:text-slate-100"}`}>{plan.name}</h3>
+                  <p className={`text-sm mb-5 ${plan.highlight ? "text-blue-100" : "text-slate-500 dark:text-slate-400"}`}>{plan.desc}</p>
                   <ul className="space-y-2.5 mb-7 flex-1">
                     {plan.items.map(item => (
                       <li key={item} className="flex items-center gap-2.5">
                         <CheckCircle2 className={`h-4 w-4 flex-shrink-0 ${plan.highlight ? "text-blue-200" : "text-emerald-500"}`} />
-                        <span className={`text-sm ${plan.highlight ? "text-blue-50" : "text-slate-700"}`}>{item}</span>
+                        <span className={`text-sm ${plan.highlight ? "text-blue-50" : "text-slate-700 dark:text-slate-300"}`}>{item}</span>
                       </li>
                     ))}
                   </ul>
                   <button disabled className={`w-full h-11 rounded-xl text-sm font-semibold cursor-not-allowed ${
-                    plan.highlight ? "bg-white/20 text-white border border-white/30" : "bg-slate-100 text-slate-400 border border-slate-200"
+                    plan.highlight ? "bg-white/20 text-white border border-white/30" : "bg-slate-100 dark:bg-slate-700/60 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-600/60"
                   }`}>
                     Coming Soon
                   </button>
@@ -631,7 +631,7 @@ export default function Home() {
           <FadeUp delay={0.35}>
             <div className="mt-8 text-center">
               <Link href="/pricing">
-                <span className="text-sm text-blue-600 hover:underline cursor-pointer font-medium">View full pricing details →</span>
+                <span className="text-sm text-blue-600 dark:text-blue-400 hover:underline cursor-pointer font-medium">View full pricing details →</span>
               </Link>
             </div>
           </FadeUp>
@@ -644,10 +644,10 @@ export default function Home() {
           <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 mx-auto mb-6 flex items-center justify-center shadow-lg shadow-blue-200">
             <Zap className="h-7 w-7 text-white" />
           </div>
-          <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 mb-4">
+          <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-slate-100 mb-4">
             Upload your first lead sheet in under 60 seconds.
           </h2>
-          <p className="text-slate-500 mb-8 leading-relaxed text-sm sm:text-base px-2">
+          <p className="text-slate-500 dark:text-slate-400 mb-8 leading-relaxed text-sm sm:text-base px-2">
             No complicated setup. Connect your mailbox, upload your leads, and start sending personalized outreach today.
           </p>
           <Button size="lg" className="h-12 px-10 rounded-xl shadow-md shadow-blue-200 font-medium w-full sm:w-auto group" asChild>
