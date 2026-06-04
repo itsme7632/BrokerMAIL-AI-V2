@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, usersTable, campaignsTable, leadsTable, draftsTable, activityTable } from "@workspace/db";
-import { eq, count, sql, desc } from "drizzle-orm";
+import { eq, count, sql, desc, and } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -9,10 +9,12 @@ router.get("/dashboard/stats", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
   const [campaigns] = await db.select({ count: count() }).from(campaignsTable).where(eq(campaignsTable.userId, user.id));
   const [leads] = await db.select({ count: count() }).from(leadsTable).where(eq(leadsTable.userId, user.id));
+  // Exclude SMTP rows (gmailDraftId starts with 'smtp:') — only count real Gmail drafts.
+  const gmailDraftOnly = sql`(${draftsTable.gmailDraftId} IS NULL OR ${draftsTable.gmailDraftId} NOT LIKE 'smtp:%')`;
   const [draftsCreated] = await db.select({ count: count() }).from(draftsTable)
-    .where(eq(draftsTable.userId, user.id));
+    .where(and(eq(draftsTable.userId, user.id), gmailDraftOnly));
   const [successDrafts] = await db.select({ count: count() }).from(draftsTable)
-    .where(sql`${draftsTable.userId} = ${user.id} AND ${draftsTable.status} = 'success'`);
+    .where(and(eq(draftsTable.userId, user.id), sql`${draftsTable.status} = 'success'`, gmailDraftOnly));
   const [aiCalls] = await db.select({ count: count() }).from(draftsTable)
     .where(eq(draftsTable.userId, user.id));
   const [activeCampaigns] = await db.select({ count: count() }).from(campaignsTable)
