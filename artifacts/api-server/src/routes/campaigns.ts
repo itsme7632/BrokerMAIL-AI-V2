@@ -635,14 +635,34 @@ export async function processCampaignFully(
       const maxPerHour   = box.maxPerHour ?? 100;
 
       if (sentThisHour >= maxPerHour) {
-        logger.info({ campaignId, sentThisHour, maxPerHour }, "[CAMPAIGN] Hourly quota reached — cooling down 60s");
-        const cooldownUntil = new Date(Date.now() + 3_600_000);
-        await db.update(campaignsTable).set({
-          status: "cooling_down", cooldownUntil, updatedAt: new Date(),
-        }).where(eq(campaignsTable.id, campaignId));
+        // Only write a new cooldownUntil if one is not already active.
+        // Without this guard, every loop iteration after a pause/resume resets
+        // the clock to NOW+3600, erasing the remaining cooldown time.
+        const nowMs = Date.now();
+        const [campCd] = await db.select({ cooldownUntil: campaignsTable.cooldownUntil })
+          .from(campaignsTable).where(eq(campaignsTable.id, campaignId));
+        const existingCooldown = campCd?.cooldownUntil;
+        if (!existingCooldown || existingCooldown.getTime() <= nowMs) {
+          const cooldownUntil = new Date(nowMs + 3_600_000);
+          await db.update(campaignsTable).set({
+            status: "cooling_down", cooldownUntil, updatedAt: new Date(),
+          }).where(eq(campaignsTable.id, campaignId));
+          logger.info({ campaignId, sentThisHour, maxPerHour, cooldownUntil },
+            "[CAMPAIGN] Hourly quota reached — new cooldown set for 60 min");
+        } else {
+          // Existing cooldown still active — preserve it, only update status
+          await db.update(campaignsTable)
+            .set({ status: "cooling_down", updatedAt: new Date() })
+            .where(eq(campaignsTable.id, campaignId));
+          const remainingSecs = Math.ceil((existingCooldown.getTime() - nowMs) / 1000);
+          logger.info({ campaignId, sentThisHour, maxPerHour, cooldownUntil: existingCooldown, remainingSecs },
+            "[CAMPAIGN] Hourly quota still exceeded — preserving existing cooldown, not resetting");
+        }
         await sleep(60_000);
-        const nowCheck = new Date();
-        if (nowCheck >= cooldownUntil) {
+        // Re-read cooldownUntil from DB (may have been updated by another path)
+        const [campCdNow] = await db.select({ cooldownUntil: campaignsTable.cooldownUntil })
+          .from(campaignsTable).where(eq(campaignsTable.id, campaignId));
+        if (!campCdNow?.cooldownUntil || new Date() >= campCdNow.cooldownUntil) {
           await db.update(campaignsTable).set({
             status: "sending", cooldownUntil: null, updatedAt: new Date(),
           }).where(eq(campaignsTable.id, campaignId));
@@ -1830,8 +1850,11 @@ router.post("/campaigns/:id/resume", requireAuth, async (req, res): Promise<void
       .where(and(eq(mailboxesTable.userId, user.id), eq(mailboxesTable.isActive, true)));
     if (!box) { res.status(400).json({ success: false, error: "No active SMTP mailbox configured." }); return; }
 
+    // Do NOT clear cooldownUntil on resume — preserve the existing timestamp so
+    // the remaining cooldown continues from where it was when the user paused.
+    // processCampaignFully will detect the active cooldown and wait out the remainder.
     await db.update(campaignsTable)
-      .set({ status: "sending", cooldownUntil: null, updatedAt: new Date() })
+      .set({ status: "sending", updatedAt: new Date() })
       .where(eq(campaignsTable.id, campaignId));
 
     processCampaignFully(campaignId, box, template, freshUser).catch((err) => {
