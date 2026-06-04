@@ -57,13 +57,15 @@ interface QuotaData {
 interface Campaign {
   id:           string;
   name:         string;
-  status:       string;
-  totalLeads:   number;
-  sentCount:    number;
-  failedCount:  number;
+  status:        string;
+  sendMode:      string;
+  totalLeads:    number;
+  sentCount:     number;
+  draftedCount:  number;
+  failedCount:   number;
   cooldownUntil: string | null;
-  createdAt:    string;
-  updatedAt:    string;
+  createdAt:     string;
+  updatedAt:     string;
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -148,7 +150,8 @@ function getCampaignStatus(campaign: Campaign): { icon: React.ElementType; label
 }
 
 function CampaignStatusRow({ campaign }: { campaign: Campaign }) {
-  const pct = campaign.totalLeads > 0 ? Math.round((campaign.sentCount / campaign.totalLeads) * 100) : 0;
+  const done = (campaign.sentCount ?? 0) + (campaign.draftedCount ?? 0);
+  const pct  = campaign.totalLeads > 0 ? Math.round((done / campaign.totalLeads) * 100) : 0;
   const s = getCampaignStatus(campaign);
   const StatusIcon = s.icon;
 
@@ -166,7 +169,9 @@ function CampaignStatusRow({ campaign }: { campaign: Campaign }) {
               style={{ width: `${pct}%` }}
             />
           </div>
-          <span className="text-xs text-slate-400">{campaign.sentCount}/{campaign.totalLeads} sent</span>
+          <span className="text-xs text-slate-400">
+            {done}/{campaign.totalLeads} {campaign.sendMode === "smtp" ? "sent" : "drafted"}
+          </span>
         </div>
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">

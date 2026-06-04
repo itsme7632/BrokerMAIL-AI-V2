@@ -376,7 +376,7 @@ export default function Campaigns() {
         ) : (
           <div className="divide-y divide-slate-100">
             {filtered.map(campaign => {
-              const sent  = campaign.sentCount ?? 0;
+              const sent  = (campaign.sentCount ?? 0) + (campaign.draftedCount ?? 0);
               const ttl   = campaign.totalLeads ?? 0;
               const pct   = ttl > 0 ? Math.round((sent / ttl) * 100) : 0;
               const isActive  = campaign.status === "sending";
@@ -515,7 +515,7 @@ export default function Campaigns() {
                       <>
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-slate-600 font-medium">
-                            {sent} <span className="text-slate-400 font-normal">/ {ttl} sent</span>
+                            {sent} <span className="text-slate-400 font-normal">/ {ttl} {campaign.sendMode === "smtp" ? "sent" : "drafted"}</span>
                           </span>
                           <span className="text-slate-400">{pct}%</span>
                         </div>
