@@ -1201,14 +1201,20 @@ router.get("/campaigns/:id/progress", requireAuth, async (req, res): Promise<voi
     hourlyLimit = box?.maxPerHour ?? 100;
 
     const hourAgo = new Date(Date.now() - 3_600_000);
-    const [hourlyRow] = await db.select({ count: sql<number>`count(*)::int` })
-      .from(emailQueueTable)
-      .where(and(
-        eq(emailQueueTable.userId, user.id),
-        eq(emailQueueTable.status, "success"),
-        gte(emailQueueTable.sentAt, hourAgo),
-      ));
-    sentThisHour = hourlyRow?.count ?? 0;
+    // Use the same query as the campaign processors (firstAttemptAt + mailboxId)
+    // so the displayed quota matches exactly what the processor enforces.
+    // The old query (sentAt + userId + status='success') diverged from the
+    // processor by field, scope, and status filter — causing oscillation.
+    if (box) {
+      const [hourlyRow] = await db.select({ count: sql<number>`count(*)::int` })
+        .from(emailQueueTable)
+        .where(and(
+          eq(emailQueueTable.mailboxId, box.id),
+          isNotNull(emailQueueTable.firstAttemptAt),
+          gte(emailQueueTable.firstAttemptAt, hourAgo),
+        ));
+      sentThisHour = hourlyRow?.count ?? 0;
+    }
     remainingQuota = Math.max(0, hourlyLimit - sentThisHour);
     isHourlyLimitReached = sentThisHour >= hourlyLimit;
 
@@ -1237,7 +1243,26 @@ router.get("/campaigns/:id/progress", requireAuth, async (req, res): Promise<voi
     const [box2] = await db.select({ delaySeconds: mailboxesTable.delaySeconds })
       .from(mailboxesTable).where(eq(mailboxesTable.userId, user.id));
     const delayS = box2?.delaySeconds ?? 15;
-    estimatedCompletionSeconds = (queued + remaining) * (delayS + 1);
+
+    // Find the furthest retryAfter across all deferred items for this campaign.
+    // Each deferred item represents an email that cannot be retried until that
+    // time — so the longest deferred wait is a floor on the real completion time.
+    const [maxDef] = await db
+      .select({ maxRetry: sql<string | null>`max(retry_after)::text` })
+      .from(emailQueueTable)
+      .where(and(
+        eq(emailQueueTable.campaignId, campaignId),
+        eq(emailQueueTable.status, "deferred"),
+      ));
+    const deferredWaitSecs = maxDef?.maxRetry
+      ? Math.max(0, Math.ceil((new Date(maxDef.maxRetry).getTime() - Date.now()) / 1000))
+      : 0;
+
+    // ETA = cooldown remaining + max deferred-item wait + send time for all pending leads.
+    // cooldownSeconds already accounts for the active hourly-limit cooldown.
+    // deferredWaitSecs accounts for SMTP-retry backoffs.
+    // (queued + remaining) * delayS is the per-email delay configured by the user.
+    estimatedCompletionSeconds = cooldownSeconds + deferredWaitSecs + (queued + remaining) * delayS;
   }
 
   res.json({

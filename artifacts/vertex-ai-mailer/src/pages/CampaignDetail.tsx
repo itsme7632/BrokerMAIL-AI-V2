@@ -124,6 +124,42 @@ function StatCard({
 // Derives remaining seconds from an absolute ISO timestamp (cooldownUntil).
 // The effect only re-runs when the target timestamp changes — not on every poll.
 // This prevents the 60→59→60 loop caused by Math.ceil rounding on each API call.
+/**
+ * useETACountdown — smooth ETA countdown that fills in between server polls.
+ *
+ * The server recalculates estimatedCompletionSeconds every 3 seconds. Without
+ * this hook, the ETA display jumps by (delayS) seconds on each poll and is
+ * static in between. This hook re-anchors to the server value on each update
+ * and ticks every second in between, producing a smooth 1-second countdown.
+ */
+function useETACountdown(serverSeconds: number | null): number {
+  const serverRef  = useRef<number>(0);
+  const anchorRef  = useRef<number>(Date.now());
+  const [secs, setSecs] = useState(0);
+
+  useEffect(() => {
+    if (!serverSeconds || serverSeconds <= 0) {
+      serverRef.current = 0;
+      setSecs(0);
+      return;
+    }
+    serverRef.current = serverSeconds;
+    anchorRef.current = Date.now();
+    setSecs(serverSeconds);
+  }, [serverSeconds]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (serverRef.current <= 0) return;
+      const elapsed = (Date.now() - anchorRef.current) / 1000;
+      setSecs(Math.max(0, Math.round(serverRef.current - elapsed)));
+    }, 1_000);
+    return () => clearInterval(id);
+  }, []);
+
+  return secs;
+}
+
 function useCooldownTimerUntil(cooldownUntil: string | null) {
   const calcRemaining = (iso: string | null) => {
     if (!iso) return 0;
@@ -175,7 +211,17 @@ export default function CampaignDetail() {
   const [diagnostics, setDiagnostics]     = useState<CampaignDiagnostics | null>(null);
   const [retryingLeadId, setRetryingLeadId] = useState<number | null>(null);
 
+  // Track previous sent count so fetchProgress can invalidate the leads cache
+  // only when a new email has actually been sent — not on every poll.
+  const prevSentRef  = useRef<number>(0);
+  // Keep a ref to the current leads page so fetchProgress can build the exact
+  // query key without needing leadsPage in its own useCallback deps (which
+  // would tear down and recreate the 3-second polling interval on every page turn).
+  const leadsPageRef = useRef(leadsPage);
+  useEffect(() => { leadsPageRef.current = leadsPage; }, [leadsPage]);
+
   const cooldownLeft = useCooldownTimerUntil(progress?.cooldownUntil ?? null);
+  const etaSecs      = useETACountdown(progress?.estimatedCompletionSeconds ?? null);
 
   const { data: campaign, isLoading: isCampaignLoading } = useGetCampaign(campaignId, {
     query: { enabled: !!campaignId, queryKey: getGetCampaignQueryKey(campaignId) }
@@ -222,6 +268,17 @@ export default function CampaignDetail() {
       });
       if (!res.ok) throw new Error("Failed to load progress");
       const data: CampaignProgress = await res.json();
+      // Invalidate the leads cache whenever the sent count increases so lead
+      // status badges update live during automated SMTP campaigns without a
+      // page refresh.  prevSentRef starts at 0 — on the very first poll for a
+      // campaign that already has sent emails the leads list is also refreshed,
+      // which guarantees stale mount-time data is corrected immediately.
+      if (data.sent > prevSentRef.current) {
+        prevSentRef.current = data.sent;
+        queryClient.invalidateQueries({
+          queryKey: getGetLeadsQueryKey({ campaignId, page: leadsPageRef.current, limit: 10 })
+        });
+      }
       setProgress(data);
       setProgressError(null);
       // NOTE: do NOT set activeJobId from currentJobId here.
@@ -234,7 +291,7 @@ export default function CampaignDetail() {
     } catch (err: any) {
       setProgressError(err.message);
     }
-  }, [campaignId]);
+  }, [campaignId, queryClient]);
 
   // ─── Fetch batch history ─────────────────────────────────────────────────────
   const fetchBatches = useCallback(async () => {
@@ -713,10 +770,10 @@ export default function CampaignDetail() {
                       : `${progress?.remaining ?? 0} leads remaining · ${sendModeLabel}`}
                 </p>
               </div>
-              {progress?.estimatedCompletionSeconds != null && progress.estimatedCompletionSeconds > 0 && isActive && (
+              {etaSecs > 0 && isActive && (
                 <div className="flex-shrink-0 text-right">
                   <p className="text-xs text-slate-400">Est. completion</p>
-                  <p className="text-xs font-semibold text-slate-700">{formatSeconds(progress.estimatedCompletionSeconds)}</p>
+                  <p className="text-xs font-semibold text-slate-700">{formatSeconds(etaSecs)}</p>
                 </div>
               )}
             </div>
