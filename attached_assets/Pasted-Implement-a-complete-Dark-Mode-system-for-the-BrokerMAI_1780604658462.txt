@@ -1,0 +1,114 @@
+Implement a complete Dark Mode system for the BrokerMAIL AI platform.
+
+Requirements:
+
+1. Theme Toggle
+
+* Add a dark/light mode toggle in the top-right header area beside the user profile menu.
+* Use a moon icon for dark mode and a sun icon for light mode.
+* The toggle should be visible on all authenticated pages.
+* The toggle must work instantly without requiring a page refresh.
+
+2. Persistence
+
+* Save the user's preference in localStorage.
+* On page load, automatically restore the previously selected theme.
+* If no preference exists, default to the user's system preference (prefers-color-scheme).
+* Once the user manually chooses a theme, always respect their saved preference.
+
+3. Global Theme Architecture
+
+* Use a single global theme provider/context.
+* Avoid page-by-page theme state.
+* Apply theme classes at the root layout level.
+* All existing pages should automatically inherit the theme.
+
+4. Components To Support Dark Mode
+   Ensure all existing UI elements render correctly in dark mode:
+
+* Dashboard
+* Campaigns
+* Campaign Detail
+* Upload & Send
+* Sent Emails
+* Gmail Drafts
+* Mailbox Settings
+* Plans & Billing
+* Settings
+* Admin Panel
+* Login Page
+* Analytics Cards
+* Tables
+* Modals
+* Dropdowns
+* Tooltips
+* Notifications
+* Search Inputs
+* Pagination Controls
+* Progress Bars
+* Status Badges
+
+5. Color Guidelines
+   Light Mode:
+
+* Keep current appearance unchanged.
+
+Dark Mode:
+
+* Use professional SaaS styling.
+* Dark background (#0f172a or similar).
+* Slightly lighter cards/panels.
+* High contrast text.
+* Preserve existing brand blue accents.
+* Success, warning, error, and info colors must remain distinguishable.
+
+6. Campaign Status Colors
+   Ensure these remain visually clear in dark mode:
+
+* Sending
+* Cooling Down
+* Paused
+* Completed
+* Failed
+* Drafted
+* Queued
+
+7. Tables
+
+* Alternate row hover states.
+* Maintain readability of all campaign and lead data.
+* Preserve badge visibility and action buttons.
+
+8. Forms
+
+* Inputs, selects, textareas, date pickers, and search fields must support dark mode.
+* Focus states should remain clearly visible.
+
+9. Accessibility
+
+* Maintain WCAG-compliant contrast ratios.
+* Icons and buttons must remain visible in both themes.
+* No text should become low-contrast or unreadable.
+
+10. Performance
+
+* Do not introduce unnecessary rerenders.
+* Theme switching should be instant.
+* No page reloads.
+
+11. Deployment Validation
+    Before marking complete:
+
+* Test every major page in both themes.
+* Verify theme persistence after logout/login.
+* Verify theme persistence after browser refresh.
+* Verify mobile responsiveness.
+* Verify no Tailwind class conflicts or hydration issues.
+
+Deliverables:
+
+* Theme provider implementation.
+* Header toggle component.
+* localStorage persistence.
+* Full dark mode support across the application.
+* Summary of all files changed.
