@@ -1,0 +1,141 @@
+Perform a complete DARK MODE POLISH & CONSISTENCY PASS across the entire BrokerMAIL AI application.
+
+IMPORTANT:
+- UI/STYLING ONLY.
+- DO NOT modify any backend code.
+- DO NOT modify database schema.
+- DO NOT modify campaign logic.
+- DO NOT modify SMTP/Gmail functionality.
+- DO NOT modify analytics.
+- DO NOT modify authentication.
+- DO NOT modify billing logic.
+- DO NOT add new features.
+- DO NOT redesign layouts.
+- DO NOT change existing workflows.
+
+The goal is ONLY to make dark mode look professional, consistent, and production-ready.
+
+ISSUES TO FIX:
+
+1. LOGO BACKGROUND
+- The BrokerMAIL logo currently shows a visible white rectangle/background in dark mode.
+- Determine whether the issue is the asset itself or CSS styling.
+- Fix it so the logo displays cleanly on dark backgrounds.
+- Remove any forced white container/background behind the logo.
+- Preserve existing branding.
+
+2. GLOBAL DARK MODE AUDIT
+Search the entire frontend for hardcoded light-mode classes and colors such as:
+- bg-white
+- bg-gray-50
+- bg-slate-50
+- text-black
+- text-gray-500
+- text-gray-600
+- border-gray-200
+- border-gray-300
+
+Replace with proper theme-aware styling where appropriate.
+
+3. CONSISTENT DARK COLOR SYSTEM
+Ensure all pages use a unified dark palette:
+- App background
+- Sidebar
+- Navbar
+- Cards
+- Tables
+- Modals
+- Dropdowns
+- Empty states
+
+Remove visual inconsistencies where some sections are navy, some gray, some black, and some still look like light mode.
+
+4. FIX LOW-CONTRAST TEXT
+Audit all text for readability:
+- Landing page subtitles
+- Pricing descriptions
+- Footer links
+- Dashboard helper text
+- Settings descriptions
+- Empty state messages
+- Secondary labels
+
+Increase contrast where needed while maintaining a modern SaaS appearance.
+
+5. LANDING PAGE DARK MODE
+Review and fix:
+- Header
+- Hero section
+- Features section
+- How It Works section
+- Pricing section
+- CTA section
+- Footer
+
+Dark mode should be visually consistent from top to bottom with no random light sections.
+
+6. LOGIN & AUTH PAGES
+Review:
+- Login page
+- Registration page
+- Auth cards
+- Inputs
+- Labels
+- Buttons
+- Dividers
+
+Ensure everything follows the same dark theme design language.
+
+7. DASHBOARD CONSISTENCY
+Review:
+- Search bar
+- Top navigation
+- Statistic cards
+- Campaign widgets
+- Quick actions
+- Gmail widget
+- SMTP widget
+- Billing page
+- Settings page
+- Campaign pages
+
+Use consistent card surfaces, borders, shadows, spacing, and colors.
+
+8. REDUCE EXCESSIVE GLOWS
+Several buttons, pricing cards, and featured elements have overly strong blue glow effects.
+
+Reduce:
+- Glow radius
+- Blur amount
+- Shadow intensity
+
+Keep highlights visible but make them look professional and premium rather than neon.
+
+9. HOVER & FOCUS STATES
+Verify and improve dark-mode behavior for:
+- Buttons
+- Inputs
+- Search bars
+- Dropdowns
+- Navigation links
+- Cards
+- Tabs
+
+Hover and focus states should be clear and consistent.
+
+10. FINAL QA
+After changes:
+- Review every page in dark mode.
+- Ensure there are no remaining light-theme artifacts.
+- Ensure no white backgrounds remain where they shouldn't.
+- Ensure text contrast is readable.
+- Ensure the entire application feels like one cohesive dark theme.
+
+DELIVERABLE:
+Provide a final report with:
+1. Files changed
+2. Components updated
+3. Dark mode issues fixed
+4. Any remaining items that require a new transparent logo asset if the current logo file itself contains a white background
+
+Again: UI polish only. No functional changes whatsoever.
