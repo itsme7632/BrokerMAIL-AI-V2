@@ -1,0 +1,78 @@
+I have uploaded the new DARK MODE logo and favicon assets.
+
+Your task is ONLY to integrate these new assets correctly and fix logo sizing/branding consistency across the application.
+
+IMPORTANT:
+- Do NOT modify any backend code.
+- Do NOT modify any business logic.
+- Do NOT modify any SMTP/Gmail functionality.
+- Do NOT modify any campaign functionality.
+- Do NOT modify any layouts except where necessary to correctly display the logo.
+- Do NOT redesign pages.
+
+TASKS
+
+1. DARK MODE ASSETS
+- Replace the current dark-mode logo with the newly uploaded dark-mode logo.
+- Replace the current dark-mode favicon with the newly uploaded favicon.
+- Ensure the correct asset is loaded automatically when dark mode is active.
+
+2. LIGHT MODE COMPATIBILITY
+- Verify light mode still uses the proper light-mode logo and favicon.
+- If theme switching exists, automatically swap logos/favicons based on active theme.
+- If a theme-aware asset system already exists, integrate into it instead of creating duplicate logic.
+
+3. LOGO SIZE FIX
+Current logos are visibly too small in multiple locations.
+
+Audit all locations where the logo appears and resize appropriately:
+
+- Landing page navbar
+- Login page
+- Signup page
+- Dashboard sidebar
+- Dashboard header (if present)
+- Billing page
+- Settings page
+- Any authentication screens
+- Any marketing/public pages
+
+Requirements:
+- Maintain aspect ratio.
+- Do not stretch or distort the logo.
+- Keep spacing visually balanced.
+- Ensure logos remain responsive on desktop and mobile.
+
+4. REMOVE WHITE LOGO CONTAINERS
+If any logo wrapper/container forces:
+- white background
+- gray background
+- fixed light-mode styling
+
+remove it.
+
+The logo should sit naturally on the page background.
+
+5. RESPONSIVE CHECK
+Verify logo appearance on:
+- Desktop
+- Tablet
+- Mobile
+
+Make sure no clipping, overflow, or scaling issues occur.
+
+6. FAVICON
+- Install the uploaded favicon.
+- Verify favicon updates correctly in browser tabs.
+- Verify dark-mode favicon is used where supported.
+
+FINAL REPORT
+After implementation provide:
+
+1. Files changed
+2. Logo locations updated
+3. Favicon locations updated
+4. Theme-switching logic used (if any)
+5. Any remaining issues that would require a different logo asset
+
+Only perform logo and favicon integration plus sizing fixes. No other UI or functional changes.

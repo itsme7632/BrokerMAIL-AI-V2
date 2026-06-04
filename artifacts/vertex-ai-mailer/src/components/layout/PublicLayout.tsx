@@ -2,6 +2,7 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/context/ThemeContext";
 import { Moon, Sun } from "lucide-react";
+import { Logo } from "@/components/Logo";
 
 const navLinks = [
   { href: "/pricing", label: "Pricing" },
@@ -22,12 +23,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-6">
             <Link href="/">
               <div className="flex items-center cursor-pointer">
-                <img
-                  src="/logo-horizontal.png"
-                  alt="BrokerMail AI"
-                  className="h-10 w-auto object-contain"
-                  style={{ maxWidth: "180px" }}
-                />
+                <Logo className="h-10 w-auto object-contain max-w-[200px]" />
               </div>
             </Link>
             <nav className="hidden md:flex items-center gap-1">
@@ -72,12 +68,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
         <div className="container mx-auto px-5 max-w-6xl">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center">
-              <img
-                src="/logo-horizontal.png"
-                alt="BrokerMail AI"
-                className="h-8 w-auto object-contain"
-                style={{ maxWidth: "140px" }}
-              />
+              <Logo className="h-8 w-auto object-contain max-w-[160px]" />
             </div>
             <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
               {navLinks.map(({ href, label }) => (

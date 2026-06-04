@@ -12,6 +12,15 @@ const ThemeContext = createContext<ThemeContextValue>({
   toggleTheme: () => {},
 });
 
+function updateFavicon(theme: Theme) {
+  try {
+    const link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+    if (link) {
+      link.href = theme === "dark" ? "/favicon-dark.png" : "/favicon.png";
+    }
+  } catch {}
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {
     try {
@@ -31,6 +40,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     } else {
       root.classList.remove("dark");
     }
+    updateFavicon(theme);
     try { localStorage.setItem("theme", theme); } catch {}
   }, [theme]);
 

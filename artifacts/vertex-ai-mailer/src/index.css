@@ -520,13 +520,6 @@
   .dark ::-webkit-scrollbar-thumb  { background: #263248; border-radius: 4px; }
   .dark ::-webkit-scrollbar-thumb:hover { background: #334266; }
 
-  /* ── Logo: PNG has white background — add a minimal white pill in dark mode ── */
-  .dark img[alt="BrokerMail AI"] {
-    background-color: rgba(255, 255, 255, 0.90);
-    border-radius: 8px;
-    padding: 3px 10px;
-  }
-
   /* ── Shadow/glow overrides — tone down light-tinted glows on dark bg ─── */
   /* Slate-colored shadows (near-white on dark = ugly) → suppress */
   .dark .shadow-slate-200\/60 { --tw-shadow-color: transparent; }

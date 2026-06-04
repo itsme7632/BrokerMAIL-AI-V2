@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
+import { Logo } from "@/components/Logo";
 import {
   LayoutDashboard, FileText, UploadCloud, Mail, Settings, ShieldAlert,
   Menu, X, Server, CreditCard, SendHorizonal, Megaphone, LayoutGrid,
@@ -193,7 +194,7 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
       {/* Logo */}
       <div className="h-24 flex items-center px-5 border-b border-slate-100 dark:border-slate-700/60 flex-shrink-0">
         <Link href="/dashboard" className="flex items-center flex-1 min-w-0">
-          <img src="/logo-horizontal.png" alt="BrokerMail AI" className="h-16 w-auto object-contain" style={{ maxWidth: "200px" }} />
+          <Logo className="h-10 w-auto object-contain max-w-[190px]" />
         </Link>
         {onClose && (
           <button onClick={onClose} className="ml-2 p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 flex-shrink-0">
@@ -246,7 +247,7 @@ function TopHeader({ onMobileMenuClick }: { onMobileMenuClick: () => void }) {
           <Menu className="h-5 w-5" />
         </button>
         <Link href="/dashboard">
-          <img src="/logo-horizontal.png" alt="BrokerMail AI" className="h-10 w-auto object-contain" style={{ maxWidth: "160px" }} />
+          <Logo className="h-9 w-auto object-contain max-w-[150px]" />
         </Link>
       </div>
 

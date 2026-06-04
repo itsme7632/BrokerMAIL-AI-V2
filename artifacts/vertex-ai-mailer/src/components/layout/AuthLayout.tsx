@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import { Link } from "wouter";
 import { CheckCircle, Zap } from "lucide-react";
+import { Logo } from "@/components/Logo";
 
 const FEATURES = [
   "Import thousands of leads from CSV or XLSX",
@@ -17,12 +18,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
         <div className="w-full max-w-sm mx-auto">
           {/* Logo */}
           <Link href="/" className="flex items-center mb-10">
-            <img
-              src="/logo-horizontal.png"
-              alt="BrokerMail AI"
-              className="h-11 w-auto object-contain"
-              style={{ maxWidth: "200px" }}
-            />
+            <Logo className="h-11 w-auto object-contain max-w-[220px]" />
           </Link>
           {children}
         </div>
@@ -64,11 +60,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
           <div className="mt-14 rounded-2xl bg-white/10 border border-white/20 backdrop-blur-sm p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="h-9 w-9 rounded-xl overflow-hidden flex-shrink-0 bg-white/10 flex items-center justify-center">
-                <img
-                  src="/logo-icon.png"
-                  alt="BrokerMail AI"
-                  className="h-8 w-8 object-contain rounded-lg"
-                />
+                <Logo variant="icon" className="h-8 w-8 object-contain rounded-lg" />
               </div>
               <div>
                 <div className="h-2.5 w-28 bg-white/40 rounded-full mb-1.5" />
