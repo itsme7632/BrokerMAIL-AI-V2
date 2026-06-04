@@ -55,13 +55,15 @@ interface QuotaData {
 }
 
 interface Campaign {
-  id:          string;
-  name:        string;
-  status:      string;
-  totalCount:  number;
-  sentCount:   number;
-  failedCount: number;
-  createdAt:   string;
+  id:           string;
+  name:         string;
+  status:       string;
+  totalLeads:   number;
+  sentCount:    number;
+  failedCount:  number;
+  cooldownUntil: string | null;
+  createdAt:    string;
+  updatedAt:    string;
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -129,19 +131,25 @@ function QuickActionCard({
   );
 }
 
+function getCampaignStatus(campaign: Campaign): { icon: React.ElementType; label: string; cls: string } {
+  const isCooling = campaign.status === "sending"
+    && !!campaign.cooldownUntil
+    && new Date(campaign.cooldownUntil) > new Date();
+  if (isCooling) return { icon: TimerReset,    label: "Cooling Down", cls: "text-orange-600 bg-orange-50" };
+  switch (campaign.status) {
+    case "sending":   return { icon: PlayCircle,    label: "Sending",   cls: "text-blue-600   bg-blue-50"   };
+    case "pending":   return { icon: FileText,      label: "Pending",   cls: "text-slate-600  bg-slate-50"  };
+    case "paused":    return { icon: PauseCircle,   label: "Paused",    cls: "text-amber-600  bg-amber-50"  };
+    case "completed": return { icon: CheckCircle2,  label: "Completed", cls: "text-emerald-600 bg-emerald-50" };
+    case "cancelled": return { icon: AlertTriangle, label: "Cancelled", cls: "text-slate-600  bg-slate-50"  };
+    case "failed":    return { icon: AlertTriangle, label: "Failed",    cls: "text-red-600    bg-red-50"    };
+    default:          return { icon: FileText,      label: campaign.status, cls: "text-slate-600 bg-slate-50" };
+  }
+}
+
 function CampaignStatusRow({ campaign }: { campaign: Campaign }) {
-  const pct = campaign.totalCount > 0 ? Math.round((campaign.sentCount / campaign.totalCount) * 100) : 0;
-
-  const statusConfig: Record<string, { icon: React.ElementType; label: string; cls: string }> = {
-    active:       { icon: PlayCircle,  label: "Active",       cls: "text-emerald-600 bg-emerald-50" },
-    paused:       { icon: PauseCircle, label: "Paused",       cls: "text-amber-600 bg-amber-50" },
-    cooling_down: { icon: TimerReset,  label: "Cooling Down", cls: "text-orange-600 bg-orange-50" },
-    completed:    { icon: CheckCircle2,label: "Completed",    cls: "text-blue-600 bg-blue-50" },
-    failed:       { icon: AlertTriangle,label: "Failed",      cls: "text-red-600 bg-red-50" },
-    draft:        { icon: FileText,    label: "Draft",        cls: "text-slate-600 bg-slate-50" },
-  };
-
-  const s = statusConfig[campaign.status] ?? statusConfig["draft"];
+  const pct = campaign.totalLeads > 0 ? Math.round((campaign.sentCount / campaign.totalLeads) * 100) : 0;
+  const s = getCampaignStatus(campaign);
   const StatusIcon = s.icon;
 
   return (
@@ -158,7 +166,7 @@ function CampaignStatusRow({ campaign }: { campaign: Campaign }) {
               style={{ width: `${pct}%` }}
             />
           </div>
-          <span className="text-xs text-slate-400">{campaign.sentCount}/{campaign.totalCount} sent</span>
+          <span className="text-xs text-slate-400">{campaign.sentCount}/{campaign.totalLeads} sent</span>
         </div>
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">
@@ -346,8 +354,12 @@ export default function Dashboard() {
     return () => clearInterval(id);
   }, [fetchLiveActivity]);
 
-  const activeCampaigns   = campaigns.filter(c => c.status === "active").length;
-  const coolingCampaigns  = campaigns.filter(c => c.status === "cooling_down").length;
+  const activeCampaigns  = campaigns.filter(c =>
+    c.status === "sending" && !(c.cooldownUntil && new Date(c.cooldownUntil) > new Date())
+  ).length;
+  const coolingCampaigns = campaigns.filter(c =>
+    c.status === "sending" && !!c.cooldownUntil && new Date(c.cooldownUntil) > new Date()
+  ).length;
   const quotaPct = quota && quota.hourlyLimit > 0
     ? Math.min(100, Math.round((quota.usedThisHour / quota.hourlyLimit) * 100))
     : 0;
