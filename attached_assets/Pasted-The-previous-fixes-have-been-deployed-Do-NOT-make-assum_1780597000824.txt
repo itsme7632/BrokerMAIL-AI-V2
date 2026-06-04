@@ -1,0 +1,171 @@
+The previous fixes have been deployed.
+
+Do NOT make assumptions and do NOT make any additional fixes yet.
+
+I need runtime evidence for the remaining issues.
+
+Current symptoms still occurring:
+
+1. ETA countdown still jumps backwards.
+   Example:
+   92m 01s
+   → 92m 59s
+   → 92m 58s
+
+2. Diagnostics cooldown timer still resets.
+   Example:
+   59
+   → 60
+   → 59
+   → 60
+
+3. Campaign analytics still do not update live.
+   Delivery/Open/Click counts require a manual page refresh.
+
+4. Lead status may still not refresh consistently.
+
+Tasks:
+
+A) ETA Investigation
+
+Run a real campaign.
+
+Capture 30 seconds of console output from:
+
+[eta]
+
+Show exactly:
+
+server value
+local projection
+RE-ANCHOR or SKIP decision
+
+Example:
+
+[eta] server=450 local=447 → SKIP
+[eta] server=435 local=438 → RE-ANCHOR
+
+Provide at least 10 consecutive samples.
+
+Determine:
+
+Is the backend returning larger ETA values?
+Or is the frontend hook resetting incorrectly?
+
+Do not patch yet.
+Show evidence first.
+
+---
+
+B) Cooldown Investigation
+
+Capture the exact 5 cooldown probe logs:
+
+[cooldown probe]
+
+Show:
+
+poll number
+cooldownSeconds
+cooldownUntil
+
+Determine:
+
+Does cooldownUntil remain identical across polls?
+
+If cooldownUntil changes:
+show where it is being rewritten.
+
+If cooldownUntil does not change:
+identify the frontend code causing the reset.
+
+Do not patch yet.
+Show evidence first.
+
+---
+
+C) Analytics Live Update Investigation
+
+Run a real SMTP campaign.
+
+Without refreshing the page:
+
+Send 1 email.
+
+Then show:
+
+1. Progress endpoint response before send
+2. Progress endpoint response after send
+3. openCount value
+4. clickCount value
+
+Then open the email.
+
+Show:
+
+tracking endpoint request
+email_tracking_events row
+progress endpoint response after open
+
+Then click a tracked CTA.
+
+Show:
+
+click tracking request
+email_tracking_events row
+progress endpoint response after click
+
+Determine exactly where the update chain breaks:
+
+Pixel hit
+↓
+event row created
+↓
+progress endpoint count changes
+↓
+analytics invalidation fires
+↓
+UI updates
+
+Provide evidence at every step.
+
+---
+
+D) Lead Status Refresh Investigation
+
+Run a campaign with multiple leads.
+
+Show:
+
+leads table rows before send
+leads table rows after send
+
+Show browser console output from:
+
+queryClient.invalidateQueries
+
+Show:
+
+whether invalidation fires
+whether GET /api/leads refetches
+whether UI receives updated rows
+
+Determine exactly why a lead can remain "New" after DB status becomes "sent".
+
+---
+
+Important:
+
+Do NOT implement fixes yet.
+
+Provide runtime evidence only.
+
+For every conclusion include:
+
+actual logs
+actual API responses
+actual DB rows
+
+No code assumptions.
+No theoretical explanations.
+Evidence first.
