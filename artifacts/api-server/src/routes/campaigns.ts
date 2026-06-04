@@ -1265,6 +1265,25 @@ router.get("/campaigns/:id/progress", requireAuth, async (req, res): Promise<voi
     estimatedCompletionSeconds = cooldownSeconds + deferredWaitSecs + (queued + remaining) * delayS;
   }
 
+  // Lightweight open/click counts for frontend change-detection.
+  // Used only to know when to invalidate the analytics cache — not for display.
+  let openCount = 0, clickCount = 0;
+  if (campaign.sendMode === "smtp") {
+    const [evtCounts] = await db
+      .select({
+        opens:  sql<number>`count(*) filter (where ${emailTrackingEventsTable.eventType} = 'open')::int`,
+        clicks: sql<number>`count(*) filter (where ${emailTrackingEventsTable.eventType} = 'click')::int`,
+      })
+      .from(emailTrackingEventsTable)
+      .innerJoin(draftsTable, eq(emailTrackingEventsTable.draftId, draftsTable.id))
+      .innerJoin(emailQueueTable, and(
+        eq(emailQueueTable.trackingId, draftsTable.trackingId),
+        eq(emailQueueTable.campaignId, campaignId),
+      ));
+    openCount  = evtCounts?.opens  ?? 0;
+    clickCount = evtCounts?.clicks ?? 0;
+  }
+
   res.json({
     total, sent, sending, queued, failed, remaining,
     sentThisHour, hourlyLimit, remainingQuota,
@@ -1276,6 +1295,8 @@ router.get("/campaigns/:id/progress", requireAuth, async (req, res): Promise<voi
     status: campaign.status,
     currentlySendingEmail,
     estimatedCompletionSeconds,
+    openCount,
+    clickCount,
   });
 });
 

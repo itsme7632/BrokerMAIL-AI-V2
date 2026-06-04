@@ -41,6 +41,8 @@ interface CampaignProgress {
   status: string;
   currentlySendingEmail: string | null;
   estimatedCompletionSeconds: number;
+  openCount: number;
+  clickCount: number;
 }
 
 interface LastSmtpAttempt {
@@ -143,9 +145,31 @@ function useETACountdown(serverSeconds: number | null): number {
       setSecs(0);
       return;
     }
-    serverRef.current = serverSeconds;
-    anchorRef.current = Date.now();
-    setSecs(serverSeconds);
+    // Compute where the local ticker currently stands.
+    // If serverRef is 0 there is no anchor yet — treat projection as Infinity
+    // so the very first server value is always accepted.
+    const elapsed = (Date.now() - anchorRef.current) / 1000;
+    const localProjection = serverRef.current > 0
+      ? Math.max(0, serverRef.current - elapsed)
+      : Infinity;
+
+    // Only re-anchor when the server value is LOWER than our local projection.
+    // This means a real event happened (email sent, cooldown advanced, etc.).
+    // If the server returns the same or a higher value it means no email sent
+    // since the last poll (processor is mid-delay) — keep the local countdown
+    // running without interruption so the display never jumps backward.
+    if (serverSeconds <= localProjection) {
+      serverRef.current = serverSeconds;
+      anchorRef.current = Date.now();
+      setSecs(serverSeconds);
+      console.log(
+        `[eta] server=${serverSeconds}s  local=${Math.round(localProjection)}s  → RE-ANCHOR`,
+      );
+    } else {
+      console.log(
+        `[eta] server=${serverSeconds}s  local=${Math.round(localProjection)}s  → SKIP (no send yet)`,
+      );
+    }
   }, [serverSeconds]);
 
   useEffect(() => {
@@ -213,7 +237,13 @@ export default function CampaignDetail() {
 
   // Track previous sent count so fetchProgress can invalidate the leads cache
   // only when a new email has actually been sent — not on every poll.
-  const prevSentRef  = useRef<number>(0);
+  const prevSentRef   = useRef<number>(0);
+  // Track previous open/click counts to invalidate analytics only when they change.
+  const prevOpensRef  = useRef<number>(0);
+  const prevClicksRef = useRef<number>(0);
+  // Cooldown probe: log first 5 polls so we can tell whether cooldownUntil
+  // changes between polls (backend bug) or stays fixed (frontend bug).
+  const pollCountRef  = useRef<number>(0);
   // Keep a ref to the current leads page so fetchProgress can build the exact
   // query key without needing leadsPage in its own useCallback deps (which
   // would tear down and recreate the 3-second polling interval on every page turn).
@@ -268,17 +298,51 @@ export default function CampaignDetail() {
       });
       if (!res.ok) throw new Error("Failed to load progress");
       const data: CampaignProgress = await res.json();
-      // Invalidate the leads cache whenever the sent count increases so lead
-      // status badges update live during automated SMTP campaigns without a
-      // page refresh.  prevSentRef starts at 0 — on the very first poll for a
-      // campaign that already has sent emails the leads list is also refreshed,
-      // which guarantees stale mount-time data is corrected immediately.
-      if (data.sent > prevSentRef.current) {
-        prevSentRef.current = data.sent;
+      // ── Cooldown probe (first 5 polls) ───────────────────────────────────────
+      // Logged so we can determine whether cooldownUntil changes between polls
+      // (backend rewriting the timestamp → backend bug) or stays fixed
+      // (frontend countdown drifting from a stable anchor → frontend bug).
+      if (pollCountRef.current < 5) {
+        pollCountRef.current++;
+        console.log(
+          `[cooldown probe] poll=${pollCountRef.current}  t=${new Date().toISOString()}`,
+          { cooldownSeconds: data.cooldownSeconds, cooldownUntil: data.cooldownUntil },
+        );
+      }
+
+      // ── Change detection — compute ALL flags before mutating any ref ─────────
+      const sentChanged   = data.sent       > prevSentRef.current;
+      const opensChanged  = data.openCount  > prevOpensRef.current;
+      const clicksChanged = data.clickCount > prevClicksRef.current;
+
+      // ── Leads cache invalidation ──────────────────────────────────────────────
+      // Only when sent count increases — not on every poll.
+      // prevSentRef starts at 0, so the very first poll for a campaign that
+      // already has sent emails also triggers a refresh (corrects stale badges).
+      if (sentChanged) {
         queryClient.invalidateQueries({
           queryKey: getGetLeadsQueryKey({ campaignId, page: leadsPageRef.current, limit: 10 })
         });
       }
+
+      // ── Analytics cache invalidation ─────────────────────────────────────────
+      // Invalidate whenever sent count, open count, or click count increases.
+      // This guarantees delivery rate, open rate, click rate, and engagement
+      // widgets update immediately — not on the 30-second background timer.
+      if (sentChanged || opensChanged || clicksChanged) {
+        console.log(
+          `[analytics invalidate] sent=${data.sent}(${sentChanged?'↑':'='})`,
+          `opens=${data.openCount}(${opensChanged?'↑':'='})`,
+          `clicks=${data.clickCount}(${clicksChanged?'↑':'='})`,
+        );
+        queryClient.invalidateQueries({ queryKey: ["campaign-analytics", campaignId] });
+      }
+
+      // Update all tracking refs after flags are computed
+      prevSentRef.current   = data.sent;
+      prevOpensRef.current  = data.openCount;
+      prevClicksRef.current = data.clickCount;
+
       setProgress(data);
       setProgressError(null);
       // NOTE: do NOT set activeJobId from currentJobId here.

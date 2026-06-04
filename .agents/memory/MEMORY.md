@@ -7,3 +7,4 @@
 - [Gmail Draft variable/formatting fixes](gmail-draft-audit.md) — all 3 Gmail Draft paths had missing quote_id, missing campaign URL vars, wrong body to buildHtmlEmail, missing ctaButtons, missing email field on insert; sentAt column gates tracking
 - [State-sync bug: drafts table in the send try/catch](state-sync-send-fix.md) — db.insert(draftsTable) must never be inside the sendEmail/createGmailDraft try/catch; move critical state updates first, wrap drafts insert in its own non-fatal try/catch
 - [Replit proxy method override](replit-proxy-method-override.md) — Replit deployment proxy silently blocks PATCH/PUT/DELETE; fix is X-HTTP-Method-Override in custom-fetch + middleware in app.ts
+- [ETA countdown and analytics invalidation fix](eta-analytics-fix.md) — useETACountdown must only re-anchor downward; analytics invalidation requires openCount/clickCount in progress endpoint; change flags must be computed before ref mutation
