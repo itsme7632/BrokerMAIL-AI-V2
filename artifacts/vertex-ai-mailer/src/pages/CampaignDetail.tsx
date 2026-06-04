@@ -1110,7 +1110,12 @@ export default function CampaignDetail() {
           </div>
           <Button
             variant="ghost" size="sm"
-            onClick={e => { e.stopPropagation(); fetchProgress(); fetchBatches(); }}
+            onClick={e => {
+              e.stopPropagation();
+              fetchProgress();
+              fetchBatches();
+              queryClient.invalidateQueries({ queryKey: getGetLeadsQueryKey({ campaignId, page: leadsPage, limit: 10 }) });
+            }}
             className="text-slate-400 hover:text-slate-600 h-7 w-7 p-0 rounded-xl"
           >
             <RefreshCw className="h-3.5 w-3.5" />
