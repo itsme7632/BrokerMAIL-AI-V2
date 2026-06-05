@@ -3,7 +3,7 @@ import {
   db, emailQueueTable, draftsTable, mailboxesTable, usersTable, templatesTable,
   emailTrackingEventsTable, campaignsTable,
 } from "@workspace/db";
-import { eq, and, count, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, count, desc, sql, inArray, isNotNull } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { requireAuth } from "../lib/auth";
 import {
@@ -159,6 +159,8 @@ router.get("/sent-emails", requireAuth, async (req, res): Promise<void> => {
   const campaignId   = req.query.campaignId ? parseInt(req.query.campaignId as string, 10) : undefined;
   const search       = typeof req.query.search === "string" ? req.query.search.trim().toLowerCase() : "";
   const statusFilter = (req.query.statusFilter as string) || "delivered";
+  const dateFrom     = typeof req.query.dateFrom === "string" && req.query.dateFrom ? new Date(req.query.dateFrom) : null;
+  const dateTo       = typeof req.query.dateTo   === "string" && req.query.dateTo   ? new Date(req.query.dateTo)   : null;
 
   // Build status condition
   let statusCond: any;
@@ -174,6 +176,9 @@ router.get("/sent-emails", requireAuth, async (req, res): Promise<void> => {
   }
 
   const baseConditions: any[] = [eq(emailQueueTable.userId, user.id), statusCond];
+  if (dateFrom && dateTo) baseConditions.push(sql`COALESCE(${emailQueueTable.sentAt}, ${emailQueueTable.createdAt}) BETWEEN ${dateFrom} AND ${dateTo}`);
+  else if (dateFrom)      baseConditions.push(sql`COALESCE(${emailQueueTable.sentAt}, ${emailQueueTable.createdAt}) >= ${dateFrom}`);
+  else if (dateTo)        baseConditions.push(sql`COALESCE(${emailQueueTable.sentAt}, ${emailQueueTable.createdAt}) <= ${dateTo}`);
   if (campaignId) baseConditions.push(eq(emailQueueTable.campaignId, campaignId));
 
   const selectCols = {
@@ -244,6 +249,61 @@ router.get("/sent-emails", requireAuth, async (req, res): Promise<void> => {
   }
 
   res.json({ data: items, total: totalCount, page, limit });
+});
+
+// ─── Global stats for date range (ignores statusFilter) ──────────────────────
+
+router.get("/sent-emails/stats", requireAuth, async (req, res): Promise<void> => {
+  const user     = req.user!;
+  const dateFrom = typeof req.query.dateFrom === "string" && req.query.dateFrom ? new Date(req.query.dateFrom) : null;
+  const dateTo   = typeof req.query.dateTo   === "string" && req.query.dateTo   ? new Date(req.query.dateTo)   : null;
+
+  const dateCond = (alias?: string) => {
+    const col = alias ? `"${alias}"` : `email_queue`;
+    if (dateFrom && dateTo) return sql`COALESCE(${emailQueueTable.sentAt}, ${emailQueueTable.createdAt}) BETWEEN ${dateFrom} AND ${dateTo}`;
+    if (dateFrom)           return sql`COALESCE(${emailQueueTable.sentAt}, ${emailQueueTable.createdAt}) >= ${dateFrom}`;
+    if (dateTo)             return sql`COALESCE(${emailQueueTable.sentAt}, ${emailQueueTable.createdAt}) <= ${dateTo}`;
+    return null;
+  };
+
+  const baseConds: any[] = [
+    eq(emailQueueTable.userId, user.id),
+    inArray(emailQueueTable.status, ["success", "failed", "bounced"]),
+  ];
+  const dc = dateCond();
+  if (dc) baseConds.push(dc);
+
+  // Count by status
+  const counts = await db
+    .select({ status: emailQueueTable.status, cnt: count() })
+    .from(emailQueueTable)
+    .where(and(...baseConds))
+    .groupBy(emailQueueTable.status);
+
+  const total   = counts.reduce((s, r) => s + r.cnt, 0);
+  const bounced = counts.find(r => r.status === "bounced")?.cnt ?? 0;
+  const failed  = counts.find(r => r.status === "failed")?.cnt ?? 0;
+
+  // Tracked emails (success + trackingId)
+  const trackedConds: any[] = [
+    eq(emailQueueTable.userId, user.id),
+    eq(emailQueueTable.status, "success"),
+    isNotNull(emailQueueTable.trackingId),
+  ];
+  if (dc) trackedConds.push(dc);
+
+  const trackedRows = await db
+    .select({ trackingId: emailQueueTable.trackingId })
+    .from(emailQueueTable)
+    .where(and(...trackedConds));
+
+  const tracked    = trackedRows.length;
+  const trackingIds = trackedRows.map(r => r.trackingId!);
+  const tracking   = await getTrackingStatsForIds(trackingIds);
+  const opened     = Object.values(tracking).filter(t => t.openCount > 0).length;
+  const openRate   = tracked > 0 ? Math.round((opened / tracked) * 100) : 0;
+
+  res.json({ total, opened, bounced, failed, openRate, tracked });
 });
 
 // ─── Preview a sent email ─────────────────────────────────────────────────────
