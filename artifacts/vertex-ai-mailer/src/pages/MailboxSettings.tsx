@@ -53,11 +53,11 @@ function QuotaWidget({ visible }: { visible: boolean }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm overflow-hidden">
+      <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700/40 flex items-center gap-2">
         <BarChart2 className="h-4 w-4 text-blue-500" />
-        <h3 className="font-semibold text-slate-800 text-sm">SMTP Usage — Rolling Hour</h3>
-        <button type="button" onClick={fetch_} className="ml-auto text-slate-400 hover:text-slate-600 transition-colors">
+        <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">SMTP Usage — Rolling Hour</h3>
+        <button type="button" onClick={fetch_} className="ml-auto text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
         </button>
       </div>
@@ -69,14 +69,14 @@ function QuotaWidget({ visible }: { visible: boolean }) {
             {/* Progress bar */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-medium text-slate-700">
+                <span className="font-medium text-slate-700 dark:text-slate-300">
                   {quota.usedThisHour} / {quota.hourlyLimit} sent this hour
                 </span>
                 <span className={`font-semibold ${pct >= 90 ? "text-red-600" : pct >= 70 ? "text-amber-600" : "text-emerald-600"}`}>
                   {pct}%
                 </span>
               </div>
-              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
                 <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${Math.min(pct, 100)}%` }} />
               </div>
               <p className="text-xs text-slate-400">{quota.remainingQuota} slots remaining</p>
@@ -93,11 +93,13 @@ function QuotaWidget({ visible }: { visible: boolean }) {
                   highlight: quota.retryQueueCount > 0 },
               ].map(({ icon: Icon, label, value, highlight }) => (
                 <div key={label} className={`flex items-center gap-2 p-3 rounded-xl border ${
-                  highlight ? "bg-amber-50 border-amber-200" : "bg-slate-50 border-slate-100"
+                  highlight
+                    ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50"
+                    : "bg-slate-50 dark:bg-slate-700/40 border-slate-100 dark:border-slate-700/60"
                 }`}>
                   <Icon className={`h-3.5 w-3.5 flex-shrink-0 ${highlight ? "text-amber-500" : "text-slate-400"}`} />
                   <div>
-                    <p className={`text-sm font-bold leading-none ${highlight ? "text-amber-800" : "text-slate-800"}`}>{value}</p>
+                    <p className={`text-sm font-bold leading-none ${highlight ? "text-amber-800 dark:text-amber-300" : "text-slate-800 dark:text-slate-200"}`}>{value}</p>
                     <p className="text-xs text-slate-400 mt-0.5">{label}</p>
                   </div>
                 </div>
@@ -106,9 +108,9 @@ function QuotaWidget({ visible }: { visible: boolean }) {
 
             {/* Next release */}
             {quota.nextReleaseAt && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50 border border-blue-100">
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40">
                 <Clock className="h-3.5 w-3.5 text-blue-400 flex-shrink-0" />
-                <p className="text-xs text-blue-700">
+                <p className="text-xs text-blue-700 dark:text-blue-300">
                   Next quota slot opens in <span className="font-semibold">{formatRelease(quota.nextReleaseAt)}</span>
                   {" "}— {new Date(quota.nextReleaseAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </p>
@@ -180,10 +182,10 @@ function StatusPill({
   return (
     <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${
       active
-        ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-        : "bg-slate-50 border-slate-200 text-slate-500"
+        ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-400"
+        : "bg-slate-50 dark:bg-slate-700/40 border-slate-200 dark:border-slate-700/60 text-slate-500 dark:text-slate-400"
     }`}>
-      <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${active ? "bg-emerald-500" : "bg-slate-300"}`} />
+      <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${active ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-500"}`} />
       <Icon className="h-3 w-3 flex-shrink-0" />
       {active ? label : (inactiveLabel ?? label)}
     </span>
@@ -198,7 +200,7 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-sm font-medium flex items-center gap-1.5 text-slate-700">
+      <label className="text-sm font-medium flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
         <Icon className="h-3.5 w-3.5 text-slate-400" /> {label}
       </label>
       <Input
@@ -236,8 +238,8 @@ function ChipRow<T extends number>({
           onClick={() => onChange(opt.value)}
           className={`flex flex-col items-center px-4 py-2 rounded-xl border-2 text-xs font-semibold transition-colors min-w-[56px] ${
             value === opt.value
-              ? "border-blue-500 bg-blue-50 text-blue-800"
-              : "border-slate-200 text-slate-600 hover:border-slate-300 bg-white"
+              ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300"
+              : "border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-500 bg-white dark:bg-slate-700/50"
           }`}
         >
           {opt.label}
@@ -400,26 +402,28 @@ export default function MailboxSettings() {
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight text-slate-900">Mailbox Settings</h2>
-        <p className="text-slate-500 mt-1 text-sm">
+        <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Mailbox Settings</h2>
+        <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
           Connect your business email and configure sending protection to maximize deliverability.
         </p>
       </div>
 
       {/* Status badge */}
       <div className={`flex items-center gap-3 p-4 rounded-2xl border ${
-        isConnected ? "bg-emerald-50 border-emerald-200" : "bg-slate-50 border-slate-200"
+        isConnected
+          ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/50"
+          : "bg-slate-50 dark:bg-slate-700/30 border-slate-200 dark:border-slate-700/60"
       }`}>
         <div className={`h-9 w-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
-          isConnected ? "bg-emerald-100" : "bg-slate-100"
+          isConnected ? "bg-emerald-100 dark:bg-emerald-900/40" : "bg-slate-100 dark:bg-slate-700"
         }`}>
           <Mail className={`h-5 w-5 ${isConnected ? "text-emerald-600" : "text-slate-400"}`} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className={`font-semibold text-sm ${isConnected ? "text-emerald-900" : "text-slate-700"}`}>
+          <p className={`font-semibold text-sm ${isConnected ? "text-emerald-900 dark:text-emerald-300" : "text-slate-700 dark:text-slate-200"}`}>
             {isConnected ? `Connected — ${form.smtpUser}` : "No mailbox connected"}
           </p>
-          <p className={`text-xs mt-0.5 ${isConnected ? "text-emerald-700" : "text-slate-500"}`}>
+          <p className={`text-xs mt-0.5 ${isConnected ? "text-emerald-700 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400"}`}>
             {isConnected
               ? `SMTP ${form.smtpHost}:${form.smtpPort} · ${form.smtpSecure.toUpperCase()}`
               : "Add your SMTP credentials below to enable direct sending."}
@@ -429,7 +433,7 @@ export default function MailboxSettings() {
           <Button
             variant="ghost" size="sm"
             onClick={handleDisconnect}
-            className="text-red-500 hover:text-red-700 hover:bg-red-50 gap-1.5 flex-shrink-0"
+            className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 gap-1.5 flex-shrink-0"
           >
             <Trash2 className="h-3.5 w-3.5" /> Disconnect
           </Button>
@@ -448,14 +452,14 @@ export default function MailboxSettings() {
 
       {/* Provider presets */}
       <div className="space-y-2">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Quick setup — select your provider</p>
+        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Quick setup — select your provider</p>
         <div className="flex flex-wrap gap-2">
           {PRESETS.map(p => (
             <button
               key={p.name}
               type="button"
               onClick={() => applyPreset(p)}
-              className="px-3 py-1.5 text-xs font-medium bg-white border border-slate-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition-colors text-slate-600"
+              className="px-3 py-1.5 text-xs font-medium bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-lg hover:border-blue-300 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-700 dark:hover:text-blue-400 transition-colors text-slate-600 dark:text-slate-300"
             >
               {p.name}
             </button>
@@ -465,10 +469,10 @@ export default function MailboxSettings() {
 
       <form onSubmit={handleSave} className="space-y-5">
         {/* SMTP Section */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700/40 flex items-center gap-2">
             <Server className="h-4 w-4 text-blue-500" />
-            <h3 className="font-semibold text-slate-800 text-sm">SMTP Settings</h3>
+            <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">SMTP Settings</h3>
             <span className="ml-auto text-xs text-slate-400">For sending</span>
           </div>
           <div className="p-6 grid sm:grid-cols-2 gap-4">
@@ -485,7 +489,7 @@ export default function MailboxSettings() {
             <Field label="Port" icon={Wifi} value={form.smtpPort}
               onChange={v => set("smtpPort", v)} placeholder="587" />
             <div className="space-y-1.5">
-              <label className="text-sm font-medium flex items-center gap-1.5 text-slate-700">
+              <label className="text-sm font-medium flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
                 <Wifi className="h-3.5 w-3.5 text-slate-400" /> Encryption
               </label>
               <div className="flex gap-2">
@@ -495,8 +499,8 @@ export default function MailboxSettings() {
                     onClick={() => set("smtpSecure", s)}
                     className={`flex-1 py-2 rounded-xl border text-xs font-semibold transition-colors ${
                       form.smtpSecure === s
-                        ? "border-blue-500 bg-blue-50 text-blue-700"
-                        : "border-slate-200 text-slate-500 hover:border-slate-300"
+                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                        : "border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-500 bg-white dark:bg-slate-700/50"
                     }`}
                   >
                     {s.toUpperCase()}
@@ -529,15 +533,15 @@ export default function MailboxSettings() {
         </div>
 
         {/* IMAP Section */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm overflow-hidden">
           <button
             type="button"
             onClick={() => setShowImap(s => !s)}
             className="w-full px-6 py-4 flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors"
           >
             <Mail className="h-4 w-4 text-purple-500" />
-            <h3 className="font-semibold text-slate-800 text-sm">IMAP Settings</h3>
-            <span className="ml-1 text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">Optional</span>
+            <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">IMAP Settings</h3>
+            <span className="ml-1 text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full">Optional</span>
             <span className="ml-auto text-xs text-slate-400">Save to Sent folder</span>
             {showImap
               ? <ChevronUp className="h-4 w-4 text-slate-400 ml-2" />
@@ -545,8 +549,8 @@ export default function MailboxSettings() {
           </button>
           {showImap && (
             <>
-              <div className="px-6 pb-2 bg-blue-50/50 border-y border-slate-100">
-                <p className="text-xs text-slate-500 py-2">
+              <div className="px-6 pb-2 bg-blue-50/50 dark:bg-blue-900/10 border-y border-slate-100 dark:border-slate-700/40">
+                <p className="text-xs text-slate-500 dark:text-slate-400 py-2">
                   When configured, sent emails are automatically copied to your Sent folder via IMAP.
                   Many hosting providers (Hostinger, cPanel) do this automatically without IMAP.
                 </p>
@@ -583,10 +587,10 @@ export default function MailboxSettings() {
         </div>
 
         {/* Sender Info */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700/40 flex items-center gap-2">
             <User className="h-4 w-4 text-emerald-500" />
-            <h3 className="font-semibold text-slate-800 text-sm">Sender Info</h3>
+            <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">Sender Info</h3>
           </div>
           <div className="p-6 grid sm:grid-cols-2 gap-4">
             <Field label="From Name" icon={User} value={form.fromName}
@@ -597,18 +601,18 @@ export default function MailboxSettings() {
         </div>
 
         {/* ── Sending Protection ──────────────────────────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700/40 flex items-center gap-2">
             <Shield className="h-4 w-4 text-violet-500" />
-            <h3 className="font-semibold text-slate-800 text-sm">Sending Protection</h3>
+            <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">Sending Protection</h3>
             <span className="ml-auto text-xs text-slate-400">Deliverability &amp; rate limiting</span>
           </div>
 
           {/* Safety warning */}
           <div className="px-6 pt-5 pb-3">
-            <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
+            <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50">
               <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-800 leading-relaxed">
+              <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
                 <span className="font-semibold">Lower send speeds improve deliverability and reduce spam/rate-limit issues.</span>{" "}
                 A 15-second delay with batches of 10 is the recommended default for most mailboxes.
               </p>
@@ -620,8 +624,8 @@ export default function MailboxSettings() {
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-slate-400" />
-                <label className="text-sm font-semibold text-slate-700">Delay between emails</label>
-                <span className="ml-auto text-xs text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-full">
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Delay between emails</label>
+                <span className="ml-auto text-xs text-blue-600 dark:text-blue-400 font-semibold bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-full">
                   {form.delaySeconds}s
                 </span>
               </div>
@@ -652,8 +656,8 @@ export default function MailboxSettings() {
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Zap className="h-4 w-4 text-slate-400" />
-                <label className="text-sm font-semibold text-slate-700">Emails per batch</label>
-                <span className="ml-auto text-xs text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-full">
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Emails per batch</label>
+                <span className="ml-auto text-xs text-blue-600 dark:text-blue-400 font-semibold bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-full">
                   {form.batchSize} emails
                 </span>
               </div>
@@ -671,8 +675,8 @@ export default function MailboxSettings() {
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Gauge className="h-4 w-4 text-slate-400" />
-                <label className="text-sm font-semibold text-slate-700">Max emails per hour</label>
-                <span className="ml-auto text-xs text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-full">
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Max emails per hour</label>
+                <span className="ml-auto text-xs text-blue-600 dark:text-blue-400 font-semibold bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-full">
                   {form.maxPerHour}/hr
                 </span>
               </div>
@@ -703,7 +707,7 @@ export default function MailboxSettings() {
             </div>
 
             {/* Summary */}
-            <div className="flex flex-wrap gap-3 p-4 rounded-xl bg-slate-50 border border-slate-100">
+            <div className="flex flex-wrap gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-700/40 border border-slate-100 dark:border-slate-700/60">
               {[
                 { icon: Clock, text: `${form.delaySeconds}s between emails` },
                 { icon: Zap,   text: `${form.batchSize} per batch` },
@@ -711,7 +715,7 @@ export default function MailboxSettings() {
               ].map(({ icon: Icon, text }) => (
                 <div key={text} className="flex items-center gap-1.5">
                   <Icon className="h-3.5 w-3.5 text-violet-500" />
-                  <span className="text-xs font-medium text-slate-700">{text}</span>
+                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{text}</span>
                 </div>
               ))}
             </div>

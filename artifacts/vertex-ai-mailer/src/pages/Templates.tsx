@@ -46,11 +46,12 @@ export default function Templates() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Email Templates</h1>
-          <p className="text-slate-500 mt-1 text-sm">
-            Write templates with variables like <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded font-mono">{"{name}"}</code>,{" "}
-            <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded font-mono">{"{vehicle}"}</code>,{" "}
-            <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded font-mono">{"{pickup}"}</code>.
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Email Templates</h1>
+          <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
+            Write templates with variables like{" "}
+            <code className="text-xs bg-slate-100 dark:bg-slate-700 dark:text-slate-300 px-1.5 py-0.5 rounded font-mono">{"{name}"}</code>,{" "}
+            <code className="text-xs bg-slate-100 dark:bg-slate-700 dark:text-slate-300 px-1.5 py-0.5 rounded font-mono">{"{vehicle}"}</code>,{" "}
+            <code className="text-xs bg-slate-100 dark:bg-slate-700 dark:text-slate-300 px-1.5 py-0.5 rounded font-mono">{"{pickup}"}</code>.
             Any CSV column header works too.
           </p>
         </div>
@@ -67,7 +68,7 @@ export default function Templates() {
             </DialogHeader>
             <div className="py-4 space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Template Name</label>
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Template Name</label>
                 <Input
                   placeholder="e.g. Standard Outreach"
                   value={newTemplateName}
@@ -93,17 +94,17 @@ export default function Templates() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {isLoading ? (
           Array(3).fill(0).map((_, i) => (
-            <div key={i} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-3">
+            <div key={i} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm p-6 space-y-3">
               <Skeleton className="h-5 w-3/4" />
               <Skeleton className="h-4 w-1/2" />
               <Skeleton className="h-24 w-full rounded-xl" />
             </div>
           ))
         ) : !templates?.length ? (
-          <div className="col-span-full flex flex-col items-center justify-center py-20 rounded-2xl border-2 border-dashed border-slate-200 bg-white text-slate-400">
+          <div className="col-span-full flex flex-col items-center justify-center py-20 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-800 text-slate-400">
             <FileText className="h-12 w-12 mb-3 opacity-30" />
-            <p className="font-medium text-slate-600 text-sm">No templates yet</p>
-            <p className="text-xs mt-1 mb-4">Create your first template to start sending drafts.</p>
+            <p className="font-medium text-slate-600 dark:text-slate-300 text-sm">No templates yet</p>
+            <p className="text-xs mt-1 mb-4 dark:text-slate-500">Create your first template to start sending drafts.</p>
             <Button
               variant="outline"
               size="sm"
@@ -117,39 +118,39 @@ export default function Templates() {
           templates.map(template => (
             <div
               key={template.id}
-              className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col overflow-hidden"
+              className="group bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 transition-all flex flex-col overflow-hidden"
             >
               <div className="p-5 flex-1">
                 <div className="flex items-start justify-between gap-2 mb-3">
-                  <div className="h-9 w-9 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
-                    <FileText className="h-4 w-4 text-blue-600" />
+                  <div className="h-9 w-9 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+                    <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                   </div>
                   <Link
                     href={`/templates/${template.id}`}
-                    className="flex items-center gap-1 text-xs text-slate-400 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100"
+                    className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors opacity-0 group-hover:opacity-100"
                   >
                     <Pencil className="h-3 w-3" /> Edit
                   </Link>
                 </div>
-                <h3 className="font-semibold text-slate-900 text-sm mb-1 truncate">{template.name}</h3>
-                <p className="text-xs text-slate-500 truncate mb-3">
+                <h3 className="font-semibold text-slate-900 dark:text-slate-100 text-sm mb-1 truncate">{template.name}</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate mb-3">
                   Subject: {template.subject}
                 </p>
-                <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-                  <p className="text-xs text-slate-500 font-mono leading-relaxed line-clamp-4">
+                <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3 border border-slate-100 dark:border-slate-700">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-mono leading-relaxed line-clamp-4">
                     {template.body}
                   </p>
                 </div>
               </div>
-              <div className="px-5 py-3.5 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
-                <span className="text-xs text-slate-400">
+              <div className="px-5 py-3.5 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between bg-slate-50/50 dark:bg-slate-700/30">
+                <span className="text-xs text-slate-400 dark:text-slate-500">
                   Updated {new Date(template.updatedAt).toLocaleDateString()}
                 </span>
                 <Button
                   variant="ghost"
                   size="sm"
                   asChild
-                  className="text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg h-7 px-2 gap-1"
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg h-7 px-2 gap-1"
                 >
                   <Link href={`/templates/${template.id}`}>
                     Edit <ArrowRight className="h-3 w-3" />

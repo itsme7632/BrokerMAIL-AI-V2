@@ -472,15 +472,15 @@ function PreviewModal({
         </DialogHeader>
 
         {/* Preview area */}
-        <div className="flex-1 overflow-auto bg-slate-100 min-h-0 flex items-start justify-center">
+        <div className="flex-1 overflow-auto bg-slate-100 dark:bg-slate-900 min-h-0">
           {loading && (
-            <div className="p-6 space-y-3 w-full max-w-xl">
+            <div className="p-6 space-y-3 w-full max-w-xl mx-auto">
               <Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/4" />
               <Skeleton className="h-48 w-full" /><Skeleton className="h-4 w-1/2" />
             </div>
           )}
           {error && !loading && (
-            <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-400 p-8">
+            <div className="flex flex-col items-center justify-center min-h-[300px] gap-2 text-slate-400 p-8">
               <p className="text-sm">{error}</p>
               <Button variant="outline" size="sm" onClick={() => styleId && fetchPreview(styleId, withSig)} className="rounded-lg mt-1">
                 Retry
@@ -488,19 +488,43 @@ function PreviewModal({
             </div>
           )}
           {html && !loading && (
-            <div
-              className={`transition-all duration-300 ${
-                viewMode === "mobile" ? "w-[390px] my-4 shadow-2xl" : "w-full"
-              }`}
-            >
+            viewMode === "mobile" ? (
+              <div className="flex justify-center py-4 px-2">
+                <div className="w-[390px] shadow-2xl rounded-2xl overflow-hidden border border-slate-300 dark:border-slate-600 flex-shrink-0">
+                  <iframe
+                    key={`${styleId}-mobile`}
+                    srcDoc={html}
+                    className="w-full border-0 block"
+                    style={{ height: "600px" }}
+                    onLoad={e => {
+                      try {
+                        const doc = e.currentTarget.contentDocument;
+                        const h = doc?.documentElement?.scrollHeight ?? doc?.body?.scrollHeight;
+                        if (h && h > 0) e.currentTarget.style.height = `${Math.max(h, 300)}px`;
+                      } catch { /* cross-origin guard */ }
+                    }}
+                    title="Template Preview (Mobile)"
+                    sandbox="allow-same-origin"
+                  />
+                </div>
+              </div>
+            ) : (
               <iframe
+                key={`${styleId}-desktop`}
                 srcDoc={html}
-                className="w-full border-0 min-h-[500px]"
-                style={{ height: viewMode === "mobile" ? "700px" : "100%" }}
-                title="Template Preview"
+                className="w-full border-0 block"
+                style={{ height: "600px" }}
+                onLoad={e => {
+                  try {
+                    const doc = e.currentTarget.contentDocument;
+                    const h = doc?.documentElement?.scrollHeight ?? doc?.body?.scrollHeight;
+                    if (h && h > 0) e.currentTarget.style.height = `${Math.max(h, 300)}px`;
+                  } catch { /* cross-origin guard */ }
+                }}
+                title="Template Preview (Desktop)"
                 sandbox="allow-same-origin"
               />
-            </div>
+            )
           )}
         </div>
 
