@@ -672,7 +672,7 @@ export default function Admin() {
                     )) : users.length === 0 ? (
                       <tr><td colSpan={10} className="px-4 py-12 text-center text-slate-400 text-sm">No users found.</td></tr>
                     ) : users.map(u => (
-                      <tr key={u.id} className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors">
+                      <tr key={u.id} className="border-b border-slate-50 dark:border-slate-700/50 hover:bg-slate-50/60 dark:hover:bg-slate-700/40 transition-colors">
                         <td className="px-4 py-3">
                           <div>
                             <p className="font-medium text-slate-900 text-sm">{u.name}</p>
@@ -821,7 +821,7 @@ export default function Admin() {
                     </thead>
                     <tbody>
                       {mailboxes.map(m => (
-                        <tr key={m.id} className="border-b border-slate-50 hover:bg-slate-50/60">
+                        <tr key={m.id} className="border-b border-slate-50 dark:border-slate-700/50 hover:bg-slate-50/60 dark:hover:bg-slate-700/40">
                           <td className="px-4 py-3">
                             <p className="font-medium text-slate-900 text-sm">{m.userName ?? "—"}</p>
                             <p className="text-xs text-slate-400">{m.userEmail ?? "—"}</p>
@@ -861,7 +861,7 @@ export default function Admin() {
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                         analyticsDays === d
                           ? "bg-blue-600 text-white"
-                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
                       }`}>{d}d</button>
                   ))}
                 </div>
@@ -909,7 +909,7 @@ export default function Admin() {
                           : s === "warn"  ? "bg-amber-500 text-white"
                           : s === "info"  ? "bg-blue-600 text-white"
                           : "bg-slate-800 text-white"
-                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
                       }`}>{s === "all" ? "All" : s}</button>
                   ))}
                 </div>
@@ -934,7 +934,7 @@ export default function Admin() {
               ) : (
                 <div className="space-y-1.5">
                   {logs.map(l => (
-                    <div key={l.id} className="flex items-start gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
+                    <div key={l.id} className="flex items-start gap-3 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors border border-transparent hover:border-slate-100 dark:hover:border-slate-600/50">
                       <SeverityBadge severity={l.severity ?? "info"} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline gap-2 flex-wrap">
@@ -1042,7 +1042,7 @@ export default function Admin() {
                       </thead>
                       <tbody>
                         {planRequests.filter(r => r.status !== "pending").slice(0, 10).map(r => (
-                          <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50/60">
+                          <tr key={r.id} className="border-b border-slate-50 dark:border-slate-700/50 hover:bg-slate-50/60 dark:hover:bg-slate-700/40">
                             <td className="px-4 py-2.5">
                               <p className="font-medium text-slate-800 text-xs">{r.userName}</p>
                               <p className="text-slate-400 text-xs">{r.userEmail}</p>
@@ -1086,7 +1086,7 @@ export default function Admin() {
                           const unlimited = s.monthlyEmailLimit === -1;
                           const pct = unlimited ? 0 : Math.min((s.emailsSentThisMonth / Math.max(s.monthlyEmailLimit, 1)) * 100, 100);
                           return (
-                            <tr key={s.userId} className="border-b border-slate-50 hover:bg-slate-50/60">
+                            <tr key={s.userId} className="border-b border-slate-50 dark:border-slate-700/50 hover:bg-slate-50/60 dark:hover:bg-slate-700/40">
                               <td className="px-4 py-3">
                                 <p className="font-medium text-slate-900 text-xs">{s.userName}</p>
                                 <p className="text-slate-400 text-xs">{s.userEmail}</p>
@@ -1144,7 +1144,7 @@ export default function Admin() {
                     </thead>
                     <tbody>
                       {allPlans.map(p => (
-                        <tr key={p.id} className="border-b border-slate-50 hover:bg-slate-50/60">
+                        <tr key={p.id} className="border-b border-slate-50 dark:border-slate-700/50 hover:bg-slate-50/60 dark:hover:bg-slate-700/40">
                           <td className="px-4 py-3">
                             <PlanBadge plan={p.slug} />
                             <p className="text-xs text-slate-400 mt-0.5">{p.description}</p>

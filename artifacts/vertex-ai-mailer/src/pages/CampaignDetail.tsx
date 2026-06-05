@@ -1018,7 +1018,7 @@ export default function CampaignDetail() {
           <button
             type="button"
             onClick={() => setShowBatches(b => !b)}
-            className="w-full px-5 py-4 flex items-center gap-3 hover:bg-slate-50 transition-colors text-left"
+            className="w-full px-5 py-4 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors text-left"
           >
             <div className="h-8 w-8 rounded-xl bg-violet-100 flex items-center justify-center flex-shrink-0">
               <Layers className="h-4 w-4 text-violet-600" />
@@ -1099,7 +1099,7 @@ export default function CampaignDetail() {
         <button
           type="button"
           onClick={() => setShowLeads(b => !b)}
-          className="w-full px-5 py-4 flex items-center gap-3 hover:bg-slate-50 transition-colors text-left"
+          className="w-full px-5 py-4 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors text-left"
         >
           <div className="h-8 w-8 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
             <Users className="h-4 w-4 text-slate-500" />
@@ -1174,7 +1174,7 @@ export default function CampaignDetail() {
                           failed:  "bg-red-100 text-red-700",
                         };
                         return (
-                          <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
+                          <tr key={lead.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors">
                             <td className="px-4 py-3 text-xs font-medium text-slate-800 truncate max-w-[120px]">
                               {lead.name || "—"}
                             </td>
@@ -1247,7 +1247,7 @@ export default function CampaignDetail() {
         {analytics && campaign?.sendMode === "smtp" && (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <button
-              className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50/60 transition-colors"
+              className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50/60 dark:hover:bg-slate-700/40 transition-colors"
               onClick={() => {}}
             >
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
@@ -1478,7 +1478,7 @@ export default function CampaignDetail() {
           <button
             type="button"
             onClick={() => { setShowDiagnostics(b => !b); if (!showDiagnostics) fetchDiagnostics(); }}
-            className="w-full px-5 py-4 flex items-center gap-3 hover:bg-slate-50 transition-colors text-left"
+            className="w-full px-5 py-4 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors text-left"
           >
             <div className="h-8 w-8 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
               <Gauge className="h-4 w-4 text-slate-500" />

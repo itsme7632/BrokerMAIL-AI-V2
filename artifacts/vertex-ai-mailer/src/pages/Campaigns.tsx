@@ -403,7 +403,7 @@ export default function Campaigns() {
                 : "bg-slate-400";
 
               return (
-                <div key={campaign.id} className="p-4 hover:bg-slate-50/60 transition-colors">
+                <div key={campaign.id} className="p-4 hover:bg-slate-50/60 dark:hover:bg-slate-700/40 transition-colors">
                   {/* Top row */}
                   <div className="flex items-start gap-3">
                     {/* Status icon */}
@@ -442,13 +442,13 @@ export default function Campaigns() {
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       <Button
                         variant="ghost" size="sm" asChild
-                        className="hidden sm:flex h-8 px-3 text-xs text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg"
+                        className="hidden sm:flex h-8 px-3 text-xs text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700/60 rounded-lg"
                       >
                         <Link href={`/campaigns/${campaign.id}`}>Open →</Link>
                       </Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-lg hover:bg-slate-100">
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/60">
                             <MoreHorizontal className="h-4 w-4 text-slate-500" />
                           </Button>
                         </DropdownMenuTrigger>

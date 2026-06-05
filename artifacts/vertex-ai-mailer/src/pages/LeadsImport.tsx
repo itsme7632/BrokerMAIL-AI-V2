@@ -157,7 +157,7 @@ function VariableMappingPanel({
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       {/* Header */}
       <button
-        className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 transition-colors"
+        className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors"
         onClick={() => setCollapsed(c => !c)}
       >
         <div className="flex items-center gap-2.5">
@@ -181,7 +181,7 @@ function VariableMappingPanel({
           {hasOverrides && (
             <button
               onClick={e => { e.stopPropagation(); onResetAll(); }}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors"
             >
               <RotateCcw className="h-3 w-3" /> Reset
             </button>

@@ -498,7 +498,7 @@ export default function SentEmails() {
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
               statusFilter === tab.value
                 ? "bg-slate-900 text-white shadow-sm"
-                : "text-slate-600 hover:bg-slate-100"
+                : "text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700/60"
             }`}
           >
             {tab.icon}{tab.label}
@@ -582,10 +582,10 @@ export default function SentEmails() {
                     key={email.id}
                     className={`group transition-colors ${
                       email.status === "failed"
-                        ? "bg-red-50/30 hover:bg-red-50/60"
+                        ? "bg-red-50/30 hover:bg-red-50/60 dark:bg-red-900/10 dark:hover:bg-red-900/25"
                         : email.status === "bounced"
-                          ? "bg-orange-50/20 hover:bg-orange-50/40 cursor-pointer"
-                          : "hover:bg-slate-50/60 cursor-pointer"
+                          ? "bg-orange-50/20 hover:bg-orange-50/40 dark:bg-orange-900/10 dark:hover:bg-orange-900/20 cursor-pointer"
+                          : "hover:bg-slate-50/60 dark:hover:bg-slate-700/40 cursor-pointer"
                     }`}
                     onClick={email.status !== "failed" ? () => setSelectedId(email.id) : undefined}
                   >
@@ -654,7 +654,7 @@ export default function SentEmails() {
                             size="sm"
                             variant="ghost"
                             onClick={() => { setEditEmail(email); }}
-                            className="h-6 text-xs px-2 rounded-lg gap-1 text-slate-600 hover:bg-slate-100"
+                            className="h-6 text-xs px-2 rounded-lg gap-1 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60"
                           >
                             <Edit3 className="h-3 w-3" /> Edit
                           </Button>

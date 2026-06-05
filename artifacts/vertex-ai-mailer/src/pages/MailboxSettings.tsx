@@ -533,7 +533,7 @@ export default function MailboxSettings() {
           <button
             type="button"
             onClick={() => setShowImap(s => !s)}
-            className="w-full px-6 py-4 flex items-center gap-2 hover:bg-slate-50 transition-colors"
+            className="w-full px-6 py-4 flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors"
           >
             <Mail className="h-4 w-4 text-purple-500" />
             <h3 className="font-semibold text-slate-800 text-sm">IMAP Settings</h3>

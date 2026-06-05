@@ -156,7 +156,7 @@ function CampaignStatusRow({ campaign }: { campaign: Campaign }) {
   const StatusIcon = s.icon;
 
   return (
-    <div className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50/70 transition-colors">
+    <div className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50/70 dark:hover:bg-slate-700/40 transition-colors">
       <div className={`h-8 w-8 rounded-lg ${s.cls} flex items-center justify-center flex-shrink-0`}>
         <StatusIcon className="h-4 w-4" />
       </div>
@@ -544,7 +544,7 @@ export default function Dashboard() {
                     : draft.status === "failed" ? "bg-red-50 text-red-500"
                     : "bg-slate-50 text-slate-400";
                   return (
-                    <div key={draft.id} className="px-5 py-3.5 flex items-center gap-4 hover:bg-slate-50/70 transition-colors">
+                    <div key={draft.id} className="px-5 py-3.5 flex items-center gap-4 hover:bg-slate-50/70 dark:hover:bg-slate-700/40 transition-colors">
                       <div className={`h-9 w-9 rounded-xl flex items-center justify-center flex-shrink-0 ${iconCls}`}>
                         <Mail className="h-4 w-4" />
                       </div>
@@ -649,7 +649,7 @@ export default function Dashboard() {
                       key={event.id}
                       initial={{ opacity: 0, y: -4 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-slate-50 transition-colors"
+                      className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors"
                     >
                       <div className={`h-7 w-7 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 ${
                         event.isAppleMail ? "bg-slate-50" : "bg-emerald-50"

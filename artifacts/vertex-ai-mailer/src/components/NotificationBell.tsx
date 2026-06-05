@@ -283,7 +283,7 @@ export function NotificationBell() {
           "relative flex items-center justify-center h-9 w-9 rounded-xl transition-colors",
           open
             ? "bg-blue-50 text-blue-600"
-            : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/60 hover:text-slate-700 dark:hover:text-slate-200"
         )}
         aria-label="Notifications"
       >
@@ -323,7 +323,7 @@ export function NotificationBell() {
               <button
                 onClick={handleRefresh}
                 disabled={loading}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors disabled:opacity-50"
                 aria-label="Refresh notifications"
                 title="Refresh notifications"
               >
@@ -331,7 +331,7 @@ export function NotificationBell() {
               </button>
               <button
                 onClick={() => setOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -374,7 +374,7 @@ export function NotificationBell() {
                       onClick={() => setOpen(false)}
                       className={cn(
                         "flex items-start gap-3 px-2.5 py-2.5 rounded-xl transition-colors cursor-pointer no-underline",
-                        isUnread ? "bg-blue-50/40 hover:bg-blue-50" : "hover:bg-slate-50"
+                        isUnread ? "bg-blue-50/40 dark:bg-blue-900/20 hover:bg-blue-50 dark:hover:bg-blue-900/35" : "hover:bg-slate-50 dark:hover:bg-slate-700/40"
                       )}
                     >
                       {/* Type icon */}

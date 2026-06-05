@@ -328,7 +328,7 @@ export function SendProgressPanel({ jobId, delaySeconds, onComplete, onReset }: 
           <button
             type="button"
             onClick={() => setShowDetails(d => !d)}
-            className="w-full px-6 py-3 flex items-center gap-2 hover:bg-slate-50 transition-colors text-left"
+            className="w-full px-6 py-3 flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors text-left"
           >
             <span className="text-xs font-semibold text-slate-600">
               Email details

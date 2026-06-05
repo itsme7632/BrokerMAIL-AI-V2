@@ -119,7 +119,7 @@ export default function Drafts() {
                 </TableRow>
               ) : (
                 drafts.map(draft => (
-                  <TableRow key={draft.id} className="hover:bg-slate-50/60">
+                  <TableRow key={draft.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-700/40">
                     <TableCell>
                       <StatusBadge status={draft.status} />
                     </TableCell>

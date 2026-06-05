@@ -797,7 +797,7 @@ export function AdminSettings() {
               <button key={t.id} type="button"
                 onClick={() => { setActiveTab(t.id); setShowMobileMenu(false); }}
                 className={`w-full flex items-center gap-2.5 px-4 py-3 text-sm border-b border-slate-50 last:border-0 transition-colors ${
-                  activeTab === t.id ? "bg-blue-50 text-blue-700 font-semibold" : "text-slate-600 hover:bg-slate-50"
+                  activeTab === t.id ? "bg-blue-50 text-blue-700 font-semibold dark:bg-blue-900/30 dark:text-blue-400" : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/40"
                 }`}
               >
                 <t.icon className="h-4 w-4 flex-shrink-0" />
@@ -825,7 +825,7 @@ export function AdminSettings() {
                   className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-colors text-left ${
                     activeTab === t.id
                       ? "bg-blue-600 text-white shadow-sm"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/60 hover:text-slate-900 dark:hover:text-slate-100"
                   }`}
                 >
                   <t.icon className="h-3.5 w-3.5 flex-shrink-0" />
@@ -1654,7 +1654,7 @@ export function AdminSettings() {
                 ) : (
                   <div className="space-y-2 max-h-72 overflow-y-auto">
                     {creditUsers.map(u => (
-                      <div key={u.id} className={`flex items-center justify-between p-3 rounded-xl border transition-colors ${creditTargetId === u.id ? "border-amber-400 bg-amber-50" : "border-slate-100 bg-slate-50 hover:bg-slate-100"}`}>
+                      <div key={u.id} className={`flex items-center justify-between p-3 rounded-xl border transition-colors ${creditTargetId === u.id ? "border-amber-400 bg-amber-50 dark:border-amber-500/60 dark:bg-amber-900/20" : "border-slate-100 dark:border-slate-700/60 bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-700/60"}`}>
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-semibold text-slate-800 truncate">{u.name}</p>
                           <p className="text-xs text-slate-500">{u.email} · <span className="font-bold text-amber-600">{u.credits} credits</span></p>
