@@ -15,6 +15,7 @@ import {
 } from "@workspace/api-zod";
 import { generatePersonalizedEmail, AiConfigError } from "../lib/ai";
 import { createGmailDraft } from "../lib/gmail";
+import { validateEmailFast } from "../lib/email-validator";
 import { buildHtmlEmail, replaceVarsText, formatPrice, type BrandingSettings } from "../lib/email-html";
 import type { User } from "@workspace/db";
 import { randomUUID } from "crypto";
@@ -1133,7 +1134,7 @@ router.post("/campaigns/from-upload", requireAuth, async (req, res): Promise<voi
 
   for (const row of rows) {
     const email = typeof row.email === "string" ? row.email.trim().toLowerCase() : "";
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { invalid++; continue; }
+    if (!email || !validateEmailFast(email).valid) { invalid++; continue; }
     if (seenEmails.has(email)) { duplicates++; continue; }
     seenEmails.add(email);
 

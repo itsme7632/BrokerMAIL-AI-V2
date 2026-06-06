@@ -113,21 +113,57 @@ export interface EmailValidationResult {
 /**
  * Fast synchronous checks: syntax, disposable domain, role account prefix.
  * Does NOT perform DNS lookups.
+ *
+ * Syntax rules enforced (RFC 5321 unquoted local-part):
+ *  - Exactly one '@'; non-empty local and domain parts
+ *  - Local part: no leading/trailing/consecutive dots; only allowed chars
+ *  - Domain: no leading/trailing/consecutive dots; each label non-empty,
+ *    no leading/trailing hyphens, only [a-z0-9-]; TLD ≥ 2 alpha chars
  */
 export function validateEmailFast(email: string): EmailValidationResult {
   const trimmed = email.trim().toLowerCase();
 
-  if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-    return { valid: false, reason: "Invalid email syntax", flagged: false, flagReason: null, isDisposable: false };
+  const syntaxFail = (): EmailValidationResult =>
+    ({ valid: false, reason: "Invalid email syntax", flagged: false, flagReason: null, isDisposable: false });
+
+  if (!trimmed) return syntaxFail();
+
+  // Must contain exactly one '@', with non-empty parts on both sides
+  const atIdx = trimmed.indexOf("@");
+  if (atIdx <= 0 || atIdx !== trimmed.lastIndexOf("@")) return syntaxFail();
+
+  const local  = trimmed.slice(0, atIdx);
+  const domain = trimmed.slice(atIdx + 1);
+
+  // ── Local-part checks ──────────────────────────────────────────────────────
+  // No leading dot, trailing dot, or consecutive dots
+  if (local.startsWith(".") || local.endsWith(".") || local.includes("..")) return syntaxFail();
+  // RFC 5321 unquoted printable characters only (no quoting supported here)
+  if (!/^[a-z0-9!#$%&'*+/=?^_`{|}~.\-]+$/.test(local)) return syntaxFail();
+
+  // ── Domain checks ──────────────────────────────────────────────────────────
+  if (!domain || domain.startsWith(".") || domain.endsWith(".") || domain.includes("..")) return syntaxFail();
+
+  const labels = domain.split(".");
+  // Must have at least two labels (e.g. "gmail.com")
+  if (labels.length < 2) return syntaxFail();
+
+  for (const label of labels) {
+    if (!label || label.startsWith("-") || label.endsWith("-")) return syntaxFail();
+    if (!/^[a-z0-9-]+$/.test(label)) return syntaxFail();
   }
 
-  const [local, domain] = trimmed.split("@") as [string, string];
+  // TLD must be at least 2 alphabetic characters (no numeric TLDs)
+  const tld = labels[labels.length - 1]!;
+  if (tld.length < 2 || !/^[a-z]+$/.test(tld)) return syntaxFail();
 
+  // ── Disposable domain check ────────────────────────────────────────────────
   if (DISPOSABLE_DOMAINS.has(domain)) {
     return { valid: false, reason: "Disposable email provider", flagged: false, flagReason: null, isDisposable: true };
   }
 
-  const prefix = local.split("+")[0].split(".")[0];
+  // ── Role-account flag ──────────────────────────────────────────────────────
+  const prefix    = local.split("+")[0]!.split(".")[0]!;
   const isFlagged = ROLE_PREFIXES.has(prefix);
 
   return {

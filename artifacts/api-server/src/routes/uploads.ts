@@ -249,8 +249,10 @@ router.post("/uploads/parse", requireAuth, upload.single("file"), async (req, re
     // Fast validation: syntax + disposable + role
     const fastResult = validateEmailFast(emailLower);
 
-    const hasSyntax     = fastResult.valid || fastResult.isDisposable; // syntax OK even if disposable
-    const hasValidSyntax = !!(emailLower && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower));
+    // "structurally valid syntax" = passes all RFC checks.
+    // Disposable emails have valid syntax but are blocked by policy — still
+    // track them for deduplication so the duplicate count stays accurate.
+    const hasValidSyntax = fastResult.valid || fastResult.isDisposable;
 
     const isDuplicate   = hasValidSyntax && seenEmails.has(emailLower);
     if (hasValidSyntax) seenEmails.add(emailLower);
