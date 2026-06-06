@@ -1,0 +1,165 @@
+PRODUCTION HOTFIX — PLAN SYNCHRONIZATION + USAGE LIMIT ENFORCEMENT
+
+IMPORTANT:
+
+This is a production fix.
+
+DO NOT refactor unrelated code.
+DO NOT change campaign logic.
+DO NOT change billing logic.
+DO NOT modify working functionality outside plan management and usage restrictions.
+
+====================================================
+FIX 1 — PLAN SYNCHRONIZATION
+============================
+
+Issue:
+
+Admin User Edit modal shows:
+
+* Free
+* Pro
+* Enterprise
+
+Actual Plan Configuration contains:
+
+* Free
+* Starter
+* Growth
+* Enterprise
+
+The User Edit modal must NOT use hardcoded plan names.
+
+Requirements:
+
+* Load plans dynamically from the same source used by Plan Configuration.
+* Any plan added, removed, or renamed should automatically appear in User Edit.
+* Remove all hardcoded plan arrays.
+
+Expected result:
+
+User Edit and Plan Configuration always display identical plans.
+
+====================================================
+FIX 2 — EMAIL LIMIT ENFORCEMENT
+===============================
+
+Plans currently define:
+
+* Emails per month
+* Mailboxes
+* Campaigns
+* Batch size
+
+These limits must be enforced.
+
+Example:
+
+Free Plan:
+100 emails/month
+
+When user reaches:
+
+100 / 100
+
+Block:
+
+* Start Campaign
+* Resume Campaign
+* Send Single Email
+* Gmail Draft Creation
+
+Show:
+
+Monthly email limit reached.
+
+Your plan limit has been exhausted.
+
+Resets in X days.
+
+[Upgrade Plan]
+
+====================================================
+FIX 3 — CAMPAIGN LIMIT ENFORCEMENT
+==================================
+
+Example:
+
+Free Plan:
+5 campaigns
+
+When user reaches:
+
+5 active/created campaigns
+
+Block:
+
+* New Campaign creation
+
+Show:
+
+Campaign limit reached.
+
+Upgrade your plan or wait for the next billing cycle.
+
+====================================================
+FIX 4 — MAILBOX LIMIT ENFORCEMENT
+=================================
+
+Example:
+
+Free Plan:
+1 mailbox
+
+If user attempts to add mailbox #2:
+
+Block creation.
+
+Show:
+
+Mailbox limit reached.
+
+Upgrade your plan to add more mailboxes.
+
+====================================================
+FIX 5 — USAGE RESET COUNTDOWN
+=============================
+
+Display remaining time until limits refresh.
+
+Examples:
+
+Resets in:
+12 days 4 hours
+
+or
+
+Usage resets on:
+July 1, 2026
+
+Use the user's subscription cycle.
+
+====================================================
+FIX 6 — SAFETY
+==============
+
+Before changing code:
+
+Audit:
+
+* All plan sources
+* All plan limit checks
+* All campaign creation routes
+* Single Email Composer send route
+* Gmail Draft route
+* Mailbox creation route
+
+After implementation provide:
+
+1. Files changed
+2. Functions changed
+3. Limits enforced
+4. Plan source used
+5. Confirmation no unrelated code was modified
+
+Keep changes minimal and production-safe.

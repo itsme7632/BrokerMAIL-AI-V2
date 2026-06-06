@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, draftsTable, usersTable, templatesTable, activityTable, emailTrackingEventsTable } from "@workspace/db";
 import { eq, and, count, desc, inArray, sql } from "drizzle-orm";
 import { getTrackingSettings } from "../lib/tracking-settings";
+import { checkEmailLimit } from "../lib/plan-limits";
 import { logger } from "../lib/logger";
 import { requireAuth } from "../lib/auth";
 import { GetDraftParams } from "@workspace/api-zod";
@@ -318,6 +319,10 @@ router.post("/drafts/from-template", requireAuth, async (req, res): Promise<void
     });
     return;
   }
+
+  // Fix 2: Enforce monthly email limit before creating drafts
+  const emailLimitErr = await checkEmailLimit(user.id);
+  if (emailLimitErr) { res.status(429).json(emailLimitErr); return; }
 
   const branding  = userBranding(freshUser);
   // useSignatureBuilder: explicit request value → user's saved default

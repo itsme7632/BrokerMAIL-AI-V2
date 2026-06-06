@@ -14,6 +14,7 @@ import {
 import type { User, Mailbox, Template } from "@workspace/db";
 import { randomUUID } from "crypto";
 import { getTrackingSettings } from "../lib/tracking-settings";
+import { checkEmailLimit, checkMailboxLimit } from "../lib/plan-limits";
 
 const router: IRouter = Router();
 
@@ -407,6 +408,10 @@ router.put("/mailbox", requireAuth, async (req, res): Promise<void> => {
   if (existing) {
     await db.update(mailboxesTable).set(values).where(eq(mailboxesTable.id, existing.id));
   } else {
+    // Fix 4: Enforce mailbox limit before creating a new mailbox
+    const mailboxLimitErr = await checkMailboxLimit(user.id);
+    if (mailboxLimitErr) { res.status(429).json(mailboxLimitErr); return; }
+
     await db.insert(mailboxesTable).values(values);
   }
 
@@ -475,6 +480,10 @@ router.post("/mailbox/save", requireAuth, async (req, res): Promise<void> => {
   if (existing) {
     await db.update(mailboxesTable).set(values).where(eq(mailboxesTable.id, existing.id));
   } else {
+    // Fix 4: Enforce mailbox limit before creating a new mailbox
+    const mailboxLimitErr = await checkMailboxLimit(user.id);
+    if (mailboxLimitErr) { res.status(429).json(mailboxLimitErr); return; }
+
     await db.insert(mailboxesTable).values(values);
   }
 
@@ -543,6 +552,10 @@ router.post("/mailbox/send", requireAuth, async (req, res): Promise<void> => {
     res.status(400).json({ error: "No active mailbox configured. Add SMTP settings first." });
     return;
   }
+
+  // Fix 2: Enforce monthly email limit before sending
+  const emailLimitErr = await checkEmailLimit(user.id);
+  if (emailLimitErr) { res.status(429).json(emailLimitErr); return; }
 
   const { templateId, rows, style, useSignatureBuilder, batchSize: reqBatchSize } = req.body as {
     templateId?: number;

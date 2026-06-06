@@ -219,7 +219,13 @@ function EditUserModal({ user, onClose, onSave }: {
 }) {
   const [form, setForm] = useState({ plan: user.plan, credits: user.credits, role: user.role, status: user.status });
   const [saving, setSaving] = useState(false);
+  const [planOptions, setPlanOptions] = useState<{ id: number; name: string; slug: string }[]>([]);
   const set = (k: string, v: string | number) => setForm(f => ({ ...f, [k]: v }));
+
+  // Load plans dynamically — always reflects the real plan configuration
+  useEffect(() => {
+    apiFetch("billing/plans").then(setPlanOptions).catch(() => {});
+  }, []);
 
   async function handleSave() {
     setSaving(true);
@@ -246,9 +252,11 @@ function EditUserModal({ user, onClose, onSave }: {
               <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Plan</label>
               <select value={form.plan} onChange={e => set("plan", e.target.value)}
                 className="w-full h-9 px-3 rounded-xl border border-slate-200 text-sm bg-white">
-                <option value="free">Free</option>
-                <option value="pro">Pro</option>
-                <option value="enterprise">Enterprise</option>
+                {planOptions.length > 0
+                  ? planOptions.map(p => (
+                      <option key={p.slug} value={p.slug}>{p.name}</option>
+                    ))
+                  : <option value={form.plan}>{form.plan}</option>}
               </select>
             </div>
             <div className="space-y-1.5">

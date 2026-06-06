@@ -21,6 +21,7 @@ import { randomUUID } from "crypto";
 import { sendEmail } from "../lib/smtp";
 import { saveToSent, buildRawMessage } from "../lib/imap";
 import { getTrackingSettings } from "../lib/tracking-settings";
+import { checkEmailLimit, checkCampaignLimit } from "../lib/plan-limits";
 
 const router: IRouter = Router();
 
@@ -1064,6 +1065,11 @@ router.post("/campaigns", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
   const parsed = CreateCampaignBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  // Fix 3: Enforce campaign limit before creation
+  const campaignLimitErr = await checkCampaignLimit(user.id);
+  if (campaignLimitErr) { res.status(429).json(campaignLimitErr); return; }
+
   const [campaign] = await db.insert(campaignsTable).values({
     userId: user.id, name: parsed.data.name, templateId: parsed.data.templateId ?? null,
   }).returning();
@@ -1079,6 +1085,11 @@ router.post("/campaigns", requireAuth, async (req, res): Promise<void> => {
  */
 router.post("/campaigns/from-upload", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
+
+  // Fix 3: Enforce campaign limit before creation
+  const campaignLimitErr = await checkCampaignLimit(user.id);
+  if (campaignLimitErr) { res.status(429).json(campaignLimitErr); return; }
+
   const {
     name, templateId, sendMode, emailStyle, useSignature, fileName, rows,
     bookingUrl, quoteUrl, websiteUrl, phoneNumber,
@@ -1694,6 +1705,10 @@ router.post("/campaigns/:id/start-campaign", requireAuth, async (req, res): Prom
       .where(and(eq(mailboxesTable.userId, user.id), eq(mailboxesTable.isActive, true)));
     if (!box) { res.status(400).json({ success: false, error: "No active SMTP mailbox configured. Please add an SMTP mailbox in Settings → Mailboxes." }); return; }
 
+    // Fix 2: Enforce monthly email limit before starting
+    const emailLimitErr = await checkEmailLimit(user.id);
+    if (emailLimitErr) { res.status(429).json({ success: false, ...emailLimitErr }); return; }
+
     // Get ALL remaining new leads
     const newLeads = await db.select().from(leadsTable)
       .where(and(eq(leadsTable.campaignId, campaignId), eq(leadsTable.status, "new")))
@@ -1876,6 +1891,10 @@ router.post("/campaigns/:id/resume", requireAuth, async (req, res): Promise<void
     const [box] = await db.select().from(mailboxesTable)
       .where(and(eq(mailboxesTable.userId, user.id), eq(mailboxesTable.isActive, true)));
     if (!box) { res.status(400).json({ success: false, error: "No active SMTP mailbox configured." }); return; }
+
+    // Fix 2: Enforce monthly email limit before resuming
+    const emailLimitErr = await checkEmailLimit(user.id);
+    if (emailLimitErr) { res.status(429).json({ success: false, ...emailLimitErr }); return; }
 
     // Do NOT clear cooldownUntil on resume — preserve the existing timestamp so
     // the remaining cooldown continues from where it was when the user paused.

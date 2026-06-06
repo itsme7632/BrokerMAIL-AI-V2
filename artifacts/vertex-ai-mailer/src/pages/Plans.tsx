@@ -364,13 +364,33 @@ export default function Plans() {
           <div className="space-y-4">
             {Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-8 w-full rounded-lg" />)}
           </div>
-        ) : (
-          <div className="space-y-4">
-            <UsageBar label="Emails Sent" used={usage.emailsSentThisMonth} limit={currentPlan.monthlyEmailLimit} icon={Mail} />
-            <UsageBar label="SMTP Mailboxes" used={usage.smtpAccountsUsed} limit={currentPlan.smtpAccountsLimit} icon={Server} />
-            <UsageBar label="Campaigns" used={usage.campaignsCount} limit={currentPlan.campaignsLimit} icon={BarChart3} />
-          </div>
-        )}
+        ) : (() => {
+          const now = new Date();
+          const resetDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+          const daysLeft  = Math.max(0, Math.ceil((resetDate.getTime() - now.getTime()) / 86_400_000));
+          const hoursLeft = Math.max(0, Math.floor(((resetDate.getTime() - now.getTime()) % 86_400_000) / 3_600_000));
+          const resetLabel = resetDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+          return (
+            <div className="space-y-4">
+              <UsageBar label="Emails Sent"    used={usage.emailsSentThisMonth} limit={currentPlan.monthlyEmailLimit} icon={Mail} />
+              <UsageBar label="SMTP Mailboxes" used={usage.smtpAccountsUsed}    limit={currentPlan.smtpAccountsLimit} icon={Server} />
+              <UsageBar label="Campaigns"      used={usage.campaignsCount}       limit={currentPlan.campaignsLimit}    icon={BarChart3} />
+              {/* Fix 5: Usage reset countdown */}
+              <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
+                <Clock className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                <span className="text-xs text-slate-500">
+                  Usage resets on{" "}
+                  <span className="font-semibold text-slate-700">{resetLabel}</span>
+                  {daysLeft > 0 && (
+                    <span className="text-slate-400">
+                      {" "}·{" "}{daysLeft}d {hoursLeft}h remaining
+                    </span>
+                  )}
+                </span>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Stripe placeholder fields */}
         {billing?.subscription && (
