@@ -663,20 +663,47 @@ export async function processCampaignFully(
         const [campCdNow] = await db.select({ cooldownUntil: campaignsTable.cooldownUntil })
           .from(campaignsTable).where(eq(campaignsTable.id, campaignId));
         if (!campCdNow?.cooldownUntil || new Date() >= campCdNow.cooldownUntil) {
-          await db.update(campaignsTable).set({
-            status: "sending", cooldownUntil: null, updatedAt: new Date(),
-          }).where(eq(campaignsTable.id, campaignId));
+          // Cooldown timer expired — only resume if the full rolling 60-min window has cleared.
+          // If any sends remain within the window, stay in cooling_down to avoid quota probing.
+          const [freshHourlyRow] = await db.select({ count: sql<number>`count(*)::int` })
+            .from(emailQueueTable)
+            .where(and(
+              eq(emailQueueTable.mailboxId, box.id),
+              isNotNull(emailQueueTable.firstAttemptAt),
+              gte(emailQueueTable.firstAttemptAt, new Date(Date.now() - 3_600_000)),
+            ));
+          const freshSentThisHour = freshHourlyRow?.count ?? 0;
+          if (freshSentThisHour === 0) {
+            await db.update(campaignsTable).set({
+              status: "sending", cooldownUntil: null, updatedAt: new Date(),
+            }).where(eq(campaignsTable.id, campaignId));
+            logger.info({ campaignId, maxPerHour }, "[CAMPAIGN] Cooldown expired and quota window fully cleared — resuming");
+          } else {
+            logger.info({ campaignId, freshSentThisHour, maxPerHour },
+              "[CAMPAIGN] Cooldown timer expired but quota window not fully cleared — staying in cooling_down");
+          }
         }
         continue;
       }
 
-      // Clear cooling_down if we're below the limit now
+      // Clear cooling_down only when the full rolling 60-min quota window has cleared.
+      // If any sends remain in the window (sentThisHour > 0), stay in cooling_down
+      // to prevent quota probing (send 5 → cooldown → send 4 → cooldown …).
       const [campNow] = await db.select({ status: campaignsTable.status })
         .from(campaignsTable).where(eq(campaignsTable.id, campaignId));
       if (campNow?.status === "cooling_down") {
-        await db.update(campaignsTable).set({
-          status: "sending", cooldownUntil: null, updatedAt: new Date(),
-        }).where(eq(campaignsTable.id, campaignId));
+        if (sentThisHour === 0) {
+          await db.update(campaignsTable).set({
+            status: "sending", cooldownUntil: null, updatedAt: new Date(),
+          }).where(eq(campaignsTable.id, campaignId));
+          logger.info({ campaignId, maxPerHour }, "[CAMPAIGN] Full quota window cleared — resuming from cooling_down");
+        } else {
+          // Quota window partially used — hold in cooling_down and check again in 60 s
+          logger.info({ campaignId, sentThisHour, maxPerHour },
+            "[CAMPAIGN] Quota window not fully cleared — staying in cooling_down");
+          await sleep(60_000);
+          continue;
+        }
       }
 
       // Grab next pending OR ready-deferred item for this campaign

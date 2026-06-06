@@ -1,0 +1,193 @@
+PRODUCTION HOTFIX — TEMPLATE PREVIEW HOVER BUG + QUOTA COOLDOWN LOGIC
+
+IMPORTANT:
+
+This is the PRODUCTION branch.
+
+DO NOT refactor unrelated code.
+DO NOT touch UI components outside the specified files.
+DO NOT modify campaign sending logic except for the cooldown recovery behavior described below.
+DO NOT change database schema unless absolutely required.
+DO NOT perform broad code cleanup.
+DO NOT change existing functionality that is already working.
+
+Only implement the two fixes below.
+
+====================================================
+FIX 1 — TEMPLATE EDITOR PREVIEW HOVER BUG
+=========================================
+
+Issue:
+
+In the Template Editor page, the "Live Preview" panel is showing a gray/white overlay state when hovered/focused.
+
+This breaks dark mode styling and makes the preview unreadable.
+
+Requirements:
+
+* Inspect the Live Preview card component.
+* Find hover, active, selected, focus, and group-hover styles.
+* Remove any light-mode background that appears in dark mode.
+* Ensure dark mode keeps the same dark card background during:
+
+  * hover
+  * focus
+  * active
+  * selected
+
+Expected behavior:
+
+Dark Mode:
+
+* No gray overlay
+* No white background
+* No washed-out preview
+* Consistent BrokerMAIL dark theme
+
+Light Mode:
+
+* Continue working exactly as before
+
+This should be a targeted UI fix only.
+
+====================================================
+FIX 2 — QUOTA COOLDOWN RECOVERY LOGIC
+=====================================
+
+Issue:
+
+Current behavior:
+
+Hourly quota = 45
+
+Example:
+
+45/45 sent
+↓
+Cooldown starts
+↓
+1 hour later
+↓
+Provider reports:
+40 used
+5 available
+↓
+Campaign immediately resumes
+↓
+Sends 5
+↓
+Quota exhausted again
+↓
+Cooldown
+↓
+Sends 4
+↓
+Cooldown
+↓
+Sends 3
+↓
+Cooldown
+
+This causes quota probing and increases delivery failures.
+
+====================================================
+NEW REQUIRED BEHAVIOR
+=====================
+
+When a campaign reaches quota:
+
+45/45 sent
+↓
+Enter cooling_down status
+
+After cooldown expires:
+
+Check provider usage.
+
+Calculate:
+
+available = quotaLimit - usedThisHour
+
+If available < quotaLimit:
+
+DO NOT resume campaign.
+
+Remain in cooling_down status.
+
+Check again later.
+
+Only resume when:
+
+available === quotaLimit
+
+Example:
+
+usedThisHour = 0
+available = 45
+
+Resume campaign.
+
+====================================================
+EXAMPLE
+=======
+
+BAD:
+
+45 sent
+↓
+5 available
+↓
+send 5
+↓
+cooldown
+
+GOOD:
+
+45 sent
+↓
+5 available
+↓
+stay cooling_down
+
+Later:
+
+45 available
+↓
+resume
+↓
+send next batch
+
+====================================================
+PRESERVE EXISTING COOLDOWNS
+===========================
+
+Do NOT modify:
+
+* pause/resume fixes already implemented
+* cooldownUntil persistence logic
+* quota tracking logic
+* provider rate limit logic
+
+Only modify the decision that determines when a cooling_down campaign is allowed to resume.
+
+====================================================
+SAFETY REQUIREMENT
+==================
+
+Before making any code changes:
+
+1. Identify every location that resumes a cooling_down campaign.
+2. Audit all quota-related resume paths.
+3. Verify no existing cooldownUntil behavior is affected.
+4. Show a list of files and functions that will be modified.
+
+After implementation:
+
+Provide:
+
+* exact files changed
+* exact functions changed
+* before/after logic comparison
+* confirmation that no unrelated code was modified
+
+This is a production hotfix. Keep changes minimal and isolated.
