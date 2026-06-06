@@ -4,6 +4,13 @@
  * Scans mailbox INBOXes for DSN (Delivery Status Notification / bounce) messages
  * and marks the corresponding email_queue rows as "bounced".
  *
+ * Deduplication is handled via the processed_bounces DB table.  The scanner
+ * reads every matching NDR (regardless of IMAP \Seen flag), checks the table,
+ * and skips any message whose (mailbox_id, message_id) pair is already present.
+ * After successful processing it inserts the pair.  This replaces the previous
+ * "mark as \Seen" approach which caused permanent misses whenever a mail client
+ * pre-read bounce messages before the scanner ran.
+ *
  * Called by the periodic watchdog in app.ts. Never throws — all errors are
  * logged and swallowed so the watchdog cannot be disrupted.
  */
@@ -15,6 +22,7 @@ import {
   suppressionListTable,
   draftsTable,
   leadsTable,
+  processedBouncesTable,
 } from "@workspace/db";
 import { and, eq, isNotNull, desc } from "drizzle-orm";
 import { isPermanentBounce, extractBounceCode } from "./email-validator";
@@ -98,6 +106,16 @@ function extractBounceReason(source: string): string {
   return "Delivery bounce detected via IMAP";
 }
 
+/**
+ * Extract the RFC 2822 Message-ID header value from a raw message source.
+ * Returns null if the header is absent (should be rare for NDRs).
+ */
+function extractMessageId(source: string): string | null {
+  const m = source.match(/^Message-ID:\s*([^\r\n]+)/im);
+  if (!m) return null;
+  return m[1].trim();
+}
+
 // ---------------------------------------------------------------------------
 // Per-mailbox scanner
 // ---------------------------------------------------------------------------
@@ -149,10 +167,10 @@ async function _scanMailbox(
     try {
       const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1_000);
 
-      // Search for unseen DSN / bounce messages using common patterns.
-      // Top-level criteria are AND'd; the or[] criteria are OR'd.
+      // Search ALL bounce-pattern messages within the date window.
+      // The \Seen flag is NOT consulted — deduplication is handled by the
+      // processed_bounces DB table, which is immune to mail-client interference.
       const seqNums = await client.search({
-        seen: false,
         since,
         or: [
           { from: "MAILER-DAEMON" },
@@ -169,17 +187,15 @@ async function _scanMailbox(
         ],
       });
 
-      // ── [DEBUG] How many bounce candidates were found in this mailbox ──────────
-      // client.search() returns number[] | false (false = no results in ImapFlow)
       const foundCount = Array.isArray(seqNums) ? seqNums.length : 0;
       logger.info(
         {
-          mailboxId: mailbox.id,
-          imapUser:  mailbox.imapUser,
-          found:     foundCount,
+          mailboxId:   mailbox.id,
+          imapUser:    mailbox.imapUser,
+          found:       foundCount,
           willProcess: Math.min(foundCount, 50),
         },
-        "[BOUNCE-SCAN-DEBUG] IMAP search complete — all matching unseen messages will be processed (capped at 50 per cycle)",
+        "[BOUNCE-SCAN-DEBUG] IMAP search complete — scanning all matching messages (seen+unseen), capped at 50 per cycle",
       );
 
       if (!seqNums || seqNums.length === 0) return 0;
@@ -191,7 +207,6 @@ async function _scanMailbox(
         source: true,
       });
 
-      // ── [DEBUG] Confirm fetch count matches search count ──────────────────────
       logger.info(
         { mailboxId: mailbox.id, fetched: messages.length, processing: "all" },
         "[BOUNCE-SCAN-DEBUG] Messages fetched — iterating every message (no early exit)",
@@ -202,28 +217,72 @@ async function _scanMailbox(
 
         const source = msg.source.toString("utf8");
 
-        // ── [DEBUG] Bounce email found — log subject + sender for identification ──
+        // ── Extract Message-ID for deduplication ─────────────────────────────
+        const messageId = extractMessageId(source);
+
         const debugSubject = source.match(/^Subject:[ \t]*(.{0,120})/im)?.[1]?.trim() ?? "(no subject)";
         const debugFrom    = source.match(/^From:[ \t]*(.{0,120})/im)?.[1]?.trim()    ?? "(no from)";
+
         logger.info(
-          { mailboxId: mailbox.id, seq: msg.seq, from: debugFrom, subject: debugSubject },
-          "[BOUNCE-SCAN-DEBUG] Bounce email found — attempting recipient extraction",
+          {
+            mailboxId: mailbox.id,
+            seq:       msg.seq,
+            messageId: messageId ?? "(missing)",
+            from:      debugFrom,
+            subject:   debugSubject,
+          },
+          "[BOUNCE-SCAN-DEBUG] Bounce email found — checking processed_bounces",
         );
+
+        // ── Deduplication check ───────────────────────────────────────────────
+        // Skip messages with no Message-ID only if we have genuinely no way to
+        // deduplicate them — log a warning but still attempt processing (the
+        // insert at the end will handle the duplicate if Message-ID is later
+        // present). If messageId is null, we cannot record it, so we process
+        // but cannot prevent re-processing; this is an edge case for malformed
+        // NDRs and is logged explicitly.
+        if (messageId) {
+          const [existing] = await db
+            .select({ id: processedBouncesTable.id })
+            .from(processedBouncesTable)
+            .where(
+              and(
+                eq(processedBouncesTable.mailboxId, mailbox.id),
+                eq(processedBouncesTable.messageId, messageId),
+              ),
+            )
+            .limit(1);
+
+          if (existing) {
+            logger.info(
+              {
+                mailboxId: mailbox.id,
+                seq:       msg.seq,
+                messageId,
+              },
+              "[BOUNCE-SCAN-DEBUG] Already processed — skipped (found in processed_bounces)",
+            );
+            continue;
+          }
+        } else {
+          logger.warn(
+            { mailboxId: mailbox.id, seq: msg.seq, subject: debugSubject },
+            "[BOUNCE-SCAN-DEBUG] Message-ID missing — cannot deduplicate; processing anyway",
+          );
+        }
 
         const recipient = extractBounceRecipient(source);
 
         if (!recipient) {
-          // ── [DEBUG] Skipped bounce — log which extraction patterns were tried ──
-          // Note: skipped messages are NOT marked seen here; they will be found
-          // again on the next scan cycle unless manually marked read in the mailbox.
-          const hasRfc3464  = /Final-Recipient|Original-Recipient/i.test(source);
-          const hasXFailed  = /X-Failed-Recipients/i.test(source);
+          const hasRfc3464   = /Final-Recipient|Original-Recipient/i.test(source);
+          const hasXFailed   = /X-Failed-Recipients/i.test(source);
           const hasAngleLine = /^<[^\s@<>]+@[^\s@<>]+>/m.test(source);
-          const hasToAngle  = /\bto\s+<[^\s@<>]+@[^\s@<>]+>/i.test(source);
+          const hasToAngle   = /\bto\s+<[^\s@<>]+@[^\s@<>]+>/i.test(source);
           logger.warn(
             {
               mailboxId: mailbox.id,
               seq:       msg.seq,
+              messageId: messageId ?? "(missing)",
               subject:   debugSubject,
               from:      debugFrom,
               triedPatterns: { rfc3464: hasRfc3464, xFailed: hasXFailed, angleLine: hasAngleLine, toAngle: hasToAngle },
@@ -234,20 +293,19 @@ async function _scanMailbox(
           continue;
         }
 
-        // ── [DEBUG] Recipient extracted ──────────────────────────────────────────
         logger.info(
-          { mailboxId: mailbox.id, seq: msg.seq, recipient },
+          { mailboxId: mailbox.id, seq: msg.seq, messageId: messageId ?? "(missing)", recipient },
           "[BOUNCE-SCAN-DEBUG] Recipient extracted",
         );
 
-        const reason = extractBounceReason(source);
-
-        // ── [DEBUG] Bounce reason ────────────────────────────────────────────────
+        const reason    = extractBounceReason(source);
         const permanent = isPermanentBounce(reason);
+
         logger.info(
           {
-            mailboxId:  mailbox.id,
-            seq:        msg.seq,
+            mailboxId:      mailbox.id,
+            seq:            msg.seq,
+            messageId:      messageId ?? "(missing)",
             recipient,
             reason,
             classification: permanent ? "PERMANENT" : "TEMPORARY",
@@ -278,18 +336,33 @@ async function _scanMailbox(
           .where(whereConditions)
           .limit(1);
 
+        let bounceRecorded = false;
+
         if (item) {
           await db
             .update(emailQueueTable)
             .set({
-              status: "bounced",
+              status:    "bounced",
               lastError: reason,
-              bounceAt: new Date(),
+              bounceAt:  new Date(),
             })
             .where(eq(emailQueueTable.id, item.id));
-          detected++;
 
-          // Auto-suppress on permanent 5xx bounce (550, 554, user unknown, etc.)
+          detected++;
+          bounceRecorded = true;
+
+          logger.info(
+            {
+              mailboxId:    mailbox.id,
+              seq:          msg.seq,
+              messageId:    messageId ?? "(missing)",
+              recipient,
+              emailQueueId: item.id,
+              source:       "email_queue",
+            },
+            "[BOUNCE-SCAN-DEBUG] Bounce processed — email_queue row updated to bounced",
+          );
+
           if (reason && permanent) {
             try {
               await db.insert(suppressionListTable).values({
@@ -299,9 +372,16 @@ async function _scanMailbox(
                 bounceCode: extractBounceCode(reason),
                 campaignId: item.campaignId ?? null,
               }).onConflictDoNothing();
-              // ── [DEBUG] Suppression inserted ────────────────────────────────
+
               logger.info(
-                { mailboxId: mailbox.id, seq: msg.seq, recipient, reason: reason.slice(0, 120), source: "email_queue" },
+                {
+                  mailboxId: mailbox.id,
+                  seq:       msg.seq,
+                  messageId: messageId ?? "(missing)",
+                  recipient,
+                  reason:    reason.slice(0, 120),
+                  source:    "email_queue",
+                },
                 "[BOUNCE-SCAN-DEBUG] Suppression inserted — email added to suppression list (via email_queue path)",
               );
             } catch {
@@ -316,7 +396,7 @@ async function _scanMailbox(
           // email_queue row to update. Fall back to draftsTable so those bounces
           // are still detected and suppressed.
           logger.info(
-            { mailboxId: mailbox.id, seq: msg.seq, recipient },
+            { mailboxId: mailbox.id, seq: msg.seq, messageId: messageId ?? "(missing)", recipient },
             "[BOUNCE-SCAN-DEBUG] No email_queue row found — trying Gmail-draft fallback (draftsTable)",
           );
 
@@ -344,7 +424,6 @@ async function _scanMailbox(
             .limit(1);
 
           if (draft) {
-            // Mark the draft as bounced
             try {
               await db
                 .update(draftsTable)
@@ -352,7 +431,6 @@ async function _scanMailbox(
                 .where(eq(draftsTable.id, draft.id));
             } catch { /* non-fatal */ }
 
-            // Update the lead if present
             if (draft.leadId) {
               try {
                 await db
@@ -363,6 +441,19 @@ async function _scanMailbox(
             }
 
             detected++;
+            bounceRecorded = true;
+
+            logger.info(
+              {
+                mailboxId: mailbox.id,
+                seq:       msg.seq,
+                messageId: messageId ?? "(missing)",
+                recipient,
+                draftId:   draft.id,
+                source:    "drafts_fallback",
+              },
+              "[BOUNCE-SCAN-DEBUG] Bounce processed — drafts row updated to bounced",
+            );
 
             if (reason && permanent) {
               try {
@@ -373,9 +464,16 @@ async function _scanMailbox(
                   bounceCode: extractBounceCode(reason),
                   campaignId: draft.campaignId ?? null,
                 }).onConflictDoNothing();
-                // ── [DEBUG] Suppression inserted ──────────────────────────────
+
                 logger.info(
-                  { mailboxId: mailbox.id, seq: msg.seq, recipient, reason: reason.slice(0, 120), source: "drafts_fallback" },
+                  {
+                    mailboxId: mailbox.id,
+                    seq:       msg.seq,
+                    messageId: messageId ?? "(missing)",
+                    recipient,
+                    reason:    reason.slice(0, 120),
+                    source:    "drafts_fallback",
+                  },
                   "[BOUNCE-SCAN-DEBUG] Suppression inserted — email added to suppression list (via Gmail-draft fallback path)",
                 );
               } catch {
@@ -384,17 +482,39 @@ async function _scanMailbox(
             }
           } else {
             logger.warn(
-              { mailboxId: mailbox.id, seq: msg.seq, recipient },
+              { mailboxId: mailbox.id, seq: msg.seq, messageId: messageId ?? "(missing)", recipient },
               "[BOUNCE-SCAN-DEBUG] SKIPPED — recipient not found in email_queue OR draftsTable (may be from a different account or already bounced)",
             );
           }
         }
 
-        // Mark the DSN message as seen so it is not re-processed on the next scan
-        await client.messageFlagsAdd(
-          { seq: String(msg.seq) },
-          ["\\Seen"],
-        );
+        // ── Record in processed_bounces so this message is skipped on future cycles ──
+        // Only record when bounce processing completed (email_queue or draft updated).
+        // Messages skipped due to extraction failure or no matching row are NOT recorded
+        // so they can be retried if data becomes available later (e.g., delayed send).
+        if (bounceRecorded && messageId) {
+          try {
+            await db.insert(processedBouncesTable).values({
+              mailboxId:   mailbox.id,
+              messageId,
+              recipient,
+            }).onConflictDoNothing();
+
+            logger.info(
+              {
+                mailboxId: mailbox.id,
+                seq:       msg.seq,
+                messageId,
+                recipient,
+              },
+              "[BOUNCE-SCAN-DEBUG] Bounce recorded in processed_bounces — will be skipped on future scans",
+            );
+          } catch {
+            // non-fatal — worst case is the message is re-processed next cycle,
+            // which is safe because email_queue.status is already "bounced" and
+            // suppressionListTable uses onConflictDoNothing()
+          }
+        }
       }
     } finally {
       lock.release();
@@ -419,11 +539,11 @@ export async function runBounceScanner(): Promise<void> {
   try {
     const mailboxes = await db
       .select({
-        id: mailboxesTable.id,
-        userId: mailboxesTable.userId,
-        imapHost: mailboxesTable.imapHost,
-        imapPort: mailboxesTable.imapPort,
-        imapUser: mailboxesTable.imapUser,
+        id:                mailboxesTable.id,
+        userId:            mailboxesTable.userId,
+        imapHost:          mailboxesTable.imapHost,
+        imapPort:          mailboxesTable.imapPort,
+        imapUser:          mailboxesTable.imapUser,
         imapPassEncrypted: mailboxesTable.imapPassEncrypted,
       })
       .from(mailboxesTable)

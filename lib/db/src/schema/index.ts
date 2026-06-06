@@ -12,3 +12,4 @@ export * from "./admin_settings";
 export * from "./plans";
 export * from "./support_tickets";
 export * from "./suppressions";
+export * from "./processed_bounces";

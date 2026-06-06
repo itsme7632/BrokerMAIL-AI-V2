@@ -9,5 +9,6 @@
 - [Replit proxy method override](replit-proxy-method-override.md) — Replit deployment proxy silently blocks PATCH/PUT/DELETE; fix is X-HTTP-Method-Override in custom-fetch + middleware in app.ts
 - [Suppression system architecture](suppression-system.md) — per-user composite unique (userId, email); bounce-scanner auto-inserts on isPermanentBounce(); uploads.ts does DNS batch + suppression check; never touch campaign processor
 - [Bounce pipeline root causes](bounce-pipeline-fixes.md) — Google spam NDRs use non-RFC-3464 format; extractBounceRecipient needs body fallback; isPermanentBounce needs 5.7.x + "discarded" + "message blocked"
+- [Bounce scanner deduplication](bounce-scanner-dedup.md) — scanner uses processed_bounces table (not IMAP \Seen flag); seen:false caused permanent misses when mail client pre-read NDRs
 - [ETA countdown and analytics invalidation fix](eta-analytics-fix.md) — useETACountdown must only re-anchor downward; analytics invalidation requires openCount/clickCount in progress endpoint; change flags must be computed before ref mutation
 - [Dark mode architecture](dark-mode-arch.md) — CSS variable overrides in .dark{} + @layer utilities overrides; ThemeContext applies dark class to html; toggle in AppLayout TopHeader only
