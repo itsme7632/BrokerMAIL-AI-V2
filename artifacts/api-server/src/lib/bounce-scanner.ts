@@ -169,6 +169,19 @@ async function _scanMailbox(
         ],
       });
 
+      // ── [DEBUG] How many bounce candidates were found in this mailbox ──────────
+      // client.search() returns number[] | false (false = no results in ImapFlow)
+      const foundCount = Array.isArray(seqNums) ? seqNums.length : 0;
+      logger.info(
+        {
+          mailboxId: mailbox.id,
+          imapUser:  mailbox.imapUser,
+          found:     foundCount,
+          willProcess: Math.min(foundCount, 50),
+        },
+        "[BOUNCE-SCAN-DEBUG] IMAP search complete — all matching unseen messages will be processed (capped at 50 per cycle)",
+      );
+
       if (!seqNums || seqNums.length === 0) return 0;
 
       // Cap at 50 per scan cycle to avoid long-running IMAP sessions
@@ -178,14 +191,69 @@ async function _scanMailbox(
         source: true,
       });
 
+      // ── [DEBUG] Confirm fetch count matches search count ──────────────────────
+      logger.info(
+        { mailboxId: mailbox.id, fetched: messages.length, processing: "all" },
+        "[BOUNCE-SCAN-DEBUG] Messages fetched — iterating every message (no early exit)",
+      );
+
       for (const msg of messages) {
         if (!msg.source) continue;
 
         const source = msg.source.toString("utf8");
+
+        // ── [DEBUG] Bounce email found — log subject + sender for identification ──
+        const debugSubject = source.match(/^Subject:[ \t]*(.{0,120})/im)?.[1]?.trim() ?? "(no subject)";
+        const debugFrom    = source.match(/^From:[ \t]*(.{0,120})/im)?.[1]?.trim()    ?? "(no from)";
+        logger.info(
+          { mailboxId: mailbox.id, seq: msg.seq, from: debugFrom, subject: debugSubject },
+          "[BOUNCE-SCAN-DEBUG] Bounce email found — attempting recipient extraction",
+        );
+
         const recipient = extractBounceRecipient(source);
-        if (!recipient) continue;
+
+        if (!recipient) {
+          // ── [DEBUG] Skipped bounce — log which extraction patterns were tried ──
+          // Note: skipped messages are NOT marked seen here; they will be found
+          // again on the next scan cycle unless manually marked read in the mailbox.
+          const hasRfc3464  = /Final-Recipient|Original-Recipient/i.test(source);
+          const hasXFailed  = /X-Failed-Recipients/i.test(source);
+          const hasAngleLine = /^<[^\s@<>]+@[^\s@<>]+>/m.test(source);
+          const hasToAngle  = /\bto\s+<[^\s@<>]+@[^\s@<>]+>/i.test(source);
+          logger.warn(
+            {
+              mailboxId: mailbox.id,
+              seq:       msg.seq,
+              subject:   debugSubject,
+              from:      debugFrom,
+              triedPatterns: { rfc3464: hasRfc3464, xFailed: hasXFailed, angleLine: hasAngleLine, toAngle: hasToAngle },
+              sourceSnippet: source.slice(0, 400).replace(/\r?\n/g, " | "),
+            },
+            "[BOUNCE-SCAN-DEBUG] SKIPPED — no recipient could be extracted from this message",
+          );
+          continue;
+        }
+
+        // ── [DEBUG] Recipient extracted ──────────────────────────────────────────
+        logger.info(
+          { mailboxId: mailbox.id, seq: msg.seq, recipient },
+          "[BOUNCE-SCAN-DEBUG] Recipient extracted",
+        );
 
         const reason = extractBounceReason(source);
+
+        // ── [DEBUG] Bounce reason ────────────────────────────────────────────────
+        const permanent = isPermanentBounce(reason);
+        logger.info(
+          {
+            mailboxId:  mailbox.id,
+            seq:        msg.seq,
+            recipient,
+            reason,
+            classification: permanent ? "PERMANENT" : "TEMPORARY",
+          },
+          `[BOUNCE-SCAN-DEBUG] Bounce reason — ${permanent ? "PERMANENT (suppression eligible)" : "TEMPORARY (suppression skipped)"}`,
+        );
 
         // Find the most-recently-sent (status=success) email to this address.
         // When scanning the admin bounce mailbox (userId < 0), search across all users.
@@ -222,7 +290,7 @@ async function _scanMailbox(
           detected++;
 
           // Auto-suppress on permanent 5xx bounce (550, 554, user unknown, etc.)
-          if (reason && isPermanentBounce(reason)) {
+          if (reason && permanent) {
             try {
               await db.insert(suppressionListTable).values({
                 userId:     item.userId,
@@ -231,6 +299,11 @@ async function _scanMailbox(
                 bounceCode: extractBounceCode(reason),
                 campaignId: item.campaignId ?? null,
               }).onConflictDoNothing();
+              // ── [DEBUG] Suppression inserted ────────────────────────────────
+              logger.info(
+                { mailboxId: mailbox.id, seq: msg.seq, recipient, reason: reason.slice(0, 120), source: "email_queue" },
+                "[BOUNCE-SCAN-DEBUG] Suppression inserted — email added to suppression list (via email_queue path)",
+              );
             } catch {
               // non-fatal — suppression insert failure must never disrupt scanning
             }
@@ -242,6 +315,11 @@ async function _scanMailbox(
           // and it bounces, the bounce appears in the IMAP inbox but there is no
           // email_queue row to update. Fall back to draftsTable so those bounces
           // are still detected and suppressed.
+          logger.info(
+            { mailboxId: mailbox.id, seq: msg.seq, recipient },
+            "[BOUNCE-SCAN-DEBUG] No email_queue row found — trying Gmail-draft fallback (draftsTable)",
+          );
+
           const draftWhereConditions = mailbox.userId > 0
             ? and(
                 eq(draftsTable.userId, mailbox.userId),
@@ -286,7 +364,7 @@ async function _scanMailbox(
 
             detected++;
 
-            if (reason && isPermanentBounce(reason)) {
+            if (reason && permanent) {
               try {
                 await db.insert(suppressionListTable).values({
                   userId:     draft.userId,
@@ -295,10 +373,20 @@ async function _scanMailbox(
                   bounceCode: extractBounceCode(reason),
                   campaignId: draft.campaignId ?? null,
                 }).onConflictDoNothing();
+                // ── [DEBUG] Suppression inserted ──────────────────────────────
+                logger.info(
+                  { mailboxId: mailbox.id, seq: msg.seq, recipient, reason: reason.slice(0, 120), source: "drafts_fallback" },
+                  "[BOUNCE-SCAN-DEBUG] Suppression inserted — email added to suppression list (via Gmail-draft fallback path)",
+                );
               } catch {
                 // non-fatal
               }
             }
+          } else {
+            logger.warn(
+              { mailboxId: mailbox.id, seq: msg.seq, recipient },
+              "[BOUNCE-SCAN-DEBUG] SKIPPED — recipient not found in email_queue OR draftsTable (may be from a different account or already bounced)",
+            );
           }
         }
 
