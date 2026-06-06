@@ -13,8 +13,10 @@ import {
   emailQueueTable,
   mailboxesTable,
   suppressionListTable,
+  draftsTable,
+  leadsTable,
 } from "@workspace/db";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, desc } from "drizzle-orm";
 import { isPermanentBounce, extractBounceCode } from "./email-validator";
 import { decrypt } from "./crypto";
 import { logger } from "./logger";
@@ -26,24 +28,46 @@ import { getTrackingSettings } from "./tracking-settings";
 
 /**
  * Extract the original bounced recipient address from a raw DSN message source.
- * Supports RFC 3464 (Final-Recipient / Original-Recipient headers) and
- * common proprietary headers used by major mail servers.
+ *
+ * Priority order:
+ *  1. RFC 3464 Final-Recipient / Original-Recipient headers (standard DSN)
+ *  2. X-Failed-Recipients (Exim, Postfix)
+ *  3. Angle-bracket email at start of line followed by colon — Google's
+ *     "Message blocked" / spam-rejection plain-text format, e.g.:
+ *       <user@example.com>:
+ *       Message discarded as high-probability spam.
+ *  4. "to <email>" or "unable to deliver.*to.*email" body patterns used by
+ *     Microsoft, Yahoo, and other non-RFC-3464 notification formats.
  */
 function extractBounceRecipient(source: string): string | null {
   const clean = (s: string) =>
-    s.trim().toLowerCase().replace(/[<>]/g, "").split(/[,;\s]/)[0];
+    s.trim().toLowerCase().replace(/[<>]/g, "").split(/[,;\s]/)[0]!;
 
-  // RFC 3464: Final-Recipient: rfc822; user@example.com
+  const isValidAddr = (s: string) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length < 320;
+
+  // ── RFC 3464: Final-Recipient: rfc822; user@example.com ───────────────────
   const m1 = source.match(/Final-Recipient:\s*rfc822;\s*([^\r\n]+)/i);
-  if (m1) return clean(m1[1]);
+  if (m1) { const v = clean(m1[1]!); if (isValidAddr(v)) return v; }
 
-  // RFC 3464: Original-Recipient: rfc822; user@example.com
+  // ── RFC 3464: Original-Recipient: rfc822; user@example.com ───────────────
   const m2 = source.match(/Original-Recipient:\s*rfc822;\s*([^\r\n]+)/i);
-  if (m2) return clean(m2[1]);
+  if (m2) { const v = clean(m2[1]!); if (isValidAddr(v)) return v; }
 
-  // X-Failed-Recipients: user@example.com (Exim, Postfix)
+  // ── X-Failed-Recipients: user@example.com (Exim, Postfix) ─────────────────
   const m3 = source.match(/X-Failed-Recipients:\s*([^\r\n]+)/i);
-  if (m3) return clean(m3[1]);
+  if (m3) { const v = clean(m3[1]!); if (isValidAddr(v)) return v; }
+
+  // ── Google "Message blocked" format: <email>:\n reason ────────────────────
+  // Matches an angle-bracket-wrapped email at the start of a line immediately
+  // followed by a colon — the canonical Google spam-rejection NDR body format.
+  const m4 = source.match(/^<([^\s@<>\r\n]+@[^\s@<>\r\n]+\.[^\s@<>\r\n]+)>:/m);
+  if (m4) { const v = clean(m4[1]!); if (isValidAddr(v)) return v; }
+
+  // ── Generic "to <email>" body patterns (Microsoft, Yahoo, others) ──────────
+  // Covers: "your message to <email> could not", "failed to deliver to <email>"
+  const m5 = source.match(/\bto\s+<([^\s@<>\r\n]+@[^\s@<>\r\n]+\.[^\s@<>\r\n]+)>/i);
+  if (m5) { const v = clean(m5[1]!); if (isValidAddr(v)) return v; }
 
   return null;
 }
@@ -139,6 +163,9 @@ async function _scanMailbox(
           { subject: "Failure Notice" },
           { subject: "Undeliverable" },
           { subject: "returned mail" },
+          { subject: "Message blocked" },
+          { subject: "Delivery failure" },
+          { subject: "Mail Delivery Subsystem" },
         ],
       });
 
@@ -206,6 +233,71 @@ async function _scanMailbox(
               }).onConflictDoNothing();
             } catch {
               // non-fatal — suppression insert failure must never disrupt scanning
+            }
+          }
+        } else {
+          // ── Gmail-draft fallback ───────────────────────────────────────────
+          // Gmail-draft campaigns never write to email_queue (they write to
+          // draftsTable only). When the user manually sends a draft from Gmail
+          // and it bounces, the bounce appears in the IMAP inbox but there is no
+          // email_queue row to update. Fall back to draftsTable so those bounces
+          // are still detected and suppressed.
+          const draftWhereConditions = mailbox.userId > 0
+            ? and(
+                eq(draftsTable.userId, mailbox.userId),
+                eq(draftsTable.email!, recipient),
+                eq(draftsTable.status, "success"),
+              )
+            : and(
+                eq(draftsTable.email!, recipient),
+                eq(draftsTable.status, "success"),
+              );
+
+          const [draft] = await db
+            .select({
+              id:         draftsTable.id,
+              userId:     draftsTable.userId,
+              campaignId: draftsTable.campaignId,
+              leadId:     draftsTable.leadId,
+            })
+            .from(draftsTable)
+            .where(draftWhereConditions)
+            .orderBy(desc(draftsTable.createdAt))
+            .limit(1);
+
+          if (draft) {
+            // Mark the draft as bounced
+            try {
+              await db
+                .update(draftsTable)
+                .set({ status: "bounced", errorMessage: reason.slice(0, 300) })
+                .where(eq(draftsTable.id, draft.id));
+            } catch { /* non-fatal */ }
+
+            // Update the lead if present
+            if (draft.leadId) {
+              try {
+                await db
+                  .update(leadsTable)
+                  .set({ status: "failed", errorMessage: reason.slice(0, 300), updatedAt: new Date() })
+                  .where(eq(leadsTable.id, draft.leadId));
+              } catch { /* non-fatal */ }
+            }
+
+            detected++;
+
+            if (reason && isPermanentBounce(reason)) {
+              try {
+                await db.insert(suppressionListTable).values({
+                  userId:     draft.userId,
+                  email:      recipient,
+                  reason:     reason.slice(0, 300),
+                  bounceCode: extractBounceCode(reason),
+                  campaignId: draft.campaignId ?? null,
+                }).onConflictDoNothing();
+              } catch {
+                // non-fatal
+              }
             }
           }
         }

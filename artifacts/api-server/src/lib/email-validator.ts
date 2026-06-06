@@ -203,10 +203,16 @@ export async function validateDomainsBatch(domains: string[]): Promise<Set<strin
 export function isPermanentBounce(reason: string): boolean {
   const s = reason.toLowerCase();
   return (
+    // ── Standard permanent SMTP failure codes ─────────────────────────────────
     /\b550\b/.test(s) ||
     /\b554\b/.test(s) ||
     /\b5\.1\b/.test(s) ||
     /\b5\.2\b/.test(s) ||
+    // ── Policy / security permanent codes (spam, DMARC, SPF, DKIM) ───────────
+    // RFC 5321 5.7.x codes are permanent security/policy failures:
+    // 5.7.1 = message rejected (spam/policy), 5.7.9 = message content rejected, etc.
+    /\b5\.7\b/.test(s) ||
+    // ── User / mailbox does not exist ─────────────────────────────────────────
     s.includes("user unknown") ||
     s.includes("mailbox not found") ||
     s.includes("does not exist") ||
@@ -214,7 +220,13 @@ export function isPermanentBounce(reason: string): boolean {
     s.includes("address rejected") ||
     s.includes("invalid recipient") ||
     s.includes("recipient rejected") ||
-    s.includes("undeliverable address")
+    s.includes("undeliverable address") ||
+    // ── Spam / content / policy rejection (permanent discard) ─────────────────
+    // "Message discarded as high-probability spam" — Google's canonical reason
+    // for messages permanently rejected by their spam filter.
+    s.includes("discarded") ||
+    s.includes("message blocked") ||
+    s.includes("high-probability spam")
   );
 }
 
