@@ -1,0 +1,125 @@
+Implement a campaign cooldown visibility feature. This is a UI/UX enhancement only. Do NOT modify the existing campaign sending logic, quota calculations, cooldown logic, scheduler, SMTP handling, queue processing, or any backend functionality that is already working.
+
+### Goal
+
+When a campaign enters `cooling_down` status, users should clearly see:
+
+* Why the campaign is paused
+* How many emails were sent in the current quota window
+* The mailbox hourly limit
+* The exact remaining time until the campaign can resume
+* The estimated resume timestamp
+
+### Campaign Card Enhancements
+
+For any campaign with status `cooling_down`, display a dedicated cooldown section:
+
+Example:
+
+Cooling Down
+
+Hourly quota reached.
+
+Quota Usage:
+45 / 45 emails
+
+Window Reset In:
+42m 18s
+
+Estimated Resume:
+Jun 7, 2026 — 3:45 PM
+
+Status:
+Waiting for full quota window to clear
+
+### Countdown Requirements
+
+* Countdown must update live every second on the frontend.
+* No page refresh required.
+* Display format:
+
+  * 59m 12s
+  * 12m 03s
+  * 01m 08s
+* When countdown reaches zero:
+
+  * Show "Checking quota availability..."
+  * Then wait for backend status update.
+* Never automatically change campaign status from the frontend.
+
+### Progress Indicator
+
+Add a visual progress bar showing cooldown progress.
+
+Example:
+
+Cooldown Progress
+██████████░░░░░░░░░ 55%
+
+This should be calculated using:
+
+* cooldown start time
+* cooldown end time
+
+### Campaign Table / List View
+
+Add a new column:
+
+Cooldown Remaining
+
+Examples:
+
+42m 18s
+12m 05s
+Ready Soon
+—
+
+For non-cooling campaigns show:
+
+—
+or
+Not Cooling
+
+### Campaign Details Modal
+
+If a campaign details page/modal exists, add:
+
+Current Quota Window
+Emails Sent This Window
+Hourly Limit
+Cooldown Started At
+Cooldown Ends At
+Time Remaining
+
+### Backend
+
+ONLY expose existing cooldown data if not already available.
+
+Allowed:
+
+* cooldownUntil
+* cooldownStartedAt
+* sentThisHour
+* maxPerHour
+
+NOT ALLOWED:
+
+* Changes to campaign processor
+* Changes to sending logic
+* Changes to cooldown calculations
+* Changes to queue execution
+* Changes to SMTP handling
+
+### Important Safety Rule
+
+This task is visual/monitoring only.
+
+Do NOT modify any production campaign sending logic.
+
+Do NOT modify quota enforcement.
+
+Do NOT modify cooldown recovery behavior.
+
+Do NOT touch any working backend logic except exposing data required for display.
+
+The goal is to provide visibility and transparency to users while keeping the existing campaign engine untouched.

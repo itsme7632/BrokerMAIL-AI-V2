@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetCampaigns, useCreateCampaign, getGetCampaignsQueryKey } from "@workspace/api-client-react";
@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import {
   Plus, Search, Mail, Loader2, Inbox, MoreHorizontal, Play, Pause, Ban,
-  Copy, Archive, Send, BarChart3, TrendingUp, CheckCircle2, Clock,
+  Copy, Archive, Send, BarChart3, TrendingUp, CheckCircle2, Clock, Timer,
 } from "lucide-react";
 
 type EnrichedCampaign = {
@@ -63,7 +63,8 @@ function timeAgo(isoDate: string): string {
 }
 
 function getStatusInfo(c: EnrichedCampaign) {
-  const isCooling = c.status === "sending" && !!c.cooldownUntil && new Date(c.cooldownUntil) > new Date();
+  const isCooling = c.status === "cooling_down" ||
+    (c.status === "sending" && !!c.cooldownUntil && new Date(c.cooldownUntil) > new Date());
   if (isCooling) return { label: "Cooling Down", cls: "bg-orange-50 text-orange-700 ring-orange-200", dot: "solid" as const };
   switch (c.status) {
     case "pending":   return { label: "Pending",    cls: "bg-slate-50    text-slate-600   ring-slate-200",   dot: undefined };
@@ -78,12 +79,39 @@ function getStatusInfo(c: EnrichedCampaign) {
 
 function lastActivityLabel(c: EnrichedCampaign): string {
   switch (c.status) {
-    case "sending":   return `Active · ${timeAgo(c.updatedAt)}`;
-    case "paused":    return `Paused ${timeAgo(c.updatedAt)}`;
-    case "completed": return `Completed ${timeAgo(c.updatedAt)}`;
-    case "cancelled": return `Cancelled ${timeAgo(c.updatedAt)}`;
-    default:          return `Created ${timeAgo(c.createdAt)}`;
+    case "sending":      return `Active · ${timeAgo(c.updatedAt)}`;
+    case "cooling_down": return `Cooling down · ${timeAgo(c.updatedAt)}`;
+    case "paused":       return `Paused ${timeAgo(c.updatedAt)}`;
+    case "completed":    return `Completed ${timeAgo(c.updatedAt)}`;
+    case "cancelled":    return `Cancelled ${timeAgo(c.updatedAt)}`;
+    default:             return `Created ${timeAgo(c.createdAt)}`;
   }
+}
+
+// Live countdown for cooldown remaining — ticks every second, no page refresh needed.
+function CooldownCountdown({ cooldownUntil }: { cooldownUntil: string | null }) {
+  const calc = (iso: string | null) =>
+    Math.max(0, Math.ceil((new Date(iso ?? 0).getTime() - Date.now()) / 1000));
+
+  const [secs, setSecs] = useState(() => calc(cooldownUntil));
+
+  useEffect(() => {
+    setSecs(calc(cooldownUntil));
+    if (!cooldownUntil) return;
+    const id = setInterval(() => setSecs(calc(cooldownUntil)), 1_000);
+    return () => clearInterval(id);
+  }, [cooldownUntil]);
+
+  if (!cooldownUntil || secs <= 0) {
+    return <span className="text-xs text-orange-500 italic">Checking quota…</span>;
+  }
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return (
+    <span className="text-xs font-mono font-semibold text-orange-700 dark:text-orange-400">
+      {String(m).padStart(2, "0")}m {String(s).padStart(2, "0")}s
+    </span>
+  );
 }
 
 function StatusBadge({ campaign }: { campaign: EnrichedCampaign }) {
@@ -319,6 +347,7 @@ export default function Campaigns() {
             <SelectItem value="all">All statuses</SelectItem>
             <SelectItem value="pending">Pending</SelectItem>
             <SelectItem value="sending">Sending</SelectItem>
+            <SelectItem value="cooling_down">Cooling Down</SelectItem>
             <SelectItem value="paused">Paused</SelectItem>
             <SelectItem value="completed">Completed</SelectItem>
             <SelectItem value="cancelled">Cancelled</SelectItem>
@@ -380,7 +409,8 @@ export default function Campaigns() {
               const ttl   = campaign.totalLeads ?? 0;
               const pct   = ttl > 0 ? Math.round((sent / ttl) * 100) : 0;
               const isActive  = campaign.status === "sending";
-              const isCooling = isActive && !!campaign.cooldownUntil && new Date(campaign.cooldownUntil) > new Date();
+              const isCooling = campaign.status === "cooling_down" ||
+                (campaign.status === "sending" && !!campaign.cooldownUntil && new Date(campaign.cooldownUntil) > new Date());
               const isPaused  = campaign.status === "paused";
               const isDone    = ["completed", "cancelled", "failed"].includes(campaign.status);
               const canCancel = !isDone;
@@ -527,6 +557,15 @@ export default function Campaigns() {
                         </div>
                       </>
                     )}
+                    {/* Cooldown indicator — live countdown, ticks every second */}
+                    {isCooling && (
+                      <div className="flex items-center gap-2 px-2.5 py-1.5 bg-orange-50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-800/40 rounded-lg">
+                        <Timer className="h-3 w-3 text-orange-500 flex-shrink-0" />
+                        <span className="text-xs text-orange-600 dark:text-orange-400">Quota window resets in</span>
+                        <CooldownCountdown cooldownUntil={campaign.cooldownUntil ?? null} />
+                      </div>
+                    )}
+
                     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pt-0.5">
                       <div className="flex items-center gap-3 text-xs">
                         {(campaign.failedCount ?? 0) > 0 && (

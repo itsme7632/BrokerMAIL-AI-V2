@@ -107,6 +107,14 @@ function formatSeconds(secs: number): string {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
+// Cooldown-specific format: always shows minutes and zero-padded seconds (e.g. "42m 18s", "01m 08s")
+function formatCooldownTimer(secs: number): string {
+  if (secs <= 0) return "00m 00s";
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
+}
+
 function StatCard({
   label, value, sub, color, icon,
 }: {
@@ -624,6 +632,11 @@ export default function CampaignDetail() {
   const isPaused  = progress?.status === "paused";
   const isCancelledStatus = progress?.status === "cancelled";
 
+  // Cooldown progress: how far through the 3600-second window we are (0–100)
+  const cooldownProgress = isCooling
+    ? Math.min(100, Math.max(0, Math.round(((3600 - cooldownLeft) / 3600) * 100)))
+    : 0;
+
   const statusColors: Record<string, string> = {
     pending:      "bg-amber-100 text-amber-800",
     sending:      "bg-blue-100 text-blue-800",
@@ -760,26 +773,90 @@ export default function CampaignDetail() {
         </div>
       )}
 
-      {/* ─── Cooldown warning ─────────────────────────────────────────────────── */}
-      {(isCooling || cooldownLeft > 0) && (
+      {/* ─── Cooldown visibility panel ────────────────────────────────────────── */}
+      {isCooling ? (
+        <div className="rounded-2xl border border-orange-200 bg-orange-50 overflow-hidden">
+          {/* Header */}
+          <div className="px-5 py-3 border-b border-orange-200 flex items-center gap-3">
+            <Timer className="h-4 w-4 text-orange-600 flex-shrink-0" />
+            <span className="text-sm font-bold text-orange-900">Cooling Down — Hourly Quota Reached</span>
+          </div>
+
+          {/* Info grid */}
+          <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Quota usage */}
+            <div>
+              <p className="text-xs text-orange-600 font-semibold uppercase tracking-wider mb-1">Quota Usage</p>
+              <p className="text-base font-bold text-orange-900">
+                {progress?.sentThisHour ?? 0} / {progress?.hourlyLimit ?? 0}
+                <span className="text-xs font-normal text-orange-600 ml-1">emails</span>
+              </p>
+            </div>
+
+            {/* Window reset countdown */}
+            <div>
+              <p className="text-xs text-orange-600 font-semibold uppercase tracking-wider mb-1">Window Reset In</p>
+              {cooldownLeft > 0 ? (
+                <p className="text-base font-bold font-mono text-orange-900">{formatCooldownTimer(cooldownLeft)}</p>
+              ) : (
+                <p className="text-sm font-semibold text-orange-500 animate-pulse">Checking quota availability…</p>
+              )}
+            </div>
+
+            {/* Estimated resume */}
+            <div>
+              <p className="text-xs text-orange-600 font-semibold uppercase tracking-wider mb-1">Estimated Resume</p>
+              <p className="text-sm font-semibold text-orange-900">
+                {progress?.cooldownUntil
+                  ? new Date(progress.cooldownUntil).toLocaleString("en-US", {
+                      month: "short", day: "numeric", year: "numeric",
+                      hour: "numeric", minute: "2-digit",
+                    })
+                  : "—"}
+              </p>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="px-5 pb-3">
+            <div className="flex items-center justify-between text-xs text-orange-600 mb-1.5">
+              <span className="font-semibold">Cooldown Progress</span>
+              <span className="font-mono font-semibold">{cooldownProgress}%</span>
+            </div>
+            <div className="h-2 bg-orange-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-orange-400 rounded-full transition-all duration-1000 ease-linear"
+                style={{ width: `${cooldownProgress}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Status line */}
+          <div className="px-5 pb-4">
+            <p className="text-xs text-orange-700 flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-orange-500 animate-pulse inline-block flex-shrink-0" />
+              {cooldownLeft > 0
+                ? "Waiting for full quota window to clear before resuming"
+                : "Checking quota availability…"}
+            </p>
+          </div>
+        </div>
+      ) : cooldownLeft > 0 ? (
+        /* Legacy banner: "sending" status with a cooldownUntil still in the future */
         <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
           <Timer className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="text-sm font-semibold text-amber-900">Cooling down — hourly limit reached</p>
             <p className="text-xs text-amber-700 mt-0.5">
               Sending is paused automatically.{" "}
-              {cooldownLeft > 0
-                ? <>Resuming in <span className="font-bold">{formatSeconds(cooldownLeft)}</span> — no action needed.</>
-                : "Resuming shortly…"}
+              Resuming in <span className="font-bold">{formatSeconds(cooldownLeft)}</span> — no action needed.
             </p>
           </div>
-          {cooldownLeft > 0 && (
-            <div className="flex-shrink-0 px-3 py-1.5 rounded-xl bg-amber-100 border border-amber-200">
-              <span className="text-sm font-bold text-amber-800">{formatSeconds(cooldownLeft)}</span>
-            </div>
-          )}
+          <div className="flex-shrink-0 px-3 py-1.5 rounded-xl bg-amber-100 border border-amber-200">
+            <span className="text-sm font-bold text-amber-800">{formatSeconds(cooldownLeft)}</span>
+          </div>
         </div>
-      )}
+      ) : null}
 
       {/* ─── Active SMTP Job ──────────────────────────────────────────────────── */}
       <AnimatePresence>
