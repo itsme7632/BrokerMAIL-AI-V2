@@ -17,6 +17,7 @@ import mailboxRouter from "./mailbox";
 import billingRouter from "./billing";
 import sentEmailsRouter from "./sent-emails";
 import notificationsRouter from "./notifications";
+import suppressionsRouter from "./suppressions";
 
 const router: IRouter = Router();
 
@@ -38,5 +39,6 @@ router.use(mailboxRouter);
 router.use(billingRouter);
 router.use(sentEmailsRouter);
 router.use(notificationsRouter);
+router.use(suppressionsRouter);
 
 export default router;

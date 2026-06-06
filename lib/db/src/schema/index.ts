@@ -11,3 +11,4 @@ export * from "./email_queue";
 export * from "./admin_settings";
 export * from "./plans";
 export * from "./support_tickets";
+export * from "./suppressions";

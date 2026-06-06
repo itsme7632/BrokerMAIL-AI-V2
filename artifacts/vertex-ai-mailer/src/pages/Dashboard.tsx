@@ -9,7 +9,7 @@ import {
   FileText, UploadCloud, TrendingUp, Wifi, Settings,
   Send, LayoutDashboard, Inbox, TimerReset, Zap,
   PlayCircle, PauseCircle, AlertTriangle, BarChart3,
-  Activity, RefreshCw, ChevronRight, Eye,
+  Activity, RefreshCw, ChevronRight, Eye, ShieldOff,
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -298,6 +298,11 @@ export default function Dashboard() {
   const [connectingGmail,  setConnectingGmail] = useState(false);
   const [liveActivity,     setLiveActivity]    = useState<OpenEvent[]>([]);
   const [liveLoading,      setLiveLoading]     = useState(true);
+  const [suppressionStats, setSuppressionStats]= useState<{
+    totalSuppressed: number;
+    lastSuppressionAt: string | null;
+    topReasons: { reason: string; count: number }[];
+  } | null>(null);
 
   const firstName = user?.name?.split(" ")[0] ?? "there";
   const token     = () => localStorage.getItem("auth_token") ?? "";
@@ -338,6 +343,18 @@ export default function Dashboard() {
       finally { setCampaignsLoading(false); }
     }
     fetchCampaigns();
+  }, []);
+
+  useEffect(() => {
+    async function fetchSuppressionStats() {
+      try {
+        const res = await fetch("/api/suppressions/stats", {
+          headers: { Authorization: `Bearer ${token()}` },
+        });
+        if (res.ok) setSuppressionStats(await res.json());
+      } catch { /* ignore */ }
+    }
+    fetchSuppressionStats();
   }, []);
 
   const fetchLiveActivity = useCallback(async () => {
@@ -610,6 +627,53 @@ export default function Dashboard() {
 
           {/* SMTP Health */}
           <SmtpHealthCard quota={quota} loading={quotaLoading} />
+
+          {/* Suppression Shield */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
+              <div className="h-8 w-8 rounded-lg bg-purple-50 flex items-center justify-center">
+                <ShieldOff className="h-4 w-4 text-purple-600" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-slate-900 text-sm">Suppression Shield</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Bounce-protected addresses</p>
+              </div>
+            </div>
+            <div className="p-5">
+              <div className="flex items-end gap-3 mb-4">
+                <div>
+                  <p className="text-3xl font-bold text-slate-900">
+                    {suppressionStats?.totalSuppressed ?? 0}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">suppressed addresses</p>
+                </div>
+                {suppressionStats?.lastSuppressionAt && (
+                  <p className="text-xs text-slate-400 mb-1">
+                    Last: {timeAgo(suppressionStats.lastSuppressionAt)}
+                  </p>
+                )}
+              </div>
+              {suppressionStats && suppressionStats.topReasons.length > 0 ? (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Top Bounce Reasons</p>
+                  {suppressionStats.topReasons.slice(0, 3).map((r, i) => (
+                    <div key={i} className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-slate-600 truncate flex-1">{r.reason.slice(0, 60)}</p>
+                      <span className="text-xs font-semibold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-md flex-shrink-0">
+                        {r.count}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center py-4 text-slate-400">
+                  <CheckCircle2 className="h-7 w-7 mb-1.5 text-emerald-400" />
+                  <p className="text-xs font-medium text-emerald-600">No suppressions yet</p>
+                  <p className="text-xs text-slate-400 text-center mt-0.5">Permanent bounces are auto-suppressed</p>
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Live Lead Activity */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">

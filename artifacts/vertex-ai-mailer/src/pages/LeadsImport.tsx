@@ -32,6 +32,12 @@ interface ParsedRow {
   quote_id?: string | null;
   hasValidEmail: boolean;
   isDuplicate: boolean;
+  isDisposable?: boolean;
+  isFlagged?: boolean;
+  isSuppressed?: boolean;
+  isDomainInvalid?: boolean;
+  validationReason?: string | null;
+  flagReason?: string | null;
   [key: string]: string | boolean | null | undefined;
 }
 
@@ -41,6 +47,9 @@ interface ParseResult {
   validRows: number;
   invalidRows: number;
   duplicateRows: number;
+  disposableRows: number;
+  suppressedRows: number;
+  flaggedRows: number;
   detectedFields: string[];
   headers: string[];
   columnMappings: Record<string, string | null>;
@@ -84,10 +93,15 @@ function normalizeKey(h: string): string {
   return h.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
 }
 
+const VALIDATION_META_KEYS = new Set([
+  "hasValidEmail", "isDuplicate", "isDisposable", "isFlagged",
+  "isSuppressed", "isDomainInvalid", "validationReason", "flagReason",
+]);
+
 function rowToRecord(row: ParsedRow): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(row)) {
-    if (k === "hasValidEmail" || k === "isDuplicate") continue;
+    if (VALIDATION_META_KEYS.has(k)) continue;
     if (typeof v === "string" && v) out[k] = v;
   }
   return out;
@@ -108,7 +122,16 @@ function applyOverridesToRows(
   const effective: Record<string, string | null> = { ...serverMappings, ...userOverrides };
 
   return serverRows.map(row => {
-    const newRow: ParsedRow = { hasValidEmail: row.hasValidEmail, isDuplicate: row.isDuplicate };
+    const newRow: ParsedRow = {
+      hasValidEmail:    row.hasValidEmail,
+      isDuplicate:      row.isDuplicate,
+      isDisposable:     row.isDisposable,
+      isFlagged:        row.isFlagged,
+      isSuppressed:     row.isSuppressed,
+      isDomainInvalid:  row.isDomainInvalid,
+      validationReason: row.validationReason,
+      flagReason:       row.flagReason,
+    };
 
     // Copy raw column data (normalised keys, already present in server row)
     for (const h of headers) {
@@ -497,7 +520,12 @@ export default function LeadsImport() {
   }, [parseResult, userOverrides]);
 
   const readyRows = useMemo<ParsedRow[]>(
-    () => mappedRows.filter(r => r.hasValidEmail === true && r.isDuplicate === false),
+    () => mappedRows.filter(r =>
+      r.hasValidEmail === true &&
+      r.isDuplicate   === false &&
+      r.isDisposable  !== true &&
+      r.isSuppressed  !== true,
+    ),
     [mappedRows],
   );
 
@@ -596,7 +624,15 @@ export default function LeadsImport() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to create campaign");
-      toast({ title: `Campaign created — ${data.valid} leads imported`, description: "Go to your campaign to start sending." });
+      const skippedParts: string[] = [];
+      if (data.suppressed > 0) skippedParts.push(`${data.suppressed} suppressed`);
+      if (data.invalid    > 0) skippedParts.push(`${data.invalid} invalid`);
+      toast({
+        title: `Campaign created — ${data.valid} leads imported`,
+        description: skippedParts.length > 0
+          ? `${skippedParts.join(", ")} skipped. Go to your campaign to start sending.`
+          : "Go to your campaign to start sending.",
+      });
       navigate(`/campaigns/${data.campaignId}`);
     } catch (err: any) {
       toast({ variant: "destructive", title: "Error", description: err.message });
@@ -686,7 +722,7 @@ export default function LeadsImport() {
           {isUploading && (
             <div className="py-8 text-center">
               <Loader2 className="mx-auto h-7 w-7 animate-spin text-blue-500 mb-2" />
-              <p className="text-sm text-slate-500">Auto-detecting columns…</p>
+              <p className="text-sm text-slate-500">Validating emails…</p>
             </div>
           )}
 
@@ -707,15 +743,31 @@ export default function LeadsImport() {
                   <div className="text-lg font-bold text-emerald-700">{readyCount}</div>
                   <div className="text-xs text-emerald-600">Ready</div>
                 </div>
-                <div className="text-center p-2 rounded-xl bg-amber-50 border border-amber-100">
-                  <div className="text-lg font-bold text-amber-700">{parseResult.invalidRows}</div>
-                  <div className="text-xs text-amber-600">No Email</div>
+                <div className="text-center p-2 rounded-xl bg-red-50 border border-red-100">
+                  <div className="text-lg font-bold text-red-600">{parseResult.invalidRows}</div>
+                  <div className="text-xs text-red-500">Invalid</div>
                 </div>
                 <div className="text-center p-2 rounded-xl bg-slate-50 border border-slate-100">
                   <div className="text-lg font-bold text-slate-600">{parseResult.duplicateRows}</div>
                   <div className="text-xs text-slate-500">Duplicate</div>
                 </div>
               </div>
+              {((parseResult.disposableRows ?? 0) > 0 || (parseResult.suppressedRows ?? 0) > 0 || (parseResult.flaggedRows ?? 0) > 0) && (
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="text-center p-2 rounded-xl bg-orange-50 border border-orange-100">
+                    <div className="text-lg font-bold text-orange-600">{parseResult.disposableRows ?? 0}</div>
+                    <div className="text-xs text-orange-500">Disposable</div>
+                  </div>
+                  <div className="text-center p-2 rounded-xl bg-purple-50 border border-purple-100">
+                    <div className="text-lg font-bold text-purple-600">{parseResult.suppressedRows ?? 0}</div>
+                    <div className="text-xs text-purple-500">Suppressed</div>
+                  </div>
+                  <div className="text-center p-2 rounded-xl bg-amber-50 border border-amber-100">
+                    <div className="text-lg font-bold text-amber-600">{parseResult.flaggedRows ?? 0}</div>
+                    <div className="text-xs text-amber-500">Flagged</div>
+                  </div>
+                </div>
+              )}
               {parseResult.detectedFields.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {parseResult.detectedFields.map(f => (
@@ -879,8 +931,8 @@ export default function LeadsImport() {
                       <span className="text-xs text-slate-500">Total Leads</span>
                     </div>
                     <p className="text-xl font-bold text-slate-900">{readyCount}</p>
-                    {parseResult && (parseResult.invalidRows > 0 || parseResult.duplicateRows > 0) && (
-                      <p className="text-xs text-slate-400 mt-0.5">+{parseResult.invalidRows + parseResult.duplicateRows} skipped</p>
+                    {parseResult && ((parseResult.invalidRows + parseResult.duplicateRows + (parseResult.disposableRows ?? 0) + (parseResult.suppressedRows ?? 0)) > 0) && (
+                      <p className="text-xs text-slate-400 mt-0.5">+{parseResult.invalidRows + parseResult.duplicateRows + (parseResult.disposableRows ?? 0) + (parseResult.suppressedRows ?? 0)} skipped</p>
                     )}
                   </div>
                   <div className="bg-white rounded-xl border border-slate-200 p-3">
@@ -909,7 +961,7 @@ export default function LeadsImport() {
                   </div>
                 </div>
 
-                {parseResult && (parseResult.duplicateRows > 0 || parseResult.invalidRows > 0) && (
+                {parseResult && (parseResult.duplicateRows > 0 || parseResult.invalidRows > 0 || (parseResult.disposableRows ?? 0) > 0 || (parseResult.suppressedRows ?? 0) > 0 || (parseResult.flaggedRows ?? 0) > 0) && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {parseResult.duplicateRows > 0 && (
                       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 text-xs text-slate-600">
@@ -918,9 +970,27 @@ export default function LeadsImport() {
                       </span>
                     )}
                     {parseResult.invalidRows > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-red-50 text-xs text-red-600">
+                        <AlertCircle className="h-3 w-3" />
+                        {parseResult.invalidRows} invalid email{parseResult.invalidRows !== 1 ? "s" : ""} skipped
+                      </span>
+                    )}
+                    {(parseResult.disposableRows ?? 0) > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-orange-50 text-xs text-orange-600">
+                        <XCircle className="h-3 w-3" />
+                        {parseResult.disposableRows} disposable provider{parseResult.disposableRows !== 1 ? "s" : ""} skipped
+                      </span>
+                    )}
+                    {(parseResult.suppressedRows ?? 0) > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-purple-50 text-xs text-purple-600">
+                        <AlertCircle className="h-3 w-3" />
+                        {parseResult.suppressedRows} suppressed email{parseResult.suppressedRows !== 1 ? "s" : ""} skipped
+                      </span>
+                    )}
+                    {(parseResult.flaggedRows ?? 0) > 0 && (
                       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-50 text-xs text-amber-700">
                         <AlertCircle className="h-3 w-3" />
-                        {parseResult.invalidRows} missing email{parseResult.invalidRows !== 1 ? "s" : ""} skipped
+                        {parseResult.flaggedRows} role account{parseResult.flaggedRows !== 1 ? "s" : ""} flagged (still sent)
                       </span>
                     )}
                   </div>

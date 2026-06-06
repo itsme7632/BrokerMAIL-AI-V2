@@ -1,0 +1,122 @@
+IMPLEMENTATION REQUEST — EMAIL VALIDATION & SUPPRESSION SYSTEM
+
+IMPORTANT SAFETY RULE:
+
+Only modify the following areas:
+
+* CSV/XLSX upload validation flow
+* Lead validation service
+* Bounce processing logic
+* Suppression list functionality
+* Campaign upload review screen
+
+DO NOT MODIFY:
+
+* SMTP sending engine
+* Campaign processor
+* Quota logic
+* Cooldown logic
+* Billing
+* Authentication
+* Existing campaign scheduling
+* Mailbox configuration
+* Any unrelated frontend pages
+
+STOP and report before touching any file outside the approved scope.
+
+FEATURES TO IMPLEMENT:
+
+1. PRE-SEND VALIDATION
+
+When a CSV/XLSX file is uploaded:
+
+Validate every email address.
+
+Mark as INVALID if:
+
+* Invalid email syntax
+* Missing username
+* Missing domain
+* Invalid characters
+* Domain has no MX record
+* Domain has no A record
+* Domain is on disposable email blocklist
+
+Mark as FLAGGED if:
+
+* info@
+* support@
+* admin@
+* sales@
+* contact@
+* billing@
+* webmaster@
+
+Flagged emails should still be allowed but clearly identified.
+
+2. SUPPRESSION LIST
+
+Create a suppression system.
+
+Whenever a permanent bounce occurs:
+
+* 550 User Unknown
+* 550 Mailbox Not Found
+* 554 Recipient Rejected
+* Similar permanent failures
+
+Automatically:
+
+* Add email to suppression list
+* Store reason
+* Store timestamp
+* Store campaign reference
+
+Future campaigns must never send to suppressed emails.
+
+3. CAMPAIGN REVIEW SCREEN
+
+Before campaign start show:
+
+Valid Leads: X
+Invalid Leads: X
+Disposable: X
+Suppressed: X
+Flagged Role Accounts: X
+
+Allow viewing each category.
+
+Only valid leads should be included in campaign sending totals.
+
+4. AUTOMATIC SKIPPING
+
+During campaign creation:
+
+If an email exists in suppression_list:
+
+Skip automatically.
+
+Do not include in send count.
+
+Log:
+
+Skipped: Previously suppressed.
+
+5. DASHBOARD VISIBILITY
+
+Add a suppression summary:
+
+Suppressed Emails
+Last Suppression Date
+Top Bounce Reasons
+
+6. AUDIT REPORT
+
+After implementation provide:
+
+* Exact files modified
+* Any database tables added
+* Any migrations added
+* Full git diff --name-only output
+
+Do not modify any files outside the approved scope.

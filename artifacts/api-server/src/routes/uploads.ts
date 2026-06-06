@@ -3,6 +3,9 @@ import multer from "multer";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { requireAuth } from "../lib/auth";
+import { validateEmailFast, validateDomainsBatch } from "../lib/email-validator";
+import { db, suppressionListTable } from "@workspace/db";
+import { eq, inArray } from "drizzle-orm";
 
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -194,6 +197,7 @@ router.post("/uploads/parse", requireAuth, upload.single("file"), async (req, re
     return;
   }
 
+  const user = req.user!;
   const filename = req.file.originalname.toLowerCase();
   let rows: Record<string, string>[] = [];
   let headers: string[] = [];
@@ -223,31 +227,120 @@ router.post("/uploads/parse", requireAuth, upload.single("file"), async (req, re
     return;
   }
 
-  const seenEmails = new Set<string>();
-  const parsedRows = rows.map(row => {
-    const mapped = mapRow(headers, row);
-    const hasValidEmail = !!(mapped.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mapped.email));
-    const emailLower = mapped.email?.toLowerCase() ?? "";
-    const isDuplicate = hasValidEmail && seenEmails.has(emailLower);
-    if (hasValidEmail) seenEmails.add(emailLower);
+  // ── Phase 1: Basic row mapping + fast email validation (syntax/disposable/role) ──
 
-    // Include all raw column values under normalized snake_case keys so any
-    // column header can be used as a {variable} in the template.
+  const seenEmails = new Set<string>();
+  type RawRow = Record<string, string | boolean | null> & {
+    hasValidEmail: boolean;
+    isDuplicate: boolean;
+    isDisposable: boolean;
+    isFlagged: boolean;
+    validationReason: string | null;
+    flagReason: string | null;
+    _emailLower: string;
+    _domain: string | null;
+  };
+
+  const rawRows: RawRow[] = rows.map(row => {
+    const mapped = mapRow(headers, row);
+    const rawEmail = mapped.email ?? "";
+    const emailLower = rawEmail.toLowerCase().trim();
+
+    // Fast validation: syntax + disposable + role
+    const fastResult = validateEmailFast(emailLower);
+
+    const hasSyntax     = fastResult.valid || fastResult.isDisposable; // syntax OK even if disposable
+    const hasValidSyntax = !!(emailLower && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower));
+
+    const isDuplicate   = hasValidSyntax && seenEmails.has(emailLower);
+    if (hasValidSyntax) seenEmails.add(emailLower);
+
+    // Extract domain for DNS batch validation later
+    const domain = hasValidSyntax ? emailLower.split("@")[1] : null;
+
+    // Build raw column fields
     const rawFields: Record<string, string> = {};
     for (const header of headers) {
       const key = normalizeKey(header);
-      if (key && row[header] != null) {
-        rawFields[key] = String(row[header]).trim();
-      }
+      if (key && row[header] != null) rawFields[key] = String(row[header]).trim();
     }
 
-    // Mapped standard fields take precedence over raw normalised keys
-    return { ...rawFields, ...mapped, hasValidEmail, isDuplicate };
+    return {
+      ...rawFields,
+      ...mapped,
+      hasValidEmail:    hasValidSyntax && fastResult.valid, // will be updated after DNS
+      isDuplicate,
+      isDisposable:     fastResult.isDisposable,
+      isFlagged:        fastResult.flagged,
+      validationReason: fastResult.valid ? null : fastResult.reason,
+      flagReason:       fastResult.flagReason,
+      isSuppressed:     false,  // filled in Phase 3
+      isDomainInvalid:  false,  // filled in Phase 2
+      _emailLower:      emailLower,
+      _domain:          domain,
+    } as RawRow;
   });
 
-  const validRows     = parsedRows.filter(r => r.hasValidEmail && !r.isDuplicate).length;
-  const invalidRows   = parsedRows.filter(r => !r.hasValidEmail).length;
-  const duplicateRows = parsedRows.filter(r => r.isDuplicate).length;
+  // ── Phase 2: DNS validation — batch-resolve unique domains ──
+
+  const domainsToCheck = Array.from(
+    new Set(
+      rawRows
+        .filter(r => r.hasValidEmail && !r.isDuplicate && !r.isDisposable && r._domain)
+        .map(r => r._domain as string),
+    ),
+  );
+
+  const failedDomains = await validateDomainsBatch(domainsToCheck);
+
+  for (const r of rawRows) {
+    if (r._domain && failedDomains.has(r._domain)) {
+      (r as any).hasValidEmail   = false;
+      (r as any).isDomainInvalid = true;
+      (r as any).validationReason = "Domain has no mail server (no MX or A record)";
+    }
+  }
+
+  // ── Phase 3: Suppression list lookup — single batch query ──
+
+  const validEmails = rawRows
+    .filter(r => r.hasValidEmail && !r.isDuplicate)
+    .map(r => r._emailLower)
+    .filter(Boolean);
+
+  const suppressedSet = new Set<string>();
+  if (validEmails.length > 0) {
+    try {
+      const suppressed = await db
+        .select({ email: suppressionListTable.email })
+        .from(suppressionListTable)
+        .where(
+          eq(suppressionListTable.userId, user.id)
+        )
+        .then(rows2 => rows2.filter(r => validEmails.includes(r.email)));
+      // Narrow within JS since inArray may not handle empty arrays cleanly
+      for (const s of suppressed) suppressedSet.add(s.email);
+    } catch {
+      // non-fatal — if suppression lookup fails, treat as unsuppressed
+    }
+  }
+
+  // ── Phase 4: Finalize rows, strip internal fields ──
+
+  const parsedRows = rawRows.map(r => {
+    const { _emailLower, _domain, ...rest } = r as any;
+    const isSuppressed = suppressedSet.has(_emailLower);
+    return { ...rest, isSuppressed };
+  });
+
+  // ── Aggregate counts ──
+
+  const invalidRows    = parsedRows.filter(r => !r.hasValidEmail && !r.isDuplicate).length;
+  const duplicateRows  = parsedRows.filter(r => r.isDuplicate).length;
+  const disposableRows = parsedRows.filter(r => !r.isDuplicate && r.isDisposable).length;
+  const suppressedRows = parsedRows.filter(r => !r.isDuplicate && r.isSuppressed).length;
+  const flaggedRows    = parsedRows.filter(r => r.hasValidEmail && !r.isDuplicate && !r.isSuppressed && r.isFlagged).length;
+  const validRows      = parsedRows.filter(r => r.hasValidEmail && !r.isDuplicate && !r.isSuppressed).length;
 
   // Report which standard fields were auto-detected
   const STANDARD_FIELDS = ["name","email","vehicle","pickup","delivery","price","route","company","phone","notes","quote_id"];
@@ -257,8 +350,7 @@ router.post("/uploads/parse", requireAuth, upload.single("file"), async (req, re
     return v != null && v !== false && v !== "";
   });
 
-  // Build column-to-variable mapping so the frontend can show a debug panel
-  // and allow manual override before sending.
+  // Build column-to-variable mapping for the frontend panel
   const columnMappings: Record<string, string | null> = {};
   for (const header of headers) {
     columnMappings[header] = detectField(header);
@@ -270,6 +362,9 @@ router.post("/uploads/parse", requireAuth, upload.single("file"), async (req, re
     validRows,
     invalidRows,
     duplicateRows,
+    disposableRows,
+    suppressedRows,
+    flaggedRows,
     detectedFields,
     headers,
     columnMappings,

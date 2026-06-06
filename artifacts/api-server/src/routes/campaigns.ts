@@ -3,7 +3,7 @@ import { logger } from "../lib/logger";
 import {
   db, campaignsTable, leadsTable, draftsTable, templatesTable,
   activityTable, usersTable, emailQueueTable, campaignBatchesTable,
-  mailboxesTable,
+  mailboxesTable, suppressionListTable,
 } from "@workspace/db";
 import { eq, and, count, sql, desc, gte, inArray, or, isNull, lte, isNotNull, ne } from "drizzle-orm";
 import { emailTrackingEventsTable } from "@workspace/db";
@@ -1128,8 +1128,8 @@ router.post("/campaigns/from-upload", requireAuth, async (req, res): Promise<voi
 
   // Insert leads (deduplicate by email within this campaign)
   const seenEmails = new Set<string>();
-  let valid = 0, duplicates = 0, invalid = 0;
-  const leadValues: (typeof leadsTable.$inferInsert)[] = [];
+  let valid = 0, duplicates = 0, invalid = 0, suppressed = 0;
+  const candidateValues: (typeof leadsTable.$inferInsert & { _email: string })[] = [];
 
   for (const row of rows) {
     const email = typeof row.email === "string" ? row.email.trim().toLowerCase() : "";
@@ -1137,7 +1137,8 @@ router.post("/campaigns/from-upload", requireAuth, async (req, res): Promise<voi
     if (seenEmails.has(email)) { duplicates++; continue; }
     seenEmails.add(email);
 
-    leadValues.push({
+    candidateValues.push({
+      _email:     email,
       userId:     user.id,
       campaignId: campaign.id,
       name:       typeof row.name === "string" ? row.name : "",
@@ -1151,8 +1152,29 @@ router.post("/campaigns/from-upload", requireAuth, async (req, res): Promise<voi
       quoteId:    typeof row.quote_id === "string" ? row.quote_id || null : null,
       status:     "new",
     });
-    valid++;
   }
+
+  // Batch suppression check — remove any emails already suppressed for this user
+  const suppressedSet = new Set<string>();
+  if (candidateValues.length > 0) {
+    try {
+      const suppressedRows = await db
+        .select({ email: suppressionListTable.email })
+        .from(suppressionListTable)
+        .where(inArray(suppressionListTable.email, candidateValues.map(v => v._email)));
+      for (const r of suppressedRows) suppressedSet.add(r.email);
+    } catch {
+      // non-fatal — proceed without suppression filter on lookup failure
+    }
+  }
+
+  const leadValues = candidateValues
+    .filter(v => {
+      if (suppressedSet.has(v._email)) { suppressed++; return false; }
+      valid++;
+      return true;
+    })
+    .map(({ _email: _unused, ...rest }) => rest);
 
   if (leadValues.length > 0) {
     // Insert in chunks of 500
@@ -1167,10 +1189,10 @@ router.post("/campaigns/from-upload", requireAuth, async (req, res): Promise<voi
   await db.insert(activityTable).values({
     userId: user.id, type: "campaign_created",
     description: `Campaign "${campaign.name}" created with ${valid} leads`,
-    metadata: { campaignId: campaign.id, valid, duplicates, invalid },
+    metadata: { campaignId: campaign.id, valid, duplicates, invalid, suppressed },
   });
 
-  res.status(201).json({ campaignId: campaign.id, total: rows.length, valid, duplicates, invalid });
+  res.status(201).json({ campaignId: campaign.id, total: rows.length, valid, duplicates, invalid, suppressed });
 });
 
 // ─── GET /api/campaigns/summary ──────────────────────────────────────────────

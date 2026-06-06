@@ -12,8 +12,10 @@ import {
   db,
   emailQueueTable,
   mailboxesTable,
+  suppressionListTable,
 } from "@workspace/db";
 import { and, eq, isNotNull } from "drizzle-orm";
+import { isPermanentBounce, extractBounceCode } from "./email-validator";
 import { decrypt } from "./crypto";
 import { logger } from "./logger";
 import { getTrackingSettings } from "./tracking-settings";
@@ -172,7 +174,11 @@ async function _scanMailbox(
             );
 
         const [item] = await db
-          .select({ id: emailQueueTable.id })
+          .select({
+            id:         emailQueueTable.id,
+            userId:     emailQueueTable.userId,
+            campaignId: emailQueueTable.campaignId,
+          })
           .from(emailQueueTable)
           .where(whereConditions)
           .limit(1);
@@ -187,6 +193,21 @@ async function _scanMailbox(
             })
             .where(eq(emailQueueTable.id, item.id));
           detected++;
+
+          // Auto-suppress on permanent 5xx bounce (550, 554, user unknown, etc.)
+          if (reason && isPermanentBounce(reason)) {
+            try {
+              await db.insert(suppressionListTable).values({
+                userId:     item.userId,
+                email:      recipient,
+                reason:     reason.slice(0, 300),
+                bounceCode: extractBounceCode(reason),
+                campaignId: item.campaignId ?? null,
+              }).onConflictDoNothing();
+            } catch {
+              // non-fatal — suppression insert failure must never disrupt scanning
+            }
+          }
         }
 
         // Mark the DSN message as seen so it is not re-processed on the next scan

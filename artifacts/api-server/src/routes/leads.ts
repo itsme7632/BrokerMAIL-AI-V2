@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, leadsTable, draftsTable, templatesTable, activityTable } from "@workspace/db";
-import { eq, and, count, ilike, desc, or } from "drizzle-orm";
+import { db, leadsTable, draftsTable, templatesTable, activityTable, suppressionListTable } from "@workspace/db";
+import { eq, and, count, ilike, desc, or, inArray } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import {
   CreateLeadBody, UpdateLeadBody, GetLeadParams, UpdateLeadParams, DeleteLeadParams,
@@ -124,10 +124,31 @@ router.post("/leads/bulk-import", requireAuth, async (req, res): Promise<void> =
   let imported = 0;
   let skipped = 0;
   let duplicates = 0;
+  let suppressed = 0;
   const errors: string[] = [];
+
+  // Batch suppression check for all provided emails
+  const allEmails = leads.map(l => l.email?.trim().toLowerCase()).filter(Boolean) as string[];
+  const suppressedSet = new Set<string>();
+  if (allEmails.length > 0) {
+    try {
+      const suppressedRows = await db
+        .select({ email: suppressionListTable.email })
+        .from(suppressionListTable)
+        .where(inArray(suppressionListTable.email, allEmails));
+      for (const r of suppressedRows) suppressedSet.add(r.email);
+    } catch {
+      // non-fatal — if lookup fails, proceed without suppression filter
+    }
+  }
 
   for (const lead of leads) {
     if (!lead.email) { skipped++; continue; }
+    const emailLower = lead.email.trim().toLowerCase();
+
+    // Skip suppressed addresses
+    if (suppressedSet.has(emailLower)) { suppressed++; continue; }
+
     const [existing] = await db.select({ id: leadsTable.id }).from(leadsTable)
       .where(and(eq(leadsTable.userId, user.id), eq(leadsTable.email, lead.email)));
     if (existing) { duplicates++; continue; }
@@ -144,11 +165,11 @@ router.post("/leads/bulk-import", requireAuth, async (req, res): Promise<void> =
     await db.insert(activityTable).values({
       userId: user.id, type: "leads_imported",
       description: `Imported ${imported} leads`,
-      metadata: { campaignId, imported, duplicates },
+      metadata: { campaignId, imported, duplicates, suppressed },
     });
   }
 
-  res.json({ imported, skipped, duplicates, errors });
+  res.json({ imported, skipped, duplicates, suppressed, errors });
 });
 
 router.post("/leads/:id/retry-draft", requireAuth, async (req, res): Promise<void> => {
