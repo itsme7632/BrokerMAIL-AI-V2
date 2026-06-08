@@ -3,7 +3,8 @@ import {
   db, usersTable, campaignsTable, leadsTable, draftsTable,
   systemLogsTable, mailboxesTable, adminSettingsTable, emailQueueTable,
   plansTable, subscriptionsTable, planRequestsTable, supportTicketsTable,
-  templatesTable,
+  templatesTable, suppressionListTable, processedBouncesTable,
+  emailTrackingEventsTable, backupHistoryTable,
 } from "@workspace/db";
 import { count, desc, sql, eq, gte, and, or, ilike, isNotNull, inArray } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
@@ -962,118 +963,504 @@ router.get("/admin/export/settings", requireAdmin, async (_req, res): Promise<vo
   res.json({ ...DEFAULT_SETTINGS, ...stored });
 });
 
-// ─── Full Backup (ZIP) ────────────────────────────────────────────────────────
+// ─── Backup Center ────────────────────────────────────────────────────────────
 
-router.get("/admin/backup/full", requireAdmin, async (_req, res): Promise<void> => {
+const MAX_BACKUPS = 15;
+
+const VALID_MODULES = new Set([
+  "users", "branding", "mailboxes", "campaigns", "leads",
+  "templates", "email_queue", "email_tracking", "suppression_list",
+  "processed_bounces", "drafts", "settings",
+]);
+
+/** Serialize all platform data into a JSZip. Returns the archive + manifest. */
+async function buildBackupZip(createdByEmail: string) {
+  const exportedAt = new Date().toISOString();
+  const toISO = (d: Date | null | undefined) => d?.toISOString() ?? null;
+
+  const [
+    usersRaw, campaigns, templates, plans, settingsRows, mailboxes,
+    leads, emailQueue, emailTracking, suppressions, processedBounces, drafts,
+  ] = await Promise.all([
+    db.select({
+      id: usersTable.id, email: usersTable.email, name: usersTable.name,
+      passwordHash: usersTable.passwordHash, role: usersTable.role,
+      plan: usersTable.plan, credits: usersTable.credits,
+      status: usersTable.status, timezone: usersTable.timezone,
+      aiTone: usersTable.aiTone, companyName: usersTable.companyName,
+      companyTagline: usersTable.companyTagline, companyWebsite: usersTable.companyWebsite,
+      companyPhone: usersTable.companyPhone, usdot: usersTable.usdot,
+      mcNumber: usersTable.mcNumber, accentColor: usersTable.accentColor,
+      agentName: usersTable.agentName, useSignature: usersTable.useSignature,
+      logoUrl: usersTable.logoUrl, lastLogin: usersTable.lastActiveAt,
+      createdAt: usersTable.createdAt,
+    }).from(usersTable).orderBy(usersTable.id),
+    db.select().from(campaignsTable).orderBy(campaignsTable.id),
+    db.select().from(templatesTable).orderBy(templatesTable.id),
+    db.select().from(plansTable).orderBy(plansTable.sortOrder),
+    db.select().from(adminSettingsTable),
+    db.select().from(mailboxesTable).orderBy(mailboxesTable.id),
+    db.select().from(leadsTable).orderBy(leadsTable.id),
+    db.select().from(emailQueueTable).orderBy(emailQueueTable.id),
+    db.select().from(emailTrackingEventsTable).orderBy(emailTrackingEventsTable.id),
+    db.select().from(suppressionListTable).orderBy(suppressionListTable.id),
+    db.select().from(processedBouncesTable).orderBy(processedBouncesTable.id),
+    db.select().from(draftsTable).orderBy(draftsTable.id),
+  ]);
+
+  const settings      = Object.fromEntries(settingsRows.map(r => [r.key, r.value]));
+  const usersJson     = usersRaw.map(u => ({ ...u, lastLogin: toISO(u.lastLogin), createdAt: toISO(u.createdAt) }));
+  const brandingJson  = usersRaw.map(u => ({
+    userEmail: u.email, companyName: u.companyName, companyTagline: u.companyTagline,
+    companyWebsite: u.companyWebsite, companyPhone: u.companyPhone, usdot: u.usdot,
+    mcNumber: u.mcNumber, accentColor: u.accentColor, agentName: u.agentName,
+    useSignature: u.useSignature, logoUrl: u.logoUrl,
+  }));
+  const campaignsJson     = campaigns.map(c => ({ ...c, createdAt: toISO(c.createdAt), updatedAt: toISO(c.updatedAt), cooldownUntil: toISO(c.cooldownUntil) }));
+  const leadsJson         = leads.map(l => ({ ...l, sentAt: toISO(l.sentAt), createdAt: toISO(l.createdAt), updatedAt: toISO(l.updatedAt) }));
+  const templatesJson     = templates.map(t => ({ ...t, createdAt: toISO(t.createdAt), updatedAt: toISO(t.updatedAt) }));
+  const plansJson         = plans.map(p => ({ ...p, createdAt: toISO(p.createdAt), updatedAt: toISO(p.updatedAt) }));
+  const mailboxesJson     = mailboxes.map(m => ({ ...m, createdAt: toISO(m.createdAt), updatedAt: toISO(m.updatedAt) }));
+  const emailQueueJson    = emailQueue.map(e => ({ ...e, firstAttemptAt: toISO(e.firstAttemptAt), retryAfter: toISO(e.retryAfter), sentAt: toISO(e.sentAt), bounceAt: toISO(e.bounceAt), createdAt: toISO(e.createdAt) }));
+  const emailTrackingJson = emailTracking.map(e => ({ ...e, createdAt: toISO(e.createdAt) }));
+  const suppressionsJson  = suppressions.map(s => ({ ...s, createdAt: toISO(s.createdAt) }));
+  const bouncesJson       = processedBounces.map(b => ({ ...b, processedAt: toISO(b.processedAt) }));
+  const draftsJson        = drafts.map(d => ({ ...d, sentAt: toISO(d.sentAt), createdAt: toISO(d.createdAt) }));
+
+  const manifest = {
+    version: "3",
+    exportedAt,
+    createdBy: createdByEmail,
+    appName: "BrokerMAIL",
+    files: [
+      "manifest.json", "users.json", "campaigns.json", "campaign_leads.json",
+      "templates.json", "branding.json", "mailboxes.json", "settings.json", "plans.json",
+      "email_queue.json", "email_tracking_events.json",
+      "suppression_list.json", "processed_bounces.json", "drafts.json",
+    ],
+    counts: {
+      users: usersJson.length, campaigns: campaignsJson.length, leads: leadsJson.length,
+      templates: templatesJson.length, mailboxes: mailboxesJson.length,
+      plans: plansJson.length, settings: Object.keys(settings).length,
+      emailQueue: emailQueueJson.length, emailTracking: emailTrackingJson.length,
+      suppressions: suppressionsJson.length, processedBounces: bouncesJson.length,
+      drafts: draftsJson.length,
+    },
+  };
+
+  const zip = new JSZip();
+  zip.file("manifest.json",              JSON.stringify(manifest,          null, 2));
+  zip.file("users.json",                 JSON.stringify(usersJson,         null, 2));
+  zip.file("campaigns.json",             JSON.stringify(campaignsJson,     null, 2));
+  zip.file("campaign_leads.json",        JSON.stringify(leadsJson,         null, 2));
+  zip.file("templates.json",             JSON.stringify(templatesJson,     null, 2));
+  zip.file("branding.json",              JSON.stringify(brandingJson,      null, 2));
+  zip.file("mailboxes.json",             JSON.stringify(mailboxesJson,     null, 2));
+  zip.file("settings.json",              JSON.stringify(settings,          null, 2));
+  zip.file("plans.json",                 JSON.stringify(plansJson,         null, 2));
+  zip.file("email_queue.json",           JSON.stringify(emailQueueJson,    null, 2));
+  zip.file("email_tracking_events.json", JSON.stringify(emailTrackingJson, null, 2));
+  zip.file("suppression_list.json",      JSON.stringify(suppressionsJson,  null, 2));
+  zip.file("processed_bounces.json",     JSON.stringify(bouncesJson,       null, 2));
+  zip.file("drafts.json",                JSON.stringify(draftsJson,        null, 2));
+
+  return { zip, manifest };
+}
+
+type AnyDb = typeof db;
+
+/**
+ * Core restore logic. Processes a ZIP and restores the specified modules.
+ * mode="merge"   → skip existing records; insert only missing ones.
+ * mode="replace" → delete per-user records then re-insert (run inside a transaction).
+ * modules=null   → restore all modules.
+ */
+async function performRestore(
+  zip: JSZip,
+  mode: "merge" | "replace",
+  modules: Set<string> | null,
+  txDb: AnyDb,
+): Promise<{ results: Record<string, number>; warnings: string[] }> {
+  const has = (m: string) => modules === null || modules.has(m);
+
+  async function readZipJson<T>(name: string): Promise<T | null> {
+    const f = zip.file(name);
+    if (!f) return null;
+    try { return JSON.parse(await f.async("text")) as T; }
+    catch { return null; }
+  }
+
+  const results: Record<string, number> = {
+    settings: 0, plans: 0, users: 0, branding: 0, mailboxes: 0,
+    campaigns: 0, leads: 0, templates: 0, emailQueue: 0,
+    emailTracking: 0, suppressions: 0, processedBounces: 0, drafts: 0,
+  };
+  const warnings: string[] = [];
+
+  // ── Settings + Plans ──────────────────────────────────────────────────────
+  if (has("settings")) {
+    const settings = await readZipJson<Record<string, string>>("settings.json");
+    if (settings && typeof settings === "object") {
+      if (mode === "replace") await txDb.delete(adminSettingsTable);
+      for (const [key, value] of Object.entries(settings)) {
+        if (typeof value !== "string") continue;
+        await txDb.insert(adminSettingsTable).values({ key, value })
+          .onConflictDoUpdate({ target: adminSettingsTable.key, set: { value } });
+        results.settings++;
+      }
+    }
+    const plans = await readZipJson<Record<string, any>[]>("plans.json");
+    if (Array.isArray(plans)) {
+      for (const p of plans) {
+        if (!p.slug || !p.name) continue;
+        await txDb.insert(plansTable).values({
+          name: p.name, slug: p.slug, description: p.description ?? null,
+          monthlyEmailLimit: p.monthlyEmailLimit ?? 100,
+          smtpAccountsLimit: p.smtpAccountsLimit ?? 1,
+          campaignsLimit: p.campaignsLimit ?? 5,
+          batchSendLimit: p.batchSendLimit ?? 50,
+          features: p.features ?? [], sortOrder: p.sortOrder ?? 0, isActive: p.isActive ?? true,
+        }).onConflictDoUpdate({
+          target: plansTable.slug,
+          set: {
+            name: p.name, description: p.description ?? null,
+            monthlyEmailLimit: p.monthlyEmailLimit ?? 100,
+            smtpAccountsLimit: p.smtpAccountsLimit ?? 1,
+            campaignsLimit: p.campaignsLimit ?? 5, batchSendLimit: p.batchSendLimit ?? 50,
+            features: p.features ?? [],
+          },
+        });
+        results.plans++;
+      }
+    }
+  }
+
+  // ── Users (always build ID map, even when not restoring users) ────────────
+  const emailToNewId = new Map<string, number>();
+  const oldIdToNewId = new Map<number, number>();
+
+  {
+    const allUsers = await txDb.select({ id: usersTable.id, email: usersTable.email }).from(usersTable);
+    for (const u of allUsers) emailToNewId.set(u.email, u.id);
+
+    if (has("users")) {
+      const users = await readZipJson<Record<string, any>[]>("users.json");
+      if (Array.isArray(users)) {
+        for (const u of users) {
+          if (!u.email) continue;
+          const existingId = emailToNewId.get(u.email);
+          const sharedFields = {
+            name: u.name ?? u.email, role: u.role ?? "user", plan: u.plan ?? "free",
+            credits: typeof u.credits === "number" ? u.credits : 0,
+            status: u.status ?? "active", timezone: u.timezone ?? "UTC",
+            aiTone: u.aiTone ?? null, companyName: u.companyName ?? null,
+            companyTagline: u.companyTagline ?? null, companyWebsite: u.companyWebsite ?? null,
+            companyPhone: u.companyPhone ?? null, usdot: u.usdot ?? null,
+            mcNumber: u.mcNumber ?? null, accentColor: u.accentColor ?? null,
+            agentName: u.agentName ?? null, useSignature: u.useSignature ?? false,
+            logoUrl: u.logoUrl ?? null,
+            ...(u.passwordHash ? { passwordHash: u.passwordHash } : {}),
+          };
+          if (existingId) {
+            if (mode === "replace") {
+              await txDb.update(usersTable).set({ ...sharedFields, updatedAt: new Date() })
+                .where(eq(usersTable.id, existingId));
+            }
+            emailToNewId.set(u.email, existingId);
+          } else {
+            const [ins] = await txDb.insert(usersTable).values({ email: u.email, ...sharedFields })
+              .returning({ id: usersTable.id });
+            emailToNewId.set(u.email, ins.id);
+          }
+          results.users++;
+        }
+        for (const u of users) {
+          if (u.id != null && u.email && emailToNewId.has(u.email)) {
+            oldIdToNewId.set(Number(u.id), emailToNewId.get(u.email)!);
+          }
+        }
+      }
+    } else {
+      const users = await readZipJson<Record<string, any>[]>("users.json");
+      if (Array.isArray(users)) {
+        for (const u of users) {
+          if (u.id != null && u.email && emailToNewId.has(u.email)) {
+            oldIdToNewId.set(Number(u.id), emailToNewId.get(u.email)!);
+          }
+        }
+      }
+    }
+  }
+
+  const resolveUser = (id: number | null | undefined) =>
+    id != null ? (oldIdToNewId.get(Number(id)) ?? null) : null;
+  const allNewIds = [...oldIdToNewId.values()];
+
+  // ── Branding ──────────────────────────────────────────────────────────────
+  if (has("branding")) {
+    const branding = await readZipJson<Record<string, any>[]>("branding.json");
+    if (Array.isArray(branding)) {
+      for (const b of branding) {
+        if (!b.userEmail) continue;
+        const userId = emailToNewId.get(b.userEmail);
+        if (!userId) continue;
+        await txDb.update(usersTable).set({
+          companyName: b.companyName ?? null, companyTagline: b.companyTagline ?? null,
+          companyWebsite: b.companyWebsite ?? null, companyPhone: b.companyPhone ?? null,
+          usdot: b.usdot ?? null, mcNumber: b.mcNumber ?? null,
+          accentColor: b.accentColor ?? null, agentName: b.agentName ?? null,
+          useSignature: b.useSignature ?? false, logoUrl: b.logoUrl ?? null,
+          updatedAt: new Date(),
+        }).where(eq(usersTable.id, userId));
+        results.branding++;
+      }
+    }
+  }
+
+  // ── Mailboxes ─────────────────────────────────────────────────────────────
+  if (has("mailboxes")) {
+    const mailboxes = await readZipJson<Record<string, any>[]>("mailboxes.json");
+    if (Array.isArray(mailboxes)) {
+      if (mode === "replace" && allNewIds.length > 0) {
+        await txDb.delete(mailboxesTable).where(inArray(mailboxesTable.userId, allNewIds));
+      }
+      for (const m of mailboxes) {
+        if (!m.smtpHost || !m.smtpUser || !m.smtpPassEncrypted) continue;
+        const userId = resolveUser(m.userId);
+        if (!userId) { warnings.push(`Mailbox user ${m.userId} not found`); continue; }
+        if (mode === "merge") {
+          const [ex] = await txDb.select({ id: mailboxesTable.id }).from(mailboxesTable)
+            .where(eq(mailboxesTable.userId, userId));
+          if (ex) continue;
+        }
+        await txDb.insert(mailboxesTable).values({
+          userId, smtpHost: m.smtpHost, smtpPort: m.smtpPort ?? 587,
+          smtpUser: m.smtpUser, smtpPassEncrypted: m.smtpPassEncrypted,
+          smtpSecure: m.smtpSecure ?? "tls", imapHost: m.imapHost ?? null,
+          imapPort: m.imapPort ?? 993, imapUser: m.imapUser ?? null,
+          imapPassEncrypted: m.imapPassEncrypted ?? null, fromName: m.fromName ?? null,
+          replyTo: m.replyTo ?? null, isActive: m.isActive ?? true,
+          batchSize: m.batchSize ?? 10, delaySeconds: m.delaySeconds ?? 15,
+          maxPerHour: m.maxPerHour ?? 100,
+        });
+        results.mailboxes++;
+      }
+    }
+  }
+
+  // ── Templates ─────────────────────────────────────────────────────────────
+  if (has("templates")) {
+    const templates = await readZipJson<Record<string, any>[]>("templates.json");
+    if (Array.isArray(templates)) {
+      if (mode === "replace" && allNewIds.length > 0) {
+        await txDb.delete(templatesTable).where(inArray(templatesTable.userId, allNewIds));
+      }
+      for (const t of templates) {
+        if (!t.name || !t.subject || !t.body) continue;
+        const userId = resolveUser(t.userId);
+        if (!userId) { warnings.push(`Template "${t.name}" user not found`); continue; }
+        if (mode === "merge") {
+          const [ex] = await txDb.select({ id: templatesTable.id }).from(templatesTable)
+            .where(and(eq(templatesTable.userId, userId), eq(templatesTable.name, t.name)));
+          if (ex) continue;
+        }
+        await txDb.insert(templatesTable).values({
+          userId, name: t.name, subject: t.subject, body: t.body, isDefault: t.isDefault ?? false,
+        });
+        results.templates++;
+      }
+    }
+  }
+
+  // ── Campaigns ─────────────────────────────────────────────────────────────
+  const oldCampaignToNew = new Map<number, number>();
+  if (has("campaigns")) {
+    const campaigns = await readZipJson<Record<string, any>[]>("campaigns.json");
+    if (Array.isArray(campaigns)) {
+      if (mode === "replace" && allNewIds.length > 0) {
+        await txDb.delete(campaignsTable).where(inArray(campaignsTable.userId, allNewIds));
+      }
+      for (const c of campaigns) {
+        if (!c.name) continue;
+        const userId = resolveUser(c.userId);
+        if (!userId) { warnings.push(`Campaign "${c.name}" user not found`); continue; }
+        if (mode === "merge") {
+          const [ex] = await txDb.select({ id: campaignsTable.id }).from(campaignsTable)
+            .where(and(eq(campaignsTable.userId, userId), eq(campaignsTable.name, c.name)));
+          if (ex) { oldCampaignToNew.set(Number(c.id), ex.id); continue; }
+        }
+        const [ins] = await txDb.insert(campaignsTable).values({
+          userId, name: c.name,
+          status: mode === "replace" ? (c.status ?? "pending") : "pending",
+          sendMode: c.sendMode ?? "gmail", emailStyle: c.emailStyle ?? "clean",
+          useSignature: c.useSignature ?? false,
+          totalLeads: c.totalLeads ?? 0, draftedCount: c.draftedCount ?? 0,
+          failedCount: c.failedCount ?? 0, sentCount: c.sentCount ?? 0,
+          templateId: c.templateId ?? null, fileName: c.fileName ?? null,
+          bookingUrl: c.bookingUrl ?? null, quoteUrl: c.quoteUrl ?? null,
+          websiteUrl: c.websiteUrl ?? null, phoneNumber: c.phoneNumber ?? null,
+        }).returning({ id: campaignsTable.id });
+        oldCampaignToNew.set(Number(c.id), ins.id);
+        results.campaigns++;
+      }
+    }
+  }
+
+  // ── Leads ─────────────────────────────────────────────────────────────────
+  const oldLeadToNew = new Map<number, number>();
+  if (has("leads")) {
+    const leads = await readZipJson<Record<string, any>[]>("campaign_leads.json");
+    if (Array.isArray(leads)) {
+      if (mode === "replace" && allNewIds.length > 0) {
+        await txDb.delete(leadsTable).where(inArray(leadsTable.userId, allNewIds));
+      }
+      for (const l of leads) {
+        if (!l.name || !l.email) continue;
+        const userId = resolveUser(l.userId);
+        if (!userId) { warnings.push(`Lead "${l.email}" user not found`); continue; }
+        const campaignId = l.campaignId != null ? (oldCampaignToNew.get(Number(l.campaignId)) ?? null) : null;
+        const [ins] = await txDb.insert(leadsTable).values({
+          userId, campaignId, name: l.name, email: l.email,
+          vehicle: l.vehicle ?? null, route: l.route ?? null,
+          pickup: l.pickup ?? null, delivery: l.delivery ?? null,
+          price: l.price ?? null, notes: l.notes ?? null,
+          quoteId: l.quoteId ?? null, status: l.status ?? "new",
+          gmailDraftId: l.gmailDraftId ?? null, errorMessage: l.errorMessage ?? null,
+          sentAt: l.sentAt ? new Date(l.sentAt) : null,
+        }).returning({ id: leadsTable.id });
+        oldLeadToNew.set(Number(l.id), ins.id);
+        results.leads++;
+      }
+    }
+  }
+
+  // ── Drafts ────────────────────────────────────────────────────────────────
+  const oldDraftToNew = new Map<number, number>();
+  if (has("drafts")) {
+    const draftsData = await readZipJson<Record<string, any>[]>("drafts.json");
+    if (Array.isArray(draftsData)) {
+      if (mode === "replace" && allNewIds.length > 0) {
+        await txDb.delete(draftsTable).where(inArray(draftsTable.userId, allNewIds));
+      }
+      for (const d of draftsData) {
+        if (!d.subject || !d.body) continue;
+        const userId = resolveUser(d.userId);
+        if (!userId) continue;
+        const campaignId = d.campaignId != null ? (oldCampaignToNew.get(Number(d.campaignId)) ?? null) : null;
+        const leadId     = d.leadId     != null ? (oldLeadToNew.get(Number(d.leadId))     ?? null) : null;
+        try {
+          const [ins] = await txDb.insert(draftsTable).values({
+            userId, campaignId, leadId, gmailDraftId: d.gmailDraftId ?? null,
+            email: d.email ?? null, subject: d.subject, body: d.body,
+            status: d.status ?? "sent", errorMessage: d.errorMessage ?? null,
+            trackingId: d.trackingId ?? null,
+            sentAt: d.sentAt ? new Date(d.sentAt) : null,
+          }).returning({ id: draftsTable.id });
+          oldDraftToNew.set(Number(d.id), ins.id);
+          results.drafts++;
+        } catch { warnings.push(`Draft ${d.id ?? "?"}: skipped`); }
+      }
+    }
+  }
+
+  // ── Email Queue ───────────────────────────────────────────────────────────
+  if (has("email_queue")) {
+    const emailQueue = await readZipJson<Record<string, any>[]>("email_queue.json");
+    if (Array.isArray(emailQueue)) {
+      if (mode === "replace" && allNewIds.length > 0) {
+        await txDb.delete(emailQueueTable).where(inArray(emailQueueTable.userId, allNewIds));
+      }
+      for (const e of emailQueue) {
+        const userId = resolveUser(e.userId);
+        if (!userId || !e.jobId || !e.email) continue;
+        const campaignId = e.campaignId != null ? (oldCampaignToNew.get(Number(e.campaignId)) ?? null) : null;
+        const leadId     = e.leadId     != null ? (oldLeadToNew.get(Number(e.leadId))     ?? null) : null;
+        try {
+          await txDb.insert(emailQueueTable).values({
+            jobId: e.jobId, userId, mailboxId: e.mailboxId ?? 0,
+            templateId: e.templateId ?? 0, campaignId, leadId,
+            email: e.email, subject: e.subject ?? "", rowDataJson: e.rowDataJson ?? "{}",
+            style: e.style ?? "clean", useSignatureBuilder: e.useSignatureBuilder ?? false,
+            status: e.status ?? "success", attempts: e.attempts ?? 0,
+            deferredCount: e.deferredCount ?? 0, lastError: e.lastError ?? null,
+            quoteId: e.quoteId ?? null, trackingId: e.trackingId ?? null,
+            firstAttemptAt: e.firstAttemptAt ? new Date(e.firstAttemptAt) : null,
+            retryAfter:     e.retryAfter    ? new Date(e.retryAfter)    : null,
+            sentAt:         e.sentAt        ? new Date(e.sentAt)        : null,
+            bounceAt:       e.bounceAt      ? new Date(e.bounceAt)      : null,
+          });
+          results.emailQueue++;
+        } catch { warnings.push(`Email queue ${e.jobId}: skipped (conflict)`); }
+      }
+    }
+  }
+
+  // ── Email Tracking Events ─────────────────────────────────────────────────
+  if (has("email_tracking")) {
+    const tracking = await readZipJson<Record<string, any>[]>("email_tracking_events.json");
+    if (Array.isArray(tracking)) {
+      for (const e of tracking) {
+        const draftId = e.draftId != null ? (oldDraftToNew.get(Number(e.draftId)) ?? null) : null;
+        try {
+          await txDb.insert(emailTrackingEventsTable).values({
+            draftId, eventType: e.eventType ?? "open",
+            linkUrl: e.linkUrl ?? null, buttonLabel: e.buttonLabel ?? null,
+            ipAddress: e.ipAddress ?? null, userAgent: e.userAgent ?? null,
+          });
+          results.emailTracking++;
+        } catch { warnings.push(`Tracking event ${e.id ?? "?"}: skipped`); }
+      }
+    }
+  }
+
+  // ── Suppression List ──────────────────────────────────────────────────────
+  if (has("suppression_list")) {
+    const suppressions = await readZipJson<Record<string, any>[]>("suppression_list.json");
+    if (Array.isArray(suppressions)) {
+      if (mode === "replace" && allNewIds.length > 0) {
+        await txDb.delete(suppressionListTable).where(inArray(suppressionListTable.userId, allNewIds));
+      }
+      for (const s of suppressions) {
+        const userId = resolveUser(s.userId);
+        if (!userId || !s.email) continue;
+        try {
+          await txDb.insert(suppressionListTable).values({
+            userId, email: s.email, reason: s.reason ?? "restored",
+            bounceCode: s.bounceCode ?? null, campaignId: null,
+          }).onConflictDoNothing();
+          results.suppressions++;
+        } catch { warnings.push(`Suppression ${s.email}: skipped`); }
+      }
+    }
+  }
+
+  // ── Processed Bounces ─────────────────────────────────────────────────────
+  if (has("processed_bounces")) {
+    const bouncesData = await readZipJson<Record<string, any>[]>("processed_bounces.json");
+    if (Array.isArray(bouncesData)) {
+      for (const b of bouncesData) {
+        if (!b.mailboxId || !b.messageId) continue;
+        try {
+          await txDb.insert(processedBouncesTable).values({
+            mailboxId: b.mailboxId, messageId: b.messageId, recipient: b.recipient ?? null,
+          }).onConflictDoNothing();
+          results.processedBounces++;
+        } catch { warnings.push(`Bounce ${b.messageId}: skipped`); }
+      }
+    }
+  }
+
+  return { results, warnings };
+}
+
+// ─── GET /admin/backup/full — direct download (backward compat) ───────────────
+
+router.get("/admin/backup/full", requireAdmin, async (req, res): Promise<void> => {
   try {
-    const exportedAt = new Date().toISOString();
-
-    const [usersRaw, campaigns, templates, plans, settingsRows, mailboxes] = await Promise.all([
-      db.select({
-        id: usersTable.id,
-        email: usersTable.email,
-        name: usersTable.name,
-        passwordHash: usersTable.passwordHash,
-        role: usersTable.role,
-        plan: usersTable.plan,
-        credits: usersTable.credits,
-        status: usersTable.status,
-        timezone: usersTable.timezone,
-        aiTone: usersTable.aiTone,
-        companyName: usersTable.companyName,
-        companyTagline: usersTable.companyTagline,
-        companyWebsite: usersTable.companyWebsite,
-        companyPhone: usersTable.companyPhone,
-        usdot: usersTable.usdot,
-        mcNumber: usersTable.mcNumber,
-        accentColor: usersTable.accentColor,
-        agentName: usersTable.agentName,
-        useSignature: usersTable.useSignature,
-        logoUrl: usersTable.logoUrl,
-        lastLogin: usersTable.lastActiveAt,
-        createdAt: usersTable.createdAt,
-      }).from(usersTable).orderBy(usersTable.id),
-      db.select().from(campaignsTable).orderBy(campaignsTable.id),
-      db.select().from(templatesTable).orderBy(templatesTable.id),
-      db.select().from(plansTable).orderBy(plansTable.sortOrder),
-      db.select().from(adminSettingsTable),
-      db.select().from(mailboxesTable).orderBy(mailboxesTable.id),
-    ]);
-
-    const settings = Object.fromEntries(settingsRows.map(r => [r.key, r.value]));
-
-    // users.json — includes password hash for migration; NO plaintext passwords
-    const usersJson = usersRaw.map(u => ({
-      ...u,
-      lastLogin: u.lastLogin?.toISOString() ?? null,
-      createdAt: u.createdAt.toISOString(),
-    }));
-
-    // branding.json — per-user branding keyed by email (easy manual restore)
-    const brandingJson = usersRaw.map(u => ({
-      userEmail: u.email,
-      companyName: u.companyName,
-      companyTagline: u.companyTagline,
-      companyWebsite: u.companyWebsite,
-      companyPhone: u.companyPhone,
-      usdot: u.usdot,
-      mcNumber: u.mcNumber,
-      accentColor: u.accentColor,
-      agentName: u.agentName,
-      useSignature: u.useSignature,
-      logoUrl: u.logoUrl,
-    }));
-
-    const campaignsJson = campaigns.map(c => ({
-      ...c,
-      createdAt: c.createdAt.toISOString(),
-      updatedAt: c.updatedAt.toISOString(),
-      cooldownUntil: c.cooldownUntil?.toISOString() ?? null,
-    }));
-
-    const templatesJson = templates.map(t => ({
-      ...t,
-      createdAt: t.createdAt.toISOString(),
-      updatedAt: t.updatedAt.toISOString(),
-    }));
-
-    const plansJson = plans.map(p => ({
-      ...p,
-      createdAt: p.createdAt.toISOString(),
-      updatedAt: p.updatedAt.toISOString(),
-    }));
-
-    // mailboxes.json — encrypted passwords preserved for migration
-    const mailboxesJson = mailboxes.map(m => ({
-      ...m,
-      createdAt: m.createdAt.toISOString(),
-      updatedAt: m.updatedAt.toISOString(),
-    }));
-
-    const manifest = {
-      version: "2",
-      exportedAt,
-      files: ["manifest.json", "users.json", "campaigns.json", "settings.json",
-              "templates.json", "branding.json", "mailboxes.json", "plans.json"],
-      counts: {
-        users: usersJson.length, campaigns: campaignsJson.length,
-        templates: templatesJson.length, mailboxes: mailboxesJson.length,
-        plans: plansJson.length, settings: Object.keys(settings).length,
-      },
-    };
-
-    const zip = new JSZip();
-    zip.file("manifest.json",  JSON.stringify(manifest,      null, 2));
-    zip.file("users.json",     JSON.stringify(usersJson,     null, 2));
-    zip.file("campaigns.json", JSON.stringify(campaignsJson, null, 2));
-    zip.file("settings.json",  JSON.stringify(settings,      null, 2));
-    zip.file("templates.json", JSON.stringify(templatesJson, null, 2));
-    zip.file("branding.json",  JSON.stringify(brandingJson,  null, 2));
-    zip.file("mailboxes.json", JSON.stringify(mailboxesJson, null, 2));
-    zip.file("plans.json",     JSON.stringify(plansJson,     null, 2));
-
+    const admin = req.user as any;
+    const { zip, manifest } = await buildBackupZip(admin?.email ?? "admin");
     const content = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
-    const date = exportedAt.split("T")[0];
+    const date = manifest.exportedAt.split("T")[0];
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", `attachment; filename="brokermail_backup_${date}.zip"`);
     res.send(content);
@@ -1083,232 +1470,241 @@ router.get("/admin/backup/full", requireAdmin, async (_req, res): Promise<void> 
   }
 });
 
-// ─── Restore Full Backup (ZIP) ────────────────────────────────────────────────
+// ─── POST /admin/backup/create — create & store in history ────────────────────
+
+router.post("/admin/backup/create", requireAdmin, async (req, res): Promise<void> => {
+  try {
+    const admin = req.user as any;
+    const name = (req.body?.name as string) || `backup_${new Date().toISOString().replace(/[:.]/g, "-")}`;
+    const { zip, manifest } = await buildBackupZip(admin?.email ?? "admin");
+    const content = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+
+    const existing = await db.select({ id: backupHistoryTable.id })
+      .from(backupHistoryTable).orderBy(desc(backupHistoryTable.createdAt));
+    if (existing.length >= MAX_BACKUPS) {
+      const toDelete = existing.slice(MAX_BACKUPS - 1).map(r => r.id);
+      if (toDelete.length > 0) await db.delete(backupHistoryTable).where(inArray(backupHistoryTable.id, toDelete));
+    }
+
+    const [record] = await db.insert(backupHistoryTable).values({
+      name,
+      createdById: admin?.id ?? null,
+      createdByEmail: admin?.email ?? "admin",
+      sizeBytes: content.length,
+      zipData: content.toString("base64"),
+      manifestSummary: JSON.stringify(manifest.counts),
+    }).returning({
+      id: backupHistoryTable.id,
+      name: backupHistoryTable.name,
+      createdByEmail: backupHistoryTable.createdByEmail,
+      sizeBytes: backupHistoryTable.sizeBytes,
+      manifestSummary: backupHistoryTable.manifestSummary,
+      createdAt: backupHistoryTable.createdAt,
+    });
+
+    logger.info({ id: record.id, name, sizeBytes: content.length }, "Backup created and stored");
+    res.json({ success: true, backup: { ...record, createdAt: record.createdAt.toISOString() } });
+  } catch (err: any) {
+    logger.error({ err }, "Backup create error");
+    res.status(500).json({ error: err?.message ?? "Backup failed" });
+  }
+});
+
+// ─── GET /admin/backup/history ────────────────────────────────────────────────
+
+router.get("/admin/backup/history", requireAdmin, async (_req, res): Promise<void> => {
+  try {
+    const rows = await db.select({
+      id: backupHistoryTable.id,
+      name: backupHistoryTable.name,
+      createdByEmail: backupHistoryTable.createdByEmail,
+      sizeBytes: backupHistoryTable.sizeBytes,
+      manifestSummary: backupHistoryTable.manifestSummary,
+      createdAt: backupHistoryTable.createdAt,
+    }).from(backupHistoryTable).orderBy(desc(backupHistoryTable.createdAt));
+    res.json(rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString() })));
+  } catch (err: any) {
+    logger.error({ err }, "Backup history error");
+    res.status(500).json({ error: err?.message ?? "Failed to load backup history" });
+  }
+});
+
+// ─── GET /admin/backup/download/:id ───────────────────────────────────────────
+
+router.get("/admin/backup/download/:id", requireAdmin, async (req, res): Promise<void> => {
+  try {
+    const id = Number(req.params.id);
+    const [row] = await db.select({
+      name: backupHistoryTable.name,
+      zipData: backupHistoryTable.zipData,
+    }).from(backupHistoryTable).where(eq(backupHistoryTable.id, id));
+    if (!row) { res.status(404).json({ error: "Backup not found" }); return; }
+    const content = Buffer.from(row.zipData, "base64");
+    const filename = row.name.endsWith(".zip") ? row.name : `${row.name}.zip`;
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(content);
+  } catch (err: any) {
+    logger.error({ err }, "Backup download error");
+    res.status(500).json({ error: err?.message ?? "Download failed" });
+  }
+});
+
+// ─── DELETE /admin/backup/:id ─────────────────────────────────────────────────
+
+router.delete("/admin/backup/:id", requireAdmin, async (req, res): Promise<void> => {
+  try {
+    const id = Number(req.params.id);
+    await db.delete(backupHistoryTable).where(eq(backupHistoryTable.id, id));
+    res.json({ success: true });
+  } catch (err: any) {
+    logger.error({ err }, "Backup delete error");
+    res.status(500).json({ error: err?.message ?? "Delete failed" });
+  }
+});
+
+// ─── POST /admin/restore/validate — read manifest; no writes ─────────────────
+
+router.post("/admin/restore/validate", requireAdmin, memUpload.single("file"), async (req, res): Promise<void> => {
+  if (!req.file?.buffer) { res.status(400).json({ error: "No file uploaded" }); return; }
+  try {
+    const zip = await JSZip.loadAsync(req.file.buffer);
+    const mf = zip.file("manifest.json");
+    if (!mf) { res.status(400).json({ error: "Invalid backup: manifest.json missing" }); return; }
+    let manifest: any;
+    try { manifest = JSON.parse(await mf.async("text")); }
+    catch { res.status(400).json({ error: "manifest.json is not valid JSON" }); return; }
+    if (!manifest.version) { res.status(400).json({ error: "Invalid manifest: missing version" }); return; }
+    const presentFiles  = Object.keys(zip.files).filter(f => !f.endsWith("/"));
+    const missingFiles  = (manifest.files ?? []).filter((f: string) => !zip.file(f));
+    res.json({
+      valid: missingFiles.length === 0,
+      version: manifest.version,
+      exportedAt: manifest.exportedAt ?? null,
+      createdBy: manifest.createdBy ?? null,
+      counts: manifest.counts ?? {},
+      files: presentFiles,
+      missingFiles,
+    });
+  } catch (err: any) {
+    logger.error({ err }, "Restore validate error");
+    res.status(400).json({ error: `Invalid backup file: ${err?.message}` });
+  }
+});
+
+// ─── POST /admin/restore/merge — insert missing records only ─────────────────
+
+router.post("/admin/restore/merge", requireAdmin, memUpload.single("file"), async (req, res): Promise<void> => {
+  if (!req.file?.buffer) { res.status(400).json({ error: "No file uploaded" }); return; }
+  try {
+    const zip = await JSZip.loadAsync(req.file.buffer);
+    const { results, warnings } = await performRestore(zip, "merge", null, db);
+    logger.info({ results, warnings }, "Merge restore completed");
+    res.json({ success: true, message: "Merge restore complete.", results, warnings: warnings.length ? warnings : undefined });
+  } catch (err: any) {
+    logger.error({ err }, "Merge restore error");
+    res.status(500).json({ error: err?.message ?? "Merge restore failed" });
+  }
+});
+
+// ─── POST /admin/restore/replace — auto restore-point then full replace ───────
+
+router.post("/admin/restore/replace", requireAdmin, memUpload.single("file"), async (req, res): Promise<void> => {
+  if (!req.file?.buffer) { res.status(400).json({ error: "No file uploaded" }); return; }
+  const admin = req.user as any;
+  let restorePointId: number | null = null;
+  try {
+    // Step 1: Create automatic restore point before any destructive changes
+    const rpName = `restore_point_${new Date().toISOString().replace(/[:.]/g, "-")}`;
+    const { zip: rpZip, manifest: rpManifest } = await buildBackupZip(admin?.email ?? "admin");
+    const rpContent = await rpZip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+    const existing = await db.select({ id: backupHistoryTable.id })
+      .from(backupHistoryTable).orderBy(desc(backupHistoryTable.createdAt));
+    if (existing.length >= MAX_BACKUPS) {
+      const toDelete = existing.slice(MAX_BACKUPS - 1).map(r => r.id);
+      if (toDelete.length > 0) await db.delete(backupHistoryTable).where(inArray(backupHistoryTable.id, toDelete));
+    }
+    const [rpRecord] = await db.insert(backupHistoryTable).values({
+      name: rpName, createdById: admin?.id ?? null, createdByEmail: admin?.email ?? "admin",
+      sizeBytes: rpContent.length, zipData: rpContent.toString("base64"),
+      manifestSummary: JSON.stringify(rpManifest.counts),
+    }).returning({ id: backupHistoryTable.id });
+    restorePointId = rpRecord.id;
+    logger.info({ restorePointId, name: rpName }, "Auto restore point created");
+
+    // Step 2: Perform replace restore inside a DB transaction (auto-rollback on error)
+    const fileBuffer = req.file!.buffer;
+    const zip = await JSZip.loadAsync(fileBuffer);
+    const { results, warnings } = await db.transaction(async (tx) => {
+      return performRestore(zip, "replace", null, tx as unknown as AnyDb);
+    });
+
+    logger.info({ results, warnings, restorePointId }, "Replace restore completed");
+    res.json({
+      success: true,
+      message: "Replace restore complete. Users can log in immediately.",
+      results,
+      warnings: warnings.length ? warnings : undefined,
+      restorePointId,
+    });
+  } catch (err: any) {
+    logger.error({ err, restorePointId }, "Replace restore error — transaction rolled back");
+    res.status(500).json({
+      error: err?.message ?? "Replace restore failed",
+      restorePointId,
+      note: restorePointId
+        ? `Restore point id=${restorePointId} was saved. The transaction was rolled back — your data was NOT changed.`
+        : "Restore failed before any data was modified.",
+    });
+  }
+});
+
+// ─── POST /admin/restore/selective — restore selected modules only ────────────
+
+router.post("/admin/restore/selective", requireAdmin, memUpload.single("file"), async (req, res): Promise<void> => {
+  if (!req.file?.buffer) { res.status(400).json({ error: "No file uploaded" }); return; }
+  const rawModules: unknown = req.body?.modules;
+  let moduleList: string[] = [];
+  try {
+    moduleList = Array.isArray(rawModules)
+      ? rawModules
+      : JSON.parse(typeof rawModules === "string" ? rawModules : "[]");
+  } catch {
+    res.status(400).json({ error: "modules must be a JSON array of module names" });
+    return;
+  }
+  const validatedModules = new Set(moduleList.filter(m => VALID_MODULES.has(m)));
+  if (validatedModules.size === 0) {
+    res.status(400).json({ error: "No valid modules specified", validModules: [...VALID_MODULES] });
+    return;
+  }
+  try {
+    const zip = await JSZip.loadAsync(req.file.buffer);
+    const { results, warnings } = await performRestore(zip, "merge", validatedModules, db);
+    logger.info({ results, warnings, modules: [...validatedModules] }, "Selective restore completed");
+    res.json({
+      success: true,
+      message: `Selective restore complete for: ${[...validatedModules].join(", ")}.`,
+      results,
+      warnings: warnings.length ? warnings : undefined,
+    });
+  } catch (err: any) {
+    logger.error({ err }, "Selective restore error");
+    res.status(500).json({ error: err?.message ?? "Selective restore failed" });
+  }
+});
+
+// ─── POST /admin/restore/full — legacy endpoint (backward compat) ─────────────
 
 router.post("/admin/restore/full", requireAdmin, memUpload.single("file"), async (req, res): Promise<void> => {
   if (!req.file?.buffer) {
     res.status(400).json({ error: "No backup file uploaded. Send as multipart/form-data field 'file'." });
     return;
   }
-
-  const results: Record<string, number> = {
-    settings: 0, plans: 0, users: 0, campaigns: 0,
-    templates: 0, mailboxes: 0, branding: 0,
-  };
-  const warnings: string[] = [];
-
   try {
     const zip = await JSZip.loadAsync(req.file.buffer);
-
-    // Helper: parse a JSON file from zip (returns null if missing)
-    async function readZipJson<T>(name: string): Promise<T | null> {
-      const f = zip.file(name);
-      if (!f) return null;
-      return JSON.parse(await f.async("text")) as T;
-    }
-
-    // Validate manifest
-    const manifest = await readZipJson<{ version: string }>("manifest.json");
-    if (!manifest?.version) {
-      warnings.push("manifest.json missing or invalid — proceeding anyway");
-    }
-
-    // 1. Restore settings
-    const settings = await readZipJson<Record<string, string>>("settings.json");
-    if (settings && typeof settings === "object") {
-      for (const [key, value] of Object.entries(settings)) {
-        if (typeof value !== "string") continue;
-        await db.insert(adminSettingsTable).values({ key, value })
-          .onConflictDoUpdate({ target: adminSettingsTable.key, set: { value } });
-        results.settings++;
-      }
-    }
-
-    // 2. Restore plans
-    const plans = await readZipJson<Record<string, any>[]>("plans.json");
-    if (Array.isArray(plans)) {
-      for (const p of plans) {
-        if (!p.slug || !p.name) continue;
-        await db.insert(plansTable).values({
-          name: p.name, slug: p.slug, description: p.description ?? null,
-          monthlyEmailLimit: p.monthlyEmailLimit ?? 100,
-          smtpAccountsLimit: p.smtpAccountsLimit ?? 1,
-          campaignsLimit: p.campaignsLimit ?? 5,
-          batchSendLimit: p.batchSendLimit ?? 50,
-          features: p.features ?? [],
-          sortOrder: p.sortOrder ?? 0,
-          isActive: p.isActive ?? true,
-        }).onConflictDoUpdate({
-          target: plansTable.slug,
-          set: {
-            name: p.name, description: p.description ?? null,
-            monthlyEmailLimit: p.monthlyEmailLimit ?? 100,
-            smtpAccountsLimit: p.smtpAccountsLimit ?? 1,
-            campaignsLimit: p.campaignsLimit ?? 5,
-            batchSendLimit: p.batchSendLimit ?? 50,
-            features: p.features ?? [],
-          },
-        });
-        results.plans++;
-      }
-    }
-
-    // 3. Restore users — passwordHash IS restored so users can log in immediately
-    const users = await readZipJson<Record<string, any>[]>("users.json");
-    const emailToNewId = new Map<string, number>();
-    const oldIdToNewId = new Map<number, number>();
-
-    if (Array.isArray(users)) {
-      for (const u of users) {
-        if (!u.email) continue;
-        const [existing] = await db.select({ id: usersTable.id, passwordHash: usersTable.passwordHash })
-          .from(usersTable).where(eq(usersTable.email, u.email));
-
-        const sharedFields = {
-          name:           u.name ?? u.email,
-          role:           u.role ?? "user",
-          plan:           u.plan ?? "free",
-          credits:        typeof u.credits === "number" ? u.credits : 0,
-          status:         u.status ?? "active",
-          timezone:       u.timezone ?? "UTC",
-          aiTone:         u.aiTone ?? null,
-          companyName:    u.companyName ?? null,
-          companyTagline: u.companyTagline ?? null,
-          companyWebsite: u.companyWebsite ?? null,
-          companyPhone:   u.companyPhone ?? null,
-          usdot:          u.usdot ?? null,
-          mcNumber:       u.mcNumber ?? null,
-          accentColor:    u.accentColor ?? null,
-          agentName:      u.agentName ?? null,
-          useSignature:   u.useSignature ?? false,
-          logoUrl:        u.logoUrl ?? null,
-          // Restore passwordHash so login works immediately after migration
-          ...(u.passwordHash ? { passwordHash: u.passwordHash } : {}),
-        };
-
-        if (existing) {
-          await db.update(usersTable)
-            .set({ ...sharedFields, updatedAt: new Date() })
-            .where(eq(usersTable.id, existing.id));
-          emailToNewId.set(u.email, existing.id);
-        } else {
-          const [inserted] = await db.insert(usersTable)
-            .values({ email: u.email, ...sharedFields })
-            .returning({ id: usersTable.id });
-          emailToNewId.set(u.email, inserted.id);
-        }
-        results.users++;
-      }
-
-      for (const u of users) {
-        if (u.id != null && u.email && emailToNewId.has(u.email)) {
-          oldIdToNewId.set(Number(u.id), emailToNewId.get(u.email)!);
-        }
-      }
-    }
-
-    // 4. Restore branding (separate file — updates existing users by email)
-    const branding = await readZipJson<Record<string, any>[]>("branding.json");
-    if (Array.isArray(branding)) {
-      for (const b of branding) {
-        if (!b.userEmail) continue;
-        const userId = emailToNewId.get(b.userEmail);
-        if (!userId) continue;
-        await db.update(usersTable).set({
-          companyName:    b.companyName    ?? null,
-          companyTagline: b.companyTagline ?? null,
-          companyWebsite: b.companyWebsite ?? null,
-          companyPhone:   b.companyPhone   ?? null,
-          usdot:          b.usdot          ?? null,
-          mcNumber:       b.mcNumber       ?? null,
-          accentColor:    b.accentColor    ?? null,
-          agentName:      b.agentName      ?? null,
-          useSignature:   b.useSignature   ?? false,
-          logoUrl:        b.logoUrl        ?? null,
-          updatedAt:      new Date(),
-        }).where(eq(usersTable.id, userId));
-        results.branding++;
-      }
-    }
-
-    // 5. Restore templates
-    const templates = await readZipJson<Record<string, any>[]>("templates.json");
-    if (Array.isArray(templates)) {
-      for (const t of templates) {
-        if (!t.name || !t.subject || !t.body) continue;
-        const mappedUserId = oldIdToNewId.get(Number(t.userId));
-        if (!mappedUserId) { warnings.push(`Template "${t.name}": user not found`); continue; }
-        const [existing] = await db.select({ id: templatesTable.id })
-          .from(templatesTable)
-          .where(and(eq(templatesTable.userId, mappedUserId), eq(templatesTable.name, t.name)));
-        if (!existing) {
-          await db.insert(templatesTable).values({
-            userId: mappedUserId, name: t.name, subject: t.subject,
-            body: t.body, isDefault: t.isDefault ?? false,
-          });
-          results.templates++;
-        }
-      }
-    }
-
-    // 6. Restore campaigns
-    const campaigns = await readZipJson<Record<string, any>[]>("campaigns.json");
-    if (Array.isArray(campaigns)) {
-      for (const c of campaigns) {
-        if (!c.name) continue;
-        const mappedUserId = oldIdToNewId.get(Number(c.userId));
-        if (!mappedUserId) { warnings.push(`Campaign "${c.name}": user not found`); continue; }
-        const [existing] = await db.select({ id: campaignsTable.id })
-          .from(campaignsTable)
-          .where(and(eq(campaignsTable.userId, mappedUserId), eq(campaignsTable.name, c.name)));
-        if (!existing) {
-          await db.insert(campaignsTable).values({
-            userId: mappedUserId, name: c.name,
-            status: "pending",
-            sendMode: c.sendMode ?? "gmail",
-            emailStyle: c.emailStyle ?? "clean",
-            useSignature: c.useSignature ?? false,
-            totalLeads: 0, draftedCount: 0, failedCount: 0, sentCount: 0,
-          });
-          results.campaigns++;
-        }
-      }
-    }
-
-    // 7. Restore mailboxes — encrypted passwords preserved
-    const mailboxes = await readZipJson<Record<string, any>[]>("mailboxes.json");
-    if (Array.isArray(mailboxes)) {
-      for (const m of mailboxes) {
-        if (!m.smtpHost || !m.smtpUser || !m.smtpPassEncrypted) continue;
-        const mappedUserId = oldIdToNewId.get(Number(m.userId));
-        if (!mappedUserId) { warnings.push(`Mailbox for user ${m.userId}: user not found`); continue; }
-        const [existing] = await db.select({ id: mailboxesTable.id })
-          .from(mailboxesTable).where(eq(mailboxesTable.userId, mappedUserId));
-        if (!existing) {
-          await db.insert(mailboxesTable).values({
-            userId:           mappedUserId,
-            smtpHost:         m.smtpHost,
-            smtpPort:         m.smtpPort ?? 587,
-            smtpUser:         m.smtpUser,
-            smtpPassEncrypted: m.smtpPassEncrypted,
-            smtpSecure:       m.smtpSecure ?? "tls",
-            imapHost:         m.imapHost ?? null,
-            imapPort:         m.imapPort ?? 993,
-            imapUser:         m.imapUser ?? null,
-            imapPassEncrypted: m.imapPassEncrypted ?? null,
-            fromName:         m.fromName ?? null,
-            replyTo:          m.replyTo ?? null,
-            isActive:         m.isActive ?? true,
-            batchSize:        m.batchSize ?? 10,
-            delaySeconds:     m.delaySeconds ?? 15,
-            maxPerHour:       m.maxPerHour ?? 100,
-          });
-          results.mailboxes++;
-        }
-      }
-    }
-
-    logger.info({ results, warnings }, "ZIP backup restored");
+    const { results, warnings } = await performRestore(zip, "merge", null, db);
+    logger.info({ results, warnings }, "Legacy ZIP backup restored");
     res.json({
       success: true,
       message: "Backup restored successfully. Users can log in immediately using original passwords.",

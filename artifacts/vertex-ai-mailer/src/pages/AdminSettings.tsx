@@ -47,6 +47,39 @@ type SubTab =
   | "notifications" | "legal" | "support" | "features"
   | "backup" | "superadmin" | "tracking";
 
+interface BackupRecord {
+  id: number;
+  name: string;
+  createdByEmail: string;
+  sizeBytes: number;
+  manifestSummary: string;
+  createdAt: string;
+}
+
+interface ValidateSummary {
+  valid: boolean;
+  version: string;
+  exportedAt: string | null;
+  createdBy: string | null;
+  counts: Record<string, number>;
+  files: string[];
+  missingFiles: string[];
+}
+
+const ALL_MODULES = [
+  "users", "branding", "mailboxes", "campaigns", "leads",
+  "templates", "email_queue", "email_tracking", "suppression_list",
+  "processed_bounces", "drafts", "settings",
+] as const;
+
+const MODULE_LABELS: Record<string, string> = {
+  users: "Users", branding: "Branding", mailboxes: "Mailboxes",
+  campaigns: "Campaigns", leads: "Campaign Leads", templates: "Templates",
+  email_queue: "Sent Emails (Queue)", email_tracking: "Email Tracking Events",
+  suppression_list: "Suppression List", processed_bounces: "Processed Bounces",
+  drafts: "Drafts", settings: "Admin Settings & Plans",
+};
+
 interface SupportTicket {
   id: number; userEmail: string; userName: string | null;
   subject: string; message: string; status: string; priority: string;
@@ -445,6 +478,16 @@ export function AdminSettings() {
   const [creatingBackup, setCreatingBackup] = useState(false);
   const [restoring, setRestoring]       = useState(false);
 
+  // Backup Center state
+  const [backupHistory, setBackupHistory]           = useState<BackupRecord[]>([]);
+  const [backupHistoryLoading, setBackupHistoryLoading] = useState(false);
+  const [validating, setValidating]                 = useState(false);
+  const [validateResult, setValidateResult]         = useState<ValidateSummary | null>(null);
+  const [restoreMode, setRestoreMode]               = useState<"merge" | "replace" | "selective">("merge");
+  const [restoreFile, setRestoreFile]               = useState<File | null>(null);
+  const [selectedModules, setSelectedModules]       = useState<Set<string>>(new Set(ALL_MODULES));
+  const [deletingBackupId, setDeletingBackupId]     = useState<number | null>(null);
+
   // Migration verification state
   type VerifyCheck = { label: string; count: number; ok: boolean; partial?: boolean; detail: string };
   type VerifyResult = { ok: boolean; checks: Record<string, VerifyCheck>; verifiedAt: string };
@@ -735,6 +778,165 @@ export function AdminSettings() {
     } finally { setRestoring(false); }
   }
 
+  // ── Backup Center helpers ──────────────────────────────────────────────────
+
+  function formatBytes(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1048576).toFixed(1)} MB`;
+  }
+
+  const loadBackupHistory = useCallback(async () => {
+    setBackupHistoryLoading(true);
+    try {
+      const res = await fetch("/api/admin/backup/history", {
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      if (res.ok) setBackupHistory(await res.json());
+    } catch { /* silently fail */ }
+    finally { setBackupHistoryLoading(false); }
+  }, []);
+
+  async function doCreateBackup() {
+    setCreatingBackup(true);
+    try {
+      const name = `backup_${new Date().toISOString().split("T")[0]}`;
+      const res = await fetch("/api/admin/backup/create", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error ?? "Backup failed");
+      toast({ title: "Backup created", description: `${result.backup.name} · ${formatBytes(result.backup.sizeBytes)}` });
+      loadBackupHistory();
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Backup failed", description: err.message });
+    } finally { setCreatingBackup(false); }
+  }
+
+  async function doDownloadBackup(id: number, name: string) {
+    try {
+      const res = await fetch(`/api/admin/backup/download/${id}`, {
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      if (!res.ok) throw new Error("Download failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name.endsWith(".zip") ? name : `${name}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Download failed", description: err.message });
+    }
+  }
+
+  async function doDeleteBackup(id: number) {
+    if (!window.confirm("Permanently delete this backup? This cannot be undone.")) return;
+    setDeletingBackupId(id);
+    try {
+      const res = await fetch(`/api/admin/backup/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      if (!res.ok) throw new Error("Delete failed");
+      toast({ title: "Backup deleted" });
+      loadBackupHistory();
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Delete failed", description: err.message });
+    } finally { setDeletingBackupId(null); }
+  }
+
+  async function doValidateRestore() {
+    if (!restoreFile) { toast({ variant: "destructive", title: "Select a file first" }); return; }
+    setValidating(true);
+    setValidateResult(null);
+    try {
+      const form = new FormData();
+      form.append("file", restoreFile);
+      const res = await fetch("/api/admin/restore/validate", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token()}` },
+        body: form,
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error ?? "Validation failed");
+      setValidateResult(result);
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Validation failed", description: err.message });
+    } finally { setValidating(false); }
+  }
+
+  async function doRestoreFromHistory(id: number, name: string) {
+    if (!window.confirm(`Merge-restore from "${name}"? Missing records will be inserted; existing records will not be overwritten.`)) return;
+    setRestoring(true);
+    try {
+      const dlRes = await fetch(`/api/admin/backup/download/${id}`, {
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      if (!dlRes.ok) throw new Error("Failed to download backup");
+      const blob = await dlRes.blob();
+      const form = new FormData();
+      form.append("file", new File([blob], `${name}.zip`, { type: "application/zip" }));
+      const res = await fetch("/api/admin/restore/merge", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token()}` },
+        body: form,
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error ?? "Restore failed");
+      toast({ title: "Merge restore complete", description: "Missing records have been restored." });
+      loadSettings();
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Restore failed", description: err.message });
+    } finally { setRestoring(false); }
+  }
+
+  async function doRestore() {
+    if (!restoreFile) { toast({ variant: "destructive", title: "Select a file first" }); return; }
+    if (restoreMode === "replace") {
+      if (!window.confirm("REPLACE RESTORE: All current data for backed-up users will be deleted and replaced.\n\nA restore point will be created automatically before any changes.\n\nContinue?")) return;
+    }
+    setRestoring(true);
+    const endpoint = restoreMode === "merge"
+      ? "/api/admin/restore/merge"
+      : restoreMode === "replace"
+      ? "/api/admin/restore/replace"
+      : "/api/admin/restore/selective";
+    try {
+      const form = new FormData();
+      form.append("file", restoreFile);
+      if (restoreMode === "selective") {
+        form.append("modules", JSON.stringify([...selectedModules]));
+      }
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token()}` },
+        body: form,
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error ?? "Restore failed");
+      const r = result.results ?? {};
+      const summary = Object.entries(r)
+        .filter(([, v]) => (v as number) > 0)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(" · ") || "No records restored";
+      toast({ title: "Restore complete", description: summary });
+      if (result.warnings?.length) {
+        toast({ variant: "destructive", title: `${result.warnings.length} warning(s)`, description: result.warnings.slice(0, 2).join("; ") });
+      }
+      if (result.restorePointId) {
+        toast({ title: "Restore point saved", description: `Auto-backup id: ${result.restorePointId}` });
+      }
+      loadBackupHistory();
+      loadSettings();
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Restore failed", description: err.message });
+    } finally { setRestoring(false); }
+  }
+
   async function doMigrationVerify() {
     setVerifying(true);
     try {
@@ -753,6 +955,7 @@ export function AdminSettings() {
   useEffect(() => { if (activeTab === "analytics") loadAnalytics(); }, [activeTab, loadAnalytics]);
   useEffect(() => { if (activeTab === "support") loadTickets(); }, [activeTab, loadTickets]);
   useEffect(() => { if (activeTab === "credits") loadCreditUsers(); }, [activeTab, loadCreditUsers]);
+  useEffect(() => { if (activeTab === "backup") loadBackupHistory(); }, [activeTab, loadBackupHistory]);
 
   async function saveSection(keys: string[]) {
     setSaving(true);
@@ -2075,58 +2278,302 @@ export function AdminSettings() {
           {/* ── 18. BACKUP & EXPORT ────────────────────────────────────────── */}
           {activeTab === "backup" && (
             <div className="space-y-6">
-              <SectionHeader icon={HardDrive} title="Backup & Restore" color="bg-green-50 text-green-600"
-                desc="ZIP package with 8 JSON files — includes password hashes so users log in immediately after migration." />
+              <SectionHeader icon={HardDrive} title="Backup Center" color="bg-green-50 text-green-600"
+                desc="Complete disaster recovery — 14-file ZIP with all platform data including email history, suppression lists, drafts, and password hashes." />
 
-              {/* ── Full Backup / Restore ─────────────────────────────────── */}
-              <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Full Platform Backup (ZIP)</p>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="p-5 rounded-2xl border border-green-200 bg-green-50 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-xl bg-green-100 flex items-center justify-center">
-                        <Archive className="h-5 w-5 text-green-700" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-slate-900 text-sm">Download Full Backup</p>
-                        <p className="text-xs text-slate-500 mt-0.5">ZIP containing users.json (with password hashes), campaigns, templates, mailboxes, branding, plans & settings.</p>
-                      </div>
+              {/* ── Stats row ────────────────────────────────────────────── */}
+              <div className="grid sm:grid-cols-3 gap-4">
+                {[
+                  {
+                    label: "Total Backups",
+                    value: backupHistoryLoading ? "—" : String(backupHistory.length),
+                    sub: `of ${15} max stored`,
+                    icon: Archive, color: "bg-green-100 text-green-700",
+                  },
+                  {
+                    label: "Last Backup",
+                    value: backupHistory[0]
+                      ? new Date(backupHistory[0].createdAt).toLocaleDateString()
+                      : "Never",
+                    sub: backupHistory[0]
+                      ? new Date(backupHistory[0].createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                      : "No backups yet",
+                    icon: Activity, color: "bg-blue-100 text-blue-700",
+                  },
+                  {
+                    label: "Total Storage",
+                    value: backupHistory.length
+                      ? formatBytes(backupHistory.reduce((s, b) => s + b.sizeBytes, 0))
+                      : "0 B",
+                    sub: `across ${backupHistory.length} backup(s)`,
+                    icon: Database, color: "bg-purple-100 text-purple-700",
+                  },
+                ].map(s => (
+                  <div key={s.label} className="flex items-center gap-4 p-4 rounded-2xl border border-slate-200 bg-white">
+                    <div className={`h-11 w-11 rounded-xl flex items-center justify-center flex-shrink-0 ${s.color}`}>
+                      <s.icon className="h-5 w-5" />
                     </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {["users.json","campaigns.json","templates.json","mailboxes.json","branding.json","plans.json","settings.json"].map(f => (
-                        <span key={f} className="px-2 py-0.5 rounded-md bg-green-100 text-green-800 text-[10px] font-mono">{f}</span>
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium">{s.label}</p>
+                      <p className="text-lg font-bold text-slate-900 leading-tight">{s.value}</p>
+                      <p className="text-[11px] text-slate-400">{s.sub}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── Create Backup ─────────────────────────────────────────── */}
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Create Backup</p>
+                <div className="p-5 rounded-2xl border border-green-200 bg-green-50 flex flex-col sm:flex-row sm:items-start gap-4">
+                  <div className="h-10 w-10 rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
+                    <Archive className="h-5 w-5 text-green-700" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-900 text-sm">Full Platform Backup (14 files)</p>
+                    <p className="text-xs text-slate-500 mt-0.5 mb-3">
+                      Creates a versioned ZIP saved to backup history. Includes all data — password hashes preserved so users can log in immediately after restore.
+                    </p>
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {["users.json","campaigns.json","campaign_leads.json","templates.json",
+                        "email_queue.json","email_tracking_events.json","suppression_list.json",
+                        "processed_bounces.json","drafts.json","mailboxes.json",
+                        "branding.json","settings.json","plans.json"].map(f => (
+                        <span key={f} className="px-1.5 py-0.5 rounded-md bg-green-100 text-green-800 text-[10px] font-mono">{f}</span>
                       ))}
                     </div>
-                    <Button className="w-full rounded-xl gap-2 bg-green-600 hover:bg-green-700 text-white"
-                      disabled={creatingBackup}
-                      onClick={doFullBackup}>
-                      {creatingBackup ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                      {creatingBackup ? "Creating Backup..." : "Download .zip Backup"}
+                    <Button className="rounded-xl gap-2 bg-green-600 hover:bg-green-700 text-white"
+                      disabled={creatingBackup} onClick={doCreateBackup}>
+                      {creatingBackup ? <Loader2 className="h-4 w-4 animate-spin" /> : <Archive className="h-4 w-4" />}
+                      {creatingBackup ? "Creating Backup..." : "Create Full Backup"}
                     </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Backup History ────────────────────────────────────────── */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Backup History</p>
+                  <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs rounded-lg"
+                    onClick={loadBackupHistory} disabled={backupHistoryLoading}>
+                    {backupHistoryLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                    Refresh
+                  </Button>
+                </div>
+
+                {backupHistoryLoading ? (
+                  <div className="space-y-2">
+                    {[1,2].map(i => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}
+                  </div>
+                ) : backupHistory.length === 0 ? (
+                  <div className="p-10 rounded-2xl border-2 border-dashed border-slate-200 text-center">
+                    <Archive className="h-10 w-10 text-slate-300 mx-auto mb-3" />
+                    <p className="font-semibold text-slate-600 text-sm">No backups yet</p>
+                    <p className="text-xs text-slate-400 mt-1">Click "Create Full Backup" above to get started.</p>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-slate-200 overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                          <th className="text-left text-xs font-semibold text-slate-500 px-4 py-3">Name</th>
+                          <th className="text-left text-xs font-semibold text-slate-500 px-4 py-3 hidden sm:table-cell">Created By</th>
+                          <th className="text-left text-xs font-semibold text-slate-500 px-4 py-3 hidden md:table-cell">Date</th>
+                          <th className="text-right text-xs font-semibold text-slate-500 px-4 py-3 hidden sm:table-cell">Size</th>
+                          <th className="text-right text-xs font-semibold text-slate-500 px-4 py-3">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {backupHistory.map(record => {
+                          const counts = (() => { try { return JSON.parse(record.manifestSummary) as Record<string, number>; } catch { return {}; } })();
+                          const isRestorePoint = record.name.startsWith("restore_point_");
+                          return (
+                            <tr key={record.id} className="hover:bg-slate-50 transition-colors">
+                              <td className="px-4 py-3 max-w-[180px]">
+                                <div className="flex items-center gap-2">
+                                  {isRestorePoint
+                                    ? <ShieldCheck className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                                    : <Archive className="h-4 w-4 text-green-500 flex-shrink-0" />}
+                                  <div className="min-w-0">
+                                    <p className="font-medium text-slate-900 text-xs truncate">{record.name}</p>
+                                    {Object.keys(counts).length > 0 && (
+                                      <p className="text-[10px] text-slate-400 truncate">
+                                        {`${counts.users ?? 0}u · ${counts.campaigns ?? 0}c · ${counts.emailQueue ?? 0}e`}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 hidden sm:table-cell">
+                                <p className="text-xs text-slate-500 truncate max-w-[140px]">{record.createdByEmail}</p>
+                              </td>
+                              <td className="px-4 py-3 hidden md:table-cell">
+                                <p className="text-xs text-slate-500 whitespace-nowrap">
+                                  {new Date(record.createdAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}
+                                </p>
+                              </td>
+                              <td className="px-4 py-3 text-right hidden sm:table-cell">
+                                <span className="text-xs font-mono text-slate-500">{formatBytes(record.sizeBytes)}</span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg text-blue-600 hover:bg-blue-50"
+                                    title="Download"
+                                    onClick={() => doDownloadBackup(record.id, record.name)}>
+                                    <Download className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg text-green-600 hover:bg-green-50"
+                                    title="Merge restore" disabled={restoring}
+                                    onClick={() => doRestoreFromHistory(record.id, record.name)}>
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg text-red-500 hover:bg-red-50"
+                                    title="Delete" disabled={deletingBackupId === record.id}
+                                    onClick={() => doDeleteBackup(record.id)}>
+                                    {deletingBackupId === record.id
+                                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      : <Trash2 className="h-3.5 w-3.5" />}
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Restore Center ────────────────────────────────────────── */}
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Restore Center</p>
+                <div className="p-5 rounded-2xl border border-slate-200 bg-slate-50 space-y-5">
+
+                  {/* File upload + validate */}
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-slate-600 mb-1.5">Upload Backup ZIP</label>
+                      <input
+                        type="file"
+                        accept=".zip"
+                        className="block w-full text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-200 file:text-slate-700 hover:file:bg-slate-300 cursor-pointer"
+                        onChange={e => { setRestoreFile(e.target.files?.[0] ?? null); setValidateResult(null); }}
+                      />
+                      {restoreFile && <p className="text-[11px] text-slate-400 mt-1">{restoreFile.name} · {formatBytes(restoreFile.size)}</p>}
+                    </div>
+                    <div className="flex items-end">
+                      <Button variant="outline" className="rounded-xl gap-2 whitespace-nowrap"
+                        disabled={!restoreFile || validating} onClick={doValidateRestore}>
+                        {validating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                        {validating ? "Validating..." : "Validate ZIP"}
+                      </Button>
+                    </div>
                   </div>
 
-                  <div className="p-5 rounded-2xl border border-amber-200 bg-amber-50 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-xl bg-amber-100 flex items-center justify-center">
-                        <RotateCcw className="h-5 w-5 text-amber-700" />
+                  {/* Validation result */}
+                  {validateResult && (
+                    <div className={`p-4 rounded-xl border ${validateResult.valid ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        {validateResult.valid
+                          ? <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
+                          : <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />}
+                        <span className={`text-sm font-semibold ${validateResult.valid ? "text-green-800" : "text-amber-800"}`}>
+                          {validateResult.valid ? "Valid backup" : "Backup has issues"}
+                          {validateResult.version && ` — v${validateResult.version}`}
+                        </span>
+                        {validateResult.createdBy && <span className="text-xs text-slate-500 ml-auto">by {validateResult.createdBy}</span>}
                       </div>
-                      <div>
-                        <p className="font-semibold text-slate-900 text-sm">Restore from ZIP</p>
-                        <p className="text-xs text-slate-500 mt-0.5">Upload a backup ZIP. Restores all data — password hashes included so users can log in immediately.</p>
+                      {validateResult.exportedAt && (
+                        <p className="text-xs text-slate-500 mb-2">Exported: {new Date(validateResult.exportedAt).toLocaleString()}</p>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(validateResult.counts).filter(([,v]) => v > 0).map(([k, v]) => (
+                          <span key={k} className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-[11px] font-medium text-slate-700">
+                            {k}: {v}
+                          </span>
+                        ))}
                       </div>
+                      {validateResult.missingFiles.length > 0 && (
+                        <p className="text-xs text-amber-700 mt-2">Missing: {validateResult.missingFiles.join(", ")}</p>
+                      )}
                     </div>
-                    <div className="p-2.5 rounded-lg bg-amber-100 border border-amber-200">
-                      <p className="text-[11px] text-amber-800 font-medium">✓ Password hashes restored — no reset required</p>
-                      <p className="text-[11px] text-amber-700 mt-0.5">✓ Mailbox SMTP credentials preserved</p>
-                      <p className="text-[11px] text-amber-700 mt-0.5">✓ Branding & company profiles restored</p>
+                  )}
+
+                  {/* Restore mode */}
+                  <div>
+                    <p className="text-xs font-medium text-slate-600 mb-2">Restore Mode</p>
+                    <div className="space-y-2">
+                      {([
+                        { value: "merge",     label: "Merge",     desc: "Insert missing records only — never overwrites existing data. Safe to run anytime." },
+                        { value: "replace",   label: "Replace",   desc: "Auto-backup current data first, then replace all records for backed-up users. Full migration." },
+                        { value: "selective", label: "Selective", desc: "Choose exactly which modules to restore." },
+                      ] as const).map(opt => (
+                        <label key={opt.value} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${restoreMode === opt.value ? "bg-white border-blue-300 ring-1 ring-blue-200" : "bg-white border-slate-200 hover:border-slate-300"}`}>
+                          <input type="radio" name="restoreMode" value={opt.value} checked={restoreMode === opt.value}
+                            onChange={() => setRestoreMode(opt.value)} className="mt-0.5 accent-blue-600" />
+                          <div>
+                            <span className="text-xs font-semibold text-slate-800">{opt.label}</span>
+                            <p className="text-[11px] text-slate-500 mt-0.5">{opt.desc}</p>
+                          </div>
+                        </label>
+                      ))}
                     </div>
-                    <Button variant="outline" className="w-full rounded-xl gap-2 border-amber-300 text-amber-800 hover:bg-amber-100"
-                      disabled={restoring}
-                      onClick={doFullRestore}>
-                      {restoring ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                      {restoring ? "Restoring..." : "Upload & Restore .zip"}
-                    </Button>
                   </div>
+
+                  {/* Module selection (selective only) */}
+                  {restoreMode === "selective" && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-medium text-slate-600">Select Modules</p>
+                        <div className="flex gap-2">
+                          <button className="text-[11px] text-blue-600 hover:underline"
+                            onClick={() => setSelectedModules(new Set(ALL_MODULES))}>All</button>
+                          <button className="text-[11px] text-slate-400 hover:underline"
+                            onClick={() => setSelectedModules(new Set())}>None</button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {ALL_MODULES.map(mod => (
+                          <label key={mod} className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-white cursor-pointer hover:border-slate-300 text-xs">
+                            <input type="checkbox" className="accent-blue-600"
+                              checked={selectedModules.has(mod)}
+                              onChange={e => {
+                                const next = new Set(selectedModules);
+                                e.target.checked ? next.add(mod) : next.delete(mod);
+                                setSelectedModules(next);
+                              }} />
+                            {MODULE_LABELS[mod]}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Replace warning */}
+                  {restoreMode === "replace" && (
+                    <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200">
+                      <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-800">
+                        <span className="font-semibold">Replace mode:</span> A restore point will be automatically created before any changes.
+                        If the restore fails, the transaction is rolled back and your data is unchanged.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Restore button */}
+                  <Button
+                    className={`w-full rounded-xl gap-2 ${restoreMode === "replace" ? "bg-amber-600 hover:bg-amber-700 text-white" : ""}`}
+                    variant={restoreMode === "replace" ? "default" : "outline"}
+                    disabled={!restoreFile || restoring || (restoreMode === "selective" && selectedModules.size === 0)}
+                    onClick={doRestore}>
+                    {restoring ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                    {restoring ? "Restoring…" :
+                      restoreMode === "merge" ? "Merge Restore" :
+                      restoreMode === "replace" ? "Replace Restore (Auto-Backup First)" :
+                      `Selective Restore (${selectedModules.size} module${selectedModules.size !== 1 ? "s" : ""})`}
+                  </Button>
                 </div>
               </div>
 
