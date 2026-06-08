@@ -1,0 +1,241 @@
+FULL BACKUP & RESTORE CENTER (ADMIN PANEL)
+
+IMPORTANT:
+Before making any changes, perform a full code audit and identify every file that will be modified. Present the audit first.
+
+DO NOT modify:
+
+* Campaign sending logic
+* SMTP sending logic
+* Bounce scanner
+* Queue processor
+* Quota cooldown logic
+* Authentication
+* Billing logic
+
+Only implement the Backup & Restore feature.
+
+OBJECTIVE
+
+The current backup system only backs up customer data and mailbox data.
+
+I want a complete disaster recovery system that can backup and restore the entire application.
+
+BACKUP MUST INCLUDE
+
+Users
+
+* Users
+* User settings
+* Roles
+
+Mailboxes
+
+* SMTP mailboxes
+* IMAP settings
+* Mailbox configuration
+
+Campaigns
+
+* Campaigns
+* Campaign leads
+* Campaign statistics
+* Campaign schedules
+* Campaign statuses
+
+Templates
+
+* Templates
+* Template categories
+* Template metadata
+
+Email Data
+
+* Sent emails (email_queue)
+* Email tracking events
+* Open events
+* Click events
+* Bounce records
+
+Suppression System
+
+* suppression_list
+* processed_bounces
+
+Branding
+
+* Brand settings
+* Company information
+* Logos
+* Signatures
+
+Gmail System
+
+* Drafts
+* Gmail draft metadata
+* Draft statuses
+
+Admin Data
+
+* Admin settings
+* System settings
+* Plan configuration
+
+Backup Metadata
+
+* Creation date
+* Version
+* System build version
+* Backup creator
+
+BACKUP FILE STRUCTURE
+
+Generate a ZIP file containing:
+
+backup.zip
+
+manifest.json
+users.json
+mailboxes.json
+campaigns.json
+campaign_leads.json
+templates.json
+email_queue.json
+email_tracking_events.json
+suppression_list.json
+processed_bounces.json
+drafts.json
+brand_settings.json
+admin_settings.json
+system_settings.json
+
+Each file should contain structured JSON.
+
+BACKUP CENTER UI
+
+Create a new Admin Panel section:
+
+Admin → Backup Center
+
+Features:
+
+* Create Full Backup
+* Download Backup
+* Backup History
+* Backup Size
+* Backup Date
+* Backup Creator
+
+Backup History Table:
+
+Backup Name
+Created By
+Date
+Size
+Download
+Restore
+
+RESTORE CENTER
+
+Create a dedicated Restore Center.
+
+Upload backup ZIP.
+
+System must read manifest.json and validate:
+
+* Backup version
+* Required files
+* Schema compatibility
+
+Display summary:
+
+Users: X
+Campaigns: X
+Templates: X
+Sent Emails: X
+Drafts: X
+
+RESTORE MODES
+
+1. Merge Restore
+
+* Insert missing records
+* Do not overwrite existing data
+
+2. Replace Restore
+
+* Create automatic restore point first
+* Then replace current data
+
+3. Selective Restore
+
+Allow restoring only selected modules:
+
+□ Users
+□ Mailboxes
+□ Campaigns
+□ Templates
+□ Sent Emails
+□ Drafts
+□ Branding
+□ Suppression Lists
+□ Admin Settings
+
+SAFETY REQUIREMENTS
+
+Before ANY restore:
+
+Automatically create:
+
+restore_point_TIMESTAMP.zip
+
+If restore fails:
+
+Rollback automatically.
+
+VALIDATION
+
+Prevent:
+
+* Corrupt ZIP files
+* Missing manifest
+* Invalid schema
+* Wrong backup version
+
+Show clear error messages.
+
+PERMISSIONS
+
+Only Super Admin can:
+
+* Create backups
+* Download backups
+* Restore backups
+* Delete backups
+
+Regular admins must not see these actions.
+
+UI REQUIREMENTS
+
+Modern design consistent with existing admin panel.
+
+Include:
+
+* Backup statistics cards
+* Last backup time
+* Total backups
+* Storage used
+* Restore activity log
+
+FINAL REQUIREMENTS
+
+After implementation provide:
+
+1. Full file audit
+2. All modified files
+3. New database tables (if any)
+4. API endpoints added
+5. Restore workflow explanation
+6. Rollback workflow explanation
+
+Do not touch any unrelated code outside Backup & Restore functionality.
