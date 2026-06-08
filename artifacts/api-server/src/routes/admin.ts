@@ -14,6 +14,10 @@ import JSZip from "jszip";
 
 const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
+const BACKUP_VERSION  = "4";
+const SCHEMA_VERSION  = "1";
+const APP_VERSION     = "1.0.0";
+
 const router: IRouter = Router();
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
@@ -1031,7 +1035,10 @@ async function buildBackupZip(createdByEmail: string) {
   const draftsJson        = drafts.map(d => ({ ...d, sentAt: toISO(d.sentAt), createdAt: toISO(d.createdAt) }));
 
   const manifest = {
-    version: "3",
+    version: BACKUP_VERSION,
+    backupVersion: BACKUP_VERSION,
+    appVersion: APP_VERSION,
+    schemaVersion: SCHEMA_VERSION,
     exportedAt,
     createdBy: createdByEmail,
     appName: "BrokerMAIL",
@@ -1456,6 +1463,46 @@ async function performRestore(
   return { results, warnings };
 }
 
+// ─── GET /admin/backup/verify — pre-backup health check ──────────────────────
+
+router.get("/admin/backup/verify", requireAdmin, async (_req, res): Promise<void> => {
+  const startedAt = Date.now();
+  try {
+    const tableChecks = await Promise.all([
+      db.select({ n: count() }).from(usersTable).then(([r]) => ({ table: "users", rows: Number(r.n), ok: true })).catch((e: any) => ({ table: "users", rows: 0, ok: false, error: String(e?.message) })),
+      db.select({ n: count() }).from(campaignsTable).then(([r]) => ({ table: "campaigns", rows: Number(r.n), ok: true })).catch((e: any) => ({ table: "campaigns", rows: 0, ok: false, error: String(e?.message) })),
+      db.select({ n: count() }).from(leadsTable).then(([r]) => ({ table: "leads", rows: Number(r.n), ok: true })).catch((e: any) => ({ table: "leads", rows: 0, ok: false, error: String(e?.message) })),
+      db.select({ n: count() }).from(templatesTable).then(([r]) => ({ table: "templates", rows: Number(r.n), ok: true })).catch((e: any) => ({ table: "templates", rows: 0, ok: false, error: String(e?.message) })),
+      db.select({ n: count() }).from(mailboxesTable).then(([r]) => ({ table: "mailboxes", rows: Number(r.n), ok: true })).catch((e: any) => ({ table: "mailboxes", rows: 0, ok: false, error: String(e?.message) })),
+      db.select({ n: count() }).from(adminSettingsTable).then(([r]) => ({ table: "admin_settings", rows: Number(r.n), ok: true })).catch((e: any) => ({ table: "admin_settings", rows: 0, ok: false, error: String(e?.message) })),
+      db.select({ n: count() }).from(emailQueueTable).then(([r]) => ({ table: "email_queue", rows: Number(r.n), ok: true })).catch((e: any) => ({ table: "email_queue", rows: 0, ok: false, error: String(e?.message) })),
+      db.select({ n: count() }).from(emailTrackingEventsTable).then(([r]) => ({ table: "email_tracking_events", rows: Number(r.n), ok: true })).catch((e: any) => ({ table: "email_tracking_events", rows: 0, ok: false, error: String(e?.message) })),
+      db.select({ n: count() }).from(suppressionListTable).then(([r]) => ({ table: "suppression_list", rows: Number(r.n), ok: true })).catch((e: any) => ({ table: "suppression_list", rows: 0, ok: false, error: String(e?.message) })),
+      db.select({ n: count() }).from(processedBouncesTable).then(([r]) => ({ table: "processed_bounces", rows: Number(r.n), ok: true })).catch((e: any) => ({ table: "processed_bounces", rows: 0, ok: false, error: String(e?.message) })),
+      db.select({ n: count() }).from(draftsTable).then(([r]) => ({ table: "drafts", rows: Number(r.n), ok: true })).catch((e: any) => ({ table: "drafts", rows: 0, ok: false, error: String(e?.message) })),
+      db.select({ n: count() }).from(plansTable).then(([r]) => ({ table: "plans", rows: Number(r.n), ok: true })).catch((e: any) => ({ table: "plans", rows: 0, ok: false, error: String(e?.message) })),
+    ]);
+    const failed = tableChecks.filter(t => !t.ok);
+    const totalRows = tableChecks.reduce((s, t) => s + t.rows, 0);
+    const ok = failed.length === 0;
+    logger.info({ ok, tables: tableChecks.length, failed: failed.length, totalRows }, "[BACKUP-VERIFY] Pre-backup verification complete");
+    res.json({
+      ok,
+      backupVersion: BACKUP_VERSION,
+      appVersion: APP_VERSION,
+      schemaVersion: SCHEMA_VERSION,
+      totalRows,
+      tables: Object.fromEntries(tableChecks.map(t => [t.table, { rows: t.rows, ok: t.ok, ...(!t.ok ? { error: (t as any).error } : {}) }])),
+      failed: failed.map(t => ({ table: t.table, error: (t as any).error })),
+      verifiedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedAt,
+    });
+  } catch (err: any) {
+    logger.error({ err }, "[BACKUP-VERIFY] Verification failed");
+    res.status(500).json({ error: err?.message ?? "Verification failed" });
+  }
+});
+
 // ─── GET /admin/backup/full — direct download (backward compat) ───────────────
 
 router.get("/admin/backup/full", requireAdmin, async (req, res): Promise<void> => {
@@ -1495,7 +1542,7 @@ router.post("/admin/backup/create", requireAdmin, async (req, res): Promise<void
       createdByEmail: admin?.email ?? "admin",
       sizeBytes: content.length,
       zipData: content.toString("base64"),
-      manifestSummary: JSON.stringify(manifest.counts),
+      manifestSummary: JSON.stringify({ counts: manifest.counts, backupVersion: BACKUP_VERSION, schemaVersion: SCHEMA_VERSION, appVersion: APP_VERSION, restoreType: "manual" }),
     }).returning({
       id: backupHistoryTable.id,
       name: backupHistoryTable.name,
@@ -1506,6 +1553,11 @@ router.post("/admin/backup/create", requireAdmin, async (req, res): Promise<void
     });
 
     logger.info({ id: record.id, name, sizeBytes: content.length }, "Backup created and stored");
+    await db.insert(systemLogsTable).values({
+      userId: admin?.id ?? null, type: "backup_created", severity: "info",
+      description: `Full backup created by ${admin?.email ?? "admin"}: ${name}`,
+      metadata: { backupId: record.id, name, sizeBytes: content.length, counts: manifest.counts },
+    }).catch(() => {});
     res.json({ success: true, backup: { ...record, createdAt: record.createdAt.toISOString() } });
   } catch (err: any) {
     logger.error({ err }, "Backup create error");
@@ -1580,11 +1632,26 @@ router.post("/admin/restore/validate", requireAdmin, memUpload.single("file"), a
     if (!manifest.version) { res.status(400).json({ error: "Invalid manifest: missing version" }); return; }
     const presentFiles  = Object.keys(zip.files).filter(f => !f.endsWith("/"));
     const missingFiles  = (manifest.files ?? []).filter((f: string) => !zip.file(f));
+    const backupVer = manifest.backupVersion ?? manifest.version ?? "unknown";
+    const backupMajor = parseInt(String(backupVer), 10);
+    const currentMajor = parseInt(BACKUP_VERSION, 10);
+    const compatible = !isNaN(backupMajor) && backupMajor <= currentMajor;
+    const compatibilityWarnings: string[] = [];
+    if (!compatible) compatibilityWarnings.push(`Backup version ${backupVer} is newer than current ${BACKUP_VERSION} — restore may fail`);
+    if (manifest.schemaVersion && manifest.schemaVersion !== SCHEMA_VERSION) {
+      compatibilityWarnings.push(`Schema version mismatch: backup=${manifest.schemaVersion}, current=${SCHEMA_VERSION}`);
+    }
     res.json({
       valid: missingFiles.length === 0,
-      version: manifest.version,
+      compatible,
+      compatibilityWarnings,
+      version: manifest.version ?? null,
+      backupVersion: manifest.backupVersion ?? manifest.version ?? null,
+      appVersion: manifest.appVersion ?? null,
+      schemaVersion: manifest.schemaVersion ?? null,
       exportedAt: manifest.exportedAt ?? null,
       createdBy: manifest.createdBy ?? null,
+      appName: manifest.appName ?? null,
       counts: manifest.counts ?? {},
       files: presentFiles,
       missingFiles,
@@ -1599,14 +1666,52 @@ router.post("/admin/restore/validate", requireAdmin, memUpload.single("file"), a
 
 router.post("/admin/restore/merge", requireAdmin, memUpload.single("file"), async (req, res): Promise<void> => {
   if (!req.file?.buffer) { res.status(400).json({ error: "No file uploaded" }); return; }
+  const admin = req.user as any;
+  const startedAt = Date.now();
+  let snapshotId: number | null = null;
   try {
+    // Pre-restore snapshot (best-effort — never blocks the restore)
+    try {
+      const rpName = `pre_merge_snapshot_${new Date().toISOString().replace(/[:.]/g, "-")}`;
+      const { zip: rpZip, manifest: rpMf } = await buildBackupZip(admin?.email ?? "admin");
+      const rpContent = await rpZip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+      const existing = await db.select({ id: backupHistoryTable.id }).from(backupHistoryTable).orderBy(desc(backupHistoryTable.createdAt));
+      if (existing.length >= MAX_BACKUPS) {
+        const toDel = existing.slice(MAX_BACKUPS - 1).map(r => r.id);
+        if (toDel.length) await db.delete(backupHistoryTable).where(inArray(backupHistoryTable.id, toDel));
+      }
+      const [rpRec] = await db.insert(backupHistoryTable).values({
+        name: rpName, createdById: admin?.id ?? null, createdByEmail: admin?.email ?? "admin",
+        sizeBytes: rpContent.length, zipData: rpContent.toString("base64"),
+        manifestSummary: JSON.stringify({ counts: rpMf.counts, backupVersion: BACKUP_VERSION, schemaVersion: SCHEMA_VERSION, appVersion: APP_VERSION, restoreType: "restore_point" }),
+      }).returning({ id: backupHistoryTable.id });
+      snapshotId = rpRec.id;
+      logger.info({ snapshotId, name: rpName }, "[RESTORE] Pre-merge snapshot created");
+    } catch (snapshotErr) {
+      logger.warn({ err: snapshotErr }, "[RESTORE] Pre-merge snapshot failed (non-fatal)");
+    }
+    await db.insert(systemLogsTable).values({
+      userId: admin?.id ?? null, type: "restore_started", severity: "info",
+      description: `Merge restore started by ${admin?.email ?? "admin"}`,
+      metadata: { mode: "merge", snapshotId },
+    }).catch(() => {});
     const zip = await JSZip.loadAsync(req.file.buffer);
     const { results, warnings } = await performRestore(zip, "merge", null, db);
-    logger.info({ results, warnings }, "Merge restore completed");
-    res.json({ success: true, message: "Merge restore complete.", results, warnings: warnings.length ? warnings : undefined });
+    await db.insert(systemLogsTable).values({
+      userId: admin?.id ?? null, type: "restore_completed", severity: "info",
+      description: `Merge restore completed by ${admin?.email ?? "admin"} in ${Date.now() - startedAt}ms`,
+      metadata: { mode: "merge", results, snapshotId },
+    }).catch(() => {});
+    logger.info({ results, warnings, snapshotId }, "Merge restore completed");
+    res.json({ success: true, message: "Merge restore complete.", results, warnings: warnings.length ? warnings : undefined, snapshotId });
   } catch (err: any) {
+    await db.insert(systemLogsTable).values({
+      userId: admin?.id ?? null, type: "restore_failed", severity: "error",
+      description: `Merge restore failed: ${err?.message ?? "unknown"}`,
+      metadata: { mode: "merge", snapshotId, error: err?.message },
+    }).catch(() => {});
     logger.error({ err }, "Merge restore error");
-    res.status(500).json({ error: err?.message ?? "Merge restore failed" });
+    res.status(500).json({ error: err?.message ?? "Merge restore failed", snapshotId });
   }
 });
 
@@ -1630,7 +1735,7 @@ router.post("/admin/restore/replace", requireAdmin, memUpload.single("file"), as
     const [rpRecord] = await db.insert(backupHistoryTable).values({
       name: rpName, createdById: admin?.id ?? null, createdByEmail: admin?.email ?? "admin",
       sizeBytes: rpContent.length, zipData: rpContent.toString("base64"),
-      manifestSummary: JSON.stringify(rpManifest.counts),
+      manifestSummary: JSON.stringify({ counts: rpManifest.counts, backupVersion: BACKUP_VERSION, schemaVersion: SCHEMA_VERSION, appVersion: APP_VERSION, restoreType: "restore_point" }),
     }).returning({ id: backupHistoryTable.id });
     restorePointId = rpRecord.id;
     logger.info({ restorePointId, name: rpName }, "Auto restore point created");
@@ -1666,6 +1771,7 @@ router.post("/admin/restore/replace", requireAdmin, memUpload.single("file"), as
 
 router.post("/admin/restore/selective", requireAdmin, memUpload.single("file"), async (req, res): Promise<void> => {
   if (!req.file?.buffer) { res.status(400).json({ error: "No file uploaded" }); return; }
+  const admin = req.user as any;
   const rawModules: unknown = req.body?.modules;
   let moduleList: string[] = [];
   try {
@@ -1681,19 +1787,57 @@ router.post("/admin/restore/selective", requireAdmin, memUpload.single("file"), 
     res.status(400).json({ error: "No valid modules specified", validModules: [...VALID_MODULES] });
     return;
   }
+  const startedAt = Date.now();
+  let snapshotId: number | null = null;
   try {
+    // Pre-restore snapshot (best-effort)
+    try {
+      const rpName = `pre_selective_snapshot_${new Date().toISOString().replace(/[:.]/g, "-")}`;
+      const { zip: rpZip, manifest: rpMf } = await buildBackupZip(admin?.email ?? "admin");
+      const rpContent = await rpZip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+      const existing = await db.select({ id: backupHistoryTable.id }).from(backupHistoryTable).orderBy(desc(backupHistoryTable.createdAt));
+      if (existing.length >= MAX_BACKUPS) {
+        const toDel = existing.slice(MAX_BACKUPS - 1).map(r => r.id);
+        if (toDel.length) await db.delete(backupHistoryTable).where(inArray(backupHistoryTable.id, toDel));
+      }
+      const [rpRec] = await db.insert(backupHistoryTable).values({
+        name: rpName, createdById: admin?.id ?? null, createdByEmail: admin?.email ?? "admin",
+        sizeBytes: rpContent.length, zipData: rpContent.toString("base64"),
+        manifestSummary: JSON.stringify({ counts: rpMf.counts, backupVersion: BACKUP_VERSION, schemaVersion: SCHEMA_VERSION, appVersion: APP_VERSION, restoreType: "restore_point" }),
+      }).returning({ id: backupHistoryTable.id });
+      snapshotId = rpRec.id;
+      logger.info({ snapshotId, name: rpName }, "[RESTORE] Pre-selective snapshot created");
+    } catch (snapshotErr) {
+      logger.warn({ err: snapshotErr }, "[RESTORE] Pre-selective snapshot failed (non-fatal)");
+    }
+    await db.insert(systemLogsTable).values({
+      userId: admin?.id ?? null, type: "restore_started", severity: "info",
+      description: `Selective restore started by ${admin?.email ?? "admin"} for: ${[...validatedModules].join(", ")}`,
+      metadata: { mode: "selective", modules: [...validatedModules], snapshotId },
+    }).catch(() => {});
     const zip = await JSZip.loadAsync(req.file.buffer);
     const { results, warnings } = await performRestore(zip, "merge", validatedModules, db);
-    logger.info({ results, warnings, modules: [...validatedModules] }, "Selective restore completed");
+    await db.insert(systemLogsTable).values({
+      userId: admin?.id ?? null, type: "restore_completed", severity: "info",
+      description: `Selective restore completed by ${admin?.email ?? "admin"} in ${Date.now() - startedAt}ms`,
+      metadata: { mode: "selective", modules: [...validatedModules], results, snapshotId },
+    }).catch(() => {});
+    logger.info({ results, warnings, modules: [...validatedModules], snapshotId }, "Selective restore completed");
     res.json({
       success: true,
       message: `Selective restore complete for: ${[...validatedModules].join(", ")}.`,
       results,
       warnings: warnings.length ? warnings : undefined,
+      snapshotId,
     });
   } catch (err: any) {
+    await db.insert(systemLogsTable).values({
+      userId: admin?.id ?? null, type: "restore_failed", severity: "error",
+      description: `Selective restore failed: ${err?.message ?? "unknown"}`,
+      metadata: { mode: "selective", modules: [...validatedModules], snapshotId, error: err?.message },
+    }).catch(() => {});
     logger.error({ err }, "Selective restore error");
-    res.status(500).json({ error: err?.message ?? "Selective restore failed" });
+    res.status(500).json({ error: err?.message ?? "Selective restore failed", snapshotId });
   }
 });
 

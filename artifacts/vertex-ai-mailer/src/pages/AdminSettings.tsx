@@ -58,12 +58,30 @@ interface BackupRecord {
 
 interface ValidateSummary {
   valid: boolean;
-  version: string;
+  compatible: boolean;
+  compatibilityWarnings: string[];
+  version: string | null;
+  backupVersion: string | null;
+  appVersion: string | null;
+  schemaVersion: string | null;
+  appName: string | null;
   exportedAt: string | null;
   createdBy: string | null;
   counts: Record<string, number>;
   files: string[];
   missingFiles: string[];
+}
+
+interface BackupVerifyResult {
+  ok: boolean;
+  backupVersion: string;
+  appVersion: string;
+  schemaVersion: string;
+  totalRows: number;
+  tables: Record<string, { rows: number; ok: boolean; error?: string }>;
+  failed: Array<{ table: string; error: string }>;
+  verifiedAt: string;
+  durationMs: number;
 }
 
 const ALL_MODULES = [
@@ -487,6 +505,8 @@ export function AdminSettings() {
   const [restoreFile, setRestoreFile]               = useState<File | null>(null);
   const [selectedModules, setSelectedModules]       = useState<Set<string>>(new Set(ALL_MODULES));
   const [deletingBackupId, setDeletingBackupId]     = useState<number | null>(null);
+  const [backupVerifying, setBackupVerifying]         = useState(false);
+  const [backupVerifyResult, setBackupVerifyResult]   = useState<BackupVerifyResult | null>(null);
 
   // Migration verification state
   type VerifyCheck = { label: string; count: number; ok: boolean; partial?: boolean; detail: string };
@@ -813,6 +833,21 @@ export function AdminSettings() {
     } catch (err: any) {
       toast({ variant: "destructive", title: "Backup failed", description: err.message });
     } finally { setCreatingBackup(false); }
+  }
+
+  async function doVerifyBackup() {
+    setBackupVerifying(true);
+    setBackupVerifyResult(null);
+    try {
+      const res = await fetch("/api/admin/backup/verify", {
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error ?? "Verification failed");
+      setBackupVerifyResult(result);
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Verification failed", description: err.message });
+    } finally { setBackupVerifying(false); }
   }
 
   async function doDownloadBackup(id: number, name: string) {
@@ -2282,7 +2317,7 @@ export function AdminSettings() {
                 desc="Complete disaster recovery — 14-file ZIP with all platform data including email history, suppression lists, drafts, and password hashes." />
 
               {/* ── Stats row ────────────────────────────────────────────── */}
-              <div className="grid sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {[
                   {
                     label: "Total Backups",
@@ -2308,6 +2343,17 @@ export function AdminSettings() {
                     sub: `across ${backupHistory.length} backup(s)`,
                     icon: Database, color: "bg-purple-100 text-purple-700",
                   },
+                  {
+                    label: "Restore Points",
+                    value: backupHistoryLoading ? "—" : String(
+                      backupHistory.filter(b => {
+                        try { const s = JSON.parse(b.manifestSummary); return s.restoreType === "restore_point"; }
+                        catch { return b.name.startsWith("restore_point_") || b.name.startsWith("pre_"); }
+                      }).length
+                    ),
+                    sub: "auto-created before restores",
+                    icon: ShieldCheck, color: "bg-amber-100 text-amber-700",
+                  },
                 ].map(s => (
                   <div key={s.label} className="flex items-center gap-4 p-4 rounded-2xl border border-slate-200 bg-white">
                     <div className={`h-11 w-11 rounded-xl flex items-center justify-center flex-shrink-0 ${s.color}`}>
@@ -2320,6 +2366,48 @@ export function AdminSettings() {
                     </div>
                   </div>
                 ))}
+              </div>
+
+              {/* ── Pre-Backup Verification ───────────────────────────────── */}
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Pre-Backup Verification</p>
+                <div className="p-4 rounded-2xl border border-slate-200 bg-white flex flex-col sm:flex-row sm:items-start gap-4">
+                  <div className="h-10 w-10 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+                    <ShieldCheck className="h-5 w-5 text-blue-700" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-900 text-sm">Verify database before backup</p>
+                    <p className="text-xs text-slate-500 mt-0.5 mb-3">Checks all 12 tables are accessible and returns live row counts. Confirms backupVersion, schemaVersion, and appVersion.</p>
+                    {backupVerifyResult && (
+                      <div className={`p-3 rounded-xl border mb-3 ${backupVerifyResult.ok ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"}`}>
+                        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                          {backupVerifyResult.ok
+                            ? <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
+                            : <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0" />}
+                          <span className={`text-xs font-semibold ${backupVerifyResult.ok ? "text-green-800" : "text-red-700"}`}>
+                            {backupVerifyResult.ok ? "All tables healthy" : `${backupVerifyResult.failed.length} table(s) failed`}
+                          </span>
+                          <span className="text-[11px] text-slate-400 ml-auto">{backupVerifyResult.totalRows.toLocaleString()} rows · {backupVerifyResult.durationMs}ms</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1 mb-1.5">
+                          {Object.entries(backupVerifyResult.tables).map(([tbl, info]) => (
+                            <span key={tbl} className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${info.ok ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                              {tbl}: {info.ok ? info.rows : "✗"}
+                            </span>
+                          ))}
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          v{backupVerifyResult.backupVersion} · schema v{backupVerifyResult.schemaVersion} · app v{backupVerifyResult.appVersion}
+                        </p>
+                      </div>
+                    )}
+                    <Button variant="outline" className="rounded-xl gap-2"
+                      disabled={backupVerifying} onClick={doVerifyBackup}>
+                      {backupVerifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4 text-blue-600" />}
+                      {backupVerifying ? "Verifying..." : "Verify Database"}
+                    </Button>
+                  </div>
+                </div>
               </div>
 
               {/* ── Create Backup ─────────────────────────────────────────── */}
@@ -2386,8 +2474,10 @@ export function AdminSettings() {
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {backupHistory.map(record => {
-                          const counts = (() => { try { return JSON.parse(record.manifestSummary) as Record<string, number>; } catch { return {}; } })();
-                          const isRestorePoint = record.name.startsWith("restore_point_");
+                          const parsed = (() => { try { return JSON.parse(record.manifestSummary); } catch { return {}; } })();
+                          const counts: Record<string, number> = parsed.counts ?? parsed;
+                          const restoreType: string | undefined = parsed.restoreType;
+                          const isRestorePoint = restoreType === "restore_point" || record.name.startsWith("restore_point_") || record.name.startsWith("pre_");
                           return (
                             <tr key={record.id} className="hover:bg-slate-50 transition-colors">
                               <td className="px-4 py-3 max-w-[180px]">
@@ -2474,21 +2564,38 @@ export function AdminSettings() {
 
                   {/* Validation result */}
                   {validateResult && (
-                    <div className={`p-4 rounded-xl border ${validateResult.valid ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}>
-                      <div className="flex items-center gap-2 mb-2">
+                    <div className={`p-4 rounded-xl border space-y-2 ${validateResult.valid ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}>
+                      <div className="flex items-center gap-2 flex-wrap">
                         {validateResult.valid
                           ? <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
                           : <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />}
                         <span className={`text-sm font-semibold ${validateResult.valid ? "text-green-800" : "text-amber-800"}`}>
                           {validateResult.valid ? "Valid backup" : "Backup has issues"}
-                          {validateResult.version && ` — v${validateResult.version}`}
                         </span>
+                        {validateResult.compatible === false && (
+                          <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-red-100 text-red-700">Incompatible</span>
+                        )}
+                        {validateResult.compatible === true && (
+                          <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-green-100 text-green-700">Compatible</span>
+                        )}
                         {validateResult.createdBy && <span className="text-xs text-slate-500 ml-auto">by {validateResult.createdBy}</span>}
                       </div>
-                      {validateResult.exportedAt && (
-                        <p className="text-xs text-slate-500 mb-2">Exported: {new Date(validateResult.exportedAt).toLocaleString()}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {validateResult.backupVersion && <span className="px-1.5 py-0.5 rounded-md bg-white border border-slate-200 text-[11px] font-mono text-slate-600">bkp v{validateResult.backupVersion}</span>}
+                        {validateResult.schemaVersion && <span className="px-1.5 py-0.5 rounded-md bg-white border border-slate-200 text-[11px] font-mono text-slate-600">schema v{validateResult.schemaVersion}</span>}
+                        {validateResult.appVersion && <span className="px-1.5 py-0.5 rounded-md bg-white border border-slate-200 text-[11px] font-mono text-slate-600">app v{validateResult.appVersion}</span>}
+                        {validateResult.exportedAt && <span className="text-[11px] text-slate-400">Exported: {new Date(validateResult.exportedAt).toLocaleString()}</span>}
+                      </div>
+                      {validateResult.compatibilityWarnings && validateResult.compatibilityWarnings.length > 0 && (
+                        <div className="space-y-1">
+                          {validateResult.compatibilityWarnings.map((w, i) => (
+                            <p key={i} className="text-xs text-amber-700 flex items-start gap-1.5">
+                              <AlertTriangle className="h-3 w-3 mt-0.5 flex-shrink-0" />{w}
+                            </p>
+                          ))}
+                        </div>
                       )}
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-1.5">
                         {Object.entries(validateResult.counts).filter(([,v]) => v > 0).map(([k, v]) => (
                           <span key={k} className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-[11px] font-medium text-slate-700">
                             {k}: {v}
@@ -2496,7 +2603,7 @@ export function AdminSettings() {
                         ))}
                       </div>
                       {validateResult.missingFiles.length > 0 && (
-                        <p className="text-xs text-amber-700 mt-2">Missing: {validateResult.missingFiles.join(", ")}</p>
+                        <p className="text-xs text-amber-700">Missing: {validateResult.missingFiles.join(", ")}</p>
                       )}
                     </div>
                   )}

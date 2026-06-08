@@ -1,0 +1,259 @@
+Build a production-grade Backup & Restore system inside the Admin Panel.
+
+OBJECTIVE
+
+Transform the current backup feature into a complete disaster recovery system that can fully recreate a customer's account, campaigns, mailboxes, email history, templates, branding, and settings after a server failure or migration.
+
+REQUIREMENTS
+
+1. FULL PLATFORM BACKUP
+
+The backup must include ALL platform data, not only customers and SMTP mailboxes.
+
+Include:
+
+* users
+* campaigns
+* campaign_leads
+* templates
+* email_queue
+* email_tracking_events
+* suppression_list
+* processed_bounces
+* drafts
+* mailboxes
+* branding settings
+* admin settings
+* plans
+* billing/subscription data
+* API keys (encrypted)
+* custom domains
+* campaign schedules
+* quota data
+* user preferences
+* system settings
+
+Generate a ZIP file containing:
+
+manifest.json
+users.json
+campaigns.json
+campaign_leads.json
+templates.json
+email_queue.json
+email_tracking_events.json
+suppression_list.json
+processed_bounces.json
+drafts.json
+mailboxes.json
+branding.json
+settings.json
+plans.json
+
+2. BACKUP MANIFEST
+
+Every backup must contain a manifest.json file.
+
+Example:
+
+{
+"backupVersion": "1.0",
+"appVersion": "current-app-version",
+"schemaVersion": "current-schema-version",
+"createdAt": "ISO_DATE",
+"createdBy": "[admin@email.com](mailto:admin@email.com)",
+"totalFiles": 14,
+"rowCounts": {
+"users": 54,
+"campaigns": 127,
+"templates": 32,
+"email_queue": 18543,
+"processed_bounces": 221
+}
+}
+
+3. BACKUP VERIFICATION
+
+Before generating a ZIP:
+
+* Verify every table exists
+* Verify required columns exist
+* Verify row counts
+* Log verification results
+
+Display:
+
+Backup verification successful
+
+or
+
+Backup verification failed
+
+with exact reasons.
+
+4. BACKUP HISTORY
+
+Create a backup history table.
+
+Store:
+
+* backup name
+* creator
+* creation time
+* size
+* backup version
+* manifest summary
+* restore status
+
+Admin UI should display:
+
+* Total backups
+* Backup size
+* Created by
+* Creation date
+* Download button
+* Delete button
+* Restore button
+
+5. RESTORE SYSTEM
+
+Create a complete restore engine.
+
+Restore must support:
+
+FULL RESTORE
+
+Restores everything from the backup.
+
+PARTIAL RESTORE
+
+Allow restoring:
+
+* Users only
+* Campaigns only
+* Templates only
+* Branding only
+* Mailboxes only
+* Email history only
+* Suppression list only
+* Processed bounces only
+* Settings only
+
+6. PRE-RESTORE SAFETY SNAPSHOT
+
+Before every restore:
+
+Automatically create a snapshot of the current database.
+
+Store it in backup history.
+
+If restore fails:
+
+* Roll back automatically
+* Restore previous snapshot
+* Log failure reason
+
+7. TRANSACTION SAFETY
+
+Restores must run inside database transactions.
+
+Requirements:
+
+* No partial restore state
+* Atomic restore
+* Automatic rollback on error
+* Validation before commit
+
+8. VERSION COMPATIBILITY
+
+Validate:
+
+* backup version
+* schema version
+* application version
+
+before restore.
+
+If versions are incompatible:
+
+* block restore
+* show detailed error
+
+9. BACKUP ANALYZER
+
+When uploading a backup:
+
+Display:
+
+* Backup date
+* Backup creator
+* App version
+* Schema version
+* Row counts
+* File count
+* Estimated restore impact
+
+before restore begins.
+
+10. ADMIN UI
+
+Create a professional Backup Center with:
+
+Cards:
+
+* Total Backups
+* Last Backup
+* Storage Used
+* Restore History
+
+Actions:
+
+* Create Backup
+* Upload Backup
+* Verify Backup
+* Download Backup
+* Restore Backup
+* Delete Backup
+
+11. LOGGING
+
+Create detailed audit logs:
+
+Backup started
+Backup completed
+Backup failed
+
+Restore started
+Restore completed
+Restore failed
+
+Verification started
+Verification completed
+
+Include:
+
+* admin id
+* admin email
+* timestamp
+* duration
+* affected tables
+
+12. PERFORMANCE
+
+Requirements:
+
+* Stream ZIP creation
+* Handle large email_queue tables
+* Avoid memory spikes
+* Support tens of thousands of email records
+* Show progress during backup and restore
+
+IMPORTANT
+
+Do not remove any existing functionality.
+
+Maintain backward compatibility.
+
+Use existing database patterns, Drizzle ORM conventions, admin authentication, audit logging, and project architecture.
+
+Implement production-quality error handling, validation, and rollback protection throughout the entire backup and restore workflow.

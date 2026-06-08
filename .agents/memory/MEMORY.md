@@ -12,3 +12,4 @@
 - [Bounce scanner deduplication](bounce-scanner-dedup.md) — scanner uses processed_bounces table (not IMAP \Seen flag); seen:false caused permanent misses when mail client pre-read NDRs
 - [ETA countdown and analytics invalidation fix](eta-analytics-fix.md) — useETACountdown must only re-anchor downward; analytics invalidation requires openCount/clickCount in progress endpoint; change flags must be computed before ref mutation
 - [Dark mode architecture](dark-mode-arch.md) — CSS variable overrides in .dark{} + @layer utilities overrides; ThemeContext applies dark class to html; toggle in AppLayout TopHeader only
+- [Backup system v4 architecture](backup-v4-arch.md) — BACKUP_VERSION/SCHEMA_VERSION/APP_VERSION constants; enriched manifestSummary JSON; pre-restore snapshots on all 3 modes; audit logs in systemLogsTable; /admin/backup/verify endpoint; frontend BackupVerifyResult + ValidateSummary updated
