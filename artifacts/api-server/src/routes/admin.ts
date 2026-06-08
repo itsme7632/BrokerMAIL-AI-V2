@@ -978,35 +978,38 @@ async function buildBackupZip(createdByEmail: string) {
   const exportedAt = new Date().toISOString();
   const toISO = (d: Date | null | undefined) => d?.toISOString() ?? null;
 
-  const [
-    usersRaw, campaigns, templates, plans, settingsRows, mailboxes,
-    leads, emailQueue, emailTracking, suppressions, processedBounces, drafts,
-  ] = await Promise.all([
-    db.select({
-      id: usersTable.id, email: usersTable.email, name: usersTable.name,
-      passwordHash: usersTable.passwordHash, role: usersTable.role,
-      plan: usersTable.plan, credits: usersTable.credits,
-      status: usersTable.status, timezone: usersTable.timezone,
-      aiTone: usersTable.aiTone, companyName: usersTable.companyName,
-      companyTagline: usersTable.companyTagline, companyWebsite: usersTable.companyWebsite,
-      companyPhone: usersTable.companyPhone, usdot: usersTable.usdot,
-      mcNumber: usersTable.mcNumber, accentColor: usersTable.accentColor,
-      agentName: usersTable.agentName, useSignature: usersTable.useSignature,
-      logoUrl: usersTable.logoUrl, lastLogin: usersTable.lastActiveAt,
-      createdAt: usersTable.createdAt,
-    }).from(usersTable).orderBy(usersTable.id),
-    db.select().from(campaignsTable).orderBy(campaignsTable.id),
-    db.select().from(templatesTable).orderBy(templatesTable.id),
-    db.select().from(plansTable).orderBy(plansTable.sortOrder),
-    db.select().from(adminSettingsTable),
-    db.select().from(mailboxesTable).orderBy(mailboxesTable.id),
-    db.select().from(leadsTable).orderBy(leadsTable.id),
-    db.select().from(emailQueueTable).orderBy(emailQueueTable.id),
-    db.select().from(emailTrackingEventsTable).orderBy(emailTrackingEventsTable.id),
-    db.select().from(suppressionListTable).orderBy(suppressionListTable.id),
-    db.select().from(processedBouncesTable).orderBy(processedBouncesTable.id),
-    db.select().from(draftsTable).orderBy(draftsTable.id),
-  ]);
+  async function exportTable<T>(name: string, query: Promise<T>): Promise<T> {
+    logger.info(`[BACKUP] Exporting ${name}...`);
+    try {
+      const result = await query;
+      logger.info(`[BACKUP] ${name} exported successfully`);
+      return result;
+    } catch (err: any) {
+      logger.error({
+        msg: `[BACKUP] FAILED ${name}`,
+        table: name,
+        error: err?.message ?? String(err),
+        stack: err?.stack ?? null,
+        query: err?.query ?? null,
+        params: err?.params ?? null,
+        cause: err?.cause?.message ?? null,
+      });
+      throw err;
+    }
+  }
+
+  const usersRaw          = await exportTable("users",                  db.select({ id: usersTable.id, email: usersTable.email, name: usersTable.name, passwordHash: usersTable.passwordHash, role: usersTable.role, plan: usersTable.plan, credits: usersTable.credits, status: usersTable.status, timezone: usersTable.timezone, aiTone: usersTable.aiTone, companyName: usersTable.companyName, companyTagline: usersTable.companyTagline, companyWebsite: usersTable.companyWebsite, companyPhone: usersTable.companyPhone, usdot: usersTable.usdot, mcNumber: usersTable.mcNumber, accentColor: usersTable.accentColor, agentName: usersTable.agentName, useSignature: usersTable.useSignature, logoUrl: usersTable.logoUrl, lastLogin: usersTable.lastActiveAt, createdAt: usersTable.createdAt }).from(usersTable).orderBy(usersTable.id));
+  const campaigns         = await exportTable("campaigns",               db.select().from(campaignsTable).orderBy(campaignsTable.id));
+  const templates         = await exportTable("templates",               db.select().from(templatesTable).orderBy(templatesTable.id));
+  const plans             = await exportTable("plans",                   db.select().from(plansTable).orderBy(plansTable.sortOrder));
+  const settingsRows      = await exportTable("admin_settings",          db.select().from(adminSettingsTable));
+  const mailboxes         = await exportTable("mailboxes",               db.select().from(mailboxesTable).orderBy(mailboxesTable.id));
+  const leads             = await exportTable("leads",                   db.select().from(leadsTable).orderBy(leadsTable.id));
+  const emailQueue        = await exportTable("email_queue",             db.select().from(emailQueueTable).orderBy(emailQueueTable.id));
+  const emailTracking     = await exportTable("email_tracking_events",   db.select().from(emailTrackingEventsTable).orderBy(emailTrackingEventsTable.id));
+  const suppressions      = await exportTable("suppression_list",        db.select().from(suppressionListTable).orderBy(suppressionListTable.id));
+  const processedBounces  = await exportTable("processed_bounces",       db.select().from(processedBouncesTable).orderBy(processedBouncesTable.id));
+  const drafts            = await exportTable("drafts",                  db.select().from(draftsTable).orderBy(draftsTable.id));
 
   const settings      = Object.fromEntries(settingsRows.map(r => [r.key, r.value]));
   const usersJson     = usersRaw.map(u => ({ ...u, lastLogin: toISO(u.lastLogin), createdAt: toISO(u.createdAt) }));
