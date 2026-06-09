@@ -967,6 +967,144 @@ router.get("/admin/export/settings", requireAdmin, async (_req, res): Promise<vo
   res.json({ ...DEFAULT_SETTINGS, ...stored });
 });
 
+// ─── POST /admin/export/selective — module-level ZIP export ──────────────────
+
+const VALID_EXPORT_MODULES = new Set([
+  "users", "campaigns", "leads", "templates", "mailboxes", "drafts",
+  "email_queue", "email_tracking", "suppression_list",
+  "processed_bounces", "branding", "settings", "plans", "billing",
+]);
+
+router.post("/admin/export/selective", requireAdmin, async (req, res): Promise<void> => {
+  const admin = req.user as any;
+  const { modules = [] } = req.body;
+  const selected = (modules as string[]).filter(m => VALID_EXPORT_MODULES.has(m));
+  if (selected.length === 0) { res.status(400).json({ error: "No valid modules specified" }); return; }
+  const s = new Set(selected);
+  const toISO = (d: Date | null | undefined) => d?.toISOString() ?? null;
+  const exportedAt = new Date().toISOString();
+  try {
+    const zip = new JSZip();
+    const rowCounts: Record<string, number> = {};
+    const fileList: string[] = [];
+
+    if (s.has("users") || s.has("branding")) {
+      const usersRaw = await db.select({
+        id: usersTable.id, email: usersTable.email, name: usersTable.name,
+        passwordHash: usersTable.passwordHash, role: usersTable.role, plan: usersTable.plan,
+        credits: usersTable.credits, status: usersTable.status, timezone: usersTable.timezone,
+        aiTone: usersTable.aiTone, companyName: usersTable.companyName,
+        companyTagline: usersTable.companyTagline, companyWebsite: usersTable.companyWebsite,
+        companyPhone: usersTable.companyPhone, usdot: usersTable.usdot, mcNumber: usersTable.mcNumber,
+        accentColor: usersTable.accentColor, agentName: usersTable.agentName,
+        useSignature: usersTable.useSignature, logoUrl: usersTable.logoUrl,
+        lastLogin: usersTable.lastActiveAt, createdAt: usersTable.createdAt,
+      }).from(usersTable).orderBy(usersTable.id);
+      if (s.has("users")) {
+        const j = usersRaw.map(u => ({ ...u, lastLogin: toISO(u.lastLogin), createdAt: toISO(u.createdAt) }));
+        zip.file("users.json", JSON.stringify(j, null, 2));
+        rowCounts.users = j.length; fileList.push("users.json");
+      }
+      if (s.has("branding")) {
+        const j = usersRaw.map(u => ({
+          userEmail: u.email, companyName: u.companyName, companyTagline: u.companyTagline,
+          companyWebsite: u.companyWebsite, companyPhone: u.companyPhone, usdot: u.usdot,
+          mcNumber: u.mcNumber, accentColor: u.accentColor, agentName: u.agentName,
+          useSignature: u.useSignature, logoUrl: u.logoUrl,
+        }));
+        zip.file("branding.json", JSON.stringify(j, null, 2));
+        rowCounts.branding = j.length; fileList.push("branding.json");
+      }
+    }
+    if (s.has("campaigns")) {
+      const rows = await db.select().from(campaignsTable).orderBy(campaignsTable.id);
+      zip.file("campaigns.json", JSON.stringify(rows.map(c => ({ ...c, createdAt: toISO(c.createdAt), updatedAt: toISO(c.updatedAt), cooldownUntil: toISO(c.cooldownUntil) })), null, 2));
+      rowCounts.campaigns = rows.length; fileList.push("campaigns.json");
+    }
+    if (s.has("leads")) {
+      const rows = await db.select().from(leadsTable).orderBy(leadsTable.id);
+      zip.file("campaign_leads.json", JSON.stringify(rows.map(l => ({ ...l, sentAt: toISO(l.sentAt), createdAt: toISO(l.createdAt), updatedAt: toISO(l.updatedAt) })), null, 2));
+      rowCounts.leads = rows.length; fileList.push("campaign_leads.json");
+    }
+    if (s.has("templates")) {
+      const rows = await db.select().from(templatesTable).orderBy(templatesTable.id);
+      zip.file("templates.json", JSON.stringify(rows.map(t => ({ ...t, createdAt: toISO(t.createdAt), updatedAt: toISO(t.updatedAt) })), null, 2));
+      rowCounts.templates = rows.length; fileList.push("templates.json");
+    }
+    if (s.has("mailboxes")) {
+      const rows = await db.select().from(mailboxesTable).orderBy(mailboxesTable.id);
+      zip.file("mailboxes.json", JSON.stringify(rows.map(m => ({ ...m, createdAt: toISO(m.createdAt), updatedAt: toISO(m.updatedAt) })), null, 2));
+      rowCounts.mailboxes = rows.length; fileList.push("mailboxes.json");
+    }
+    if (s.has("drafts")) {
+      const rows = await db.select().from(draftsTable).orderBy(draftsTable.id);
+      zip.file("drafts.json", JSON.stringify(rows.map(d => ({ ...d, sentAt: toISO(d.sentAt), createdAt: toISO(d.createdAt) })), null, 2));
+      rowCounts.drafts = rows.length; fileList.push("drafts.json");
+    }
+    if (s.has("email_queue")) {
+      const rows = await db.select().from(emailQueueTable).orderBy(emailQueueTable.id);
+      zip.file("email_queue.json", JSON.stringify(rows.map(e => ({ ...e, firstAttemptAt: toISO(e.firstAttemptAt), retryAfter: toISO(e.retryAfter), sentAt: toISO(e.sentAt), bounceAt: toISO(e.bounceAt), createdAt: toISO(e.createdAt) })), null, 2));
+      rowCounts.emailQueue = rows.length; fileList.push("email_queue.json");
+    }
+    if (s.has("email_tracking")) {
+      const rows = await db.select().from(emailTrackingEventsTable).orderBy(emailTrackingEventsTable.id);
+      zip.file("email_tracking_events.json", JSON.stringify(rows.map(e => ({ ...e, createdAt: toISO(e.createdAt) })), null, 2));
+      rowCounts.emailTracking = rows.length; fileList.push("email_tracking_events.json");
+    }
+    if (s.has("suppression_list")) {
+      const rows = await db.select().from(suppressionListTable).orderBy(suppressionListTable.id);
+      zip.file("suppression_list.json", JSON.stringify(rows.map(ss => ({ ...ss, createdAt: toISO(ss.createdAt) })), null, 2));
+      rowCounts.suppressions = rows.length; fileList.push("suppression_list.json");
+    }
+    if (s.has("processed_bounces")) {
+      const rows = await db.select().from(processedBouncesTable).orderBy(processedBouncesTable.id);
+      zip.file("processed_bounces.json", JSON.stringify(rows.map(b => ({ ...b, processedAt: toISO(b.processedAt) })), null, 2));
+      rowCounts.processedBounces = rows.length; fileList.push("processed_bounces.json");
+    }
+    if (s.has("settings")) {
+      const rows = await db.select().from(adminSettingsTable);
+      zip.file("settings.json", JSON.stringify(Object.fromEntries(rows.map(r => [r.key, r.value])), null, 2));
+      rowCounts.settings = rows.length; fileList.push("settings.json");
+    }
+    if (s.has("plans")) {
+      const rows = await db.select().from(plansTable).orderBy(plansTable.sortOrder);
+      zip.file("plans.json", JSON.stringify(rows.map(p => ({ ...p, createdAt: toISO(p.createdAt), updatedAt: toISO(p.updatedAt) })), null, 2));
+      rowCounts.plans = rows.length; fileList.push("plans.json");
+    }
+    if (s.has("billing")) {
+      const subs = await db.select().from(subscriptionsTable);
+      const reqs = await db.select().from(planRequestsTable);
+      zip.file("billing.json", JSON.stringify({ subscriptions: subs, planRequests: reqs }, null, 2));
+      rowCounts.billing = subs.length + reqs.length; fileList.push("billing.json");
+    }
+
+    const manifest = {
+      version: BACKUP_VERSION, backupVersion: BACKUP_VERSION, appVersion: APP_VERSION,
+      schemaVersion: SCHEMA_VERSION, exportType: "selective",
+      selectedModules: selected, exportDate: exportedAt, exportedAt,
+      exportedBy: admin?.email ?? "admin", createdBy: admin?.email ?? "admin",
+      appName: "BrokerMAIL", files: ["manifest.json", ...fileList],
+      counts: rowCounts, rowCounts,
+    };
+    zip.file("manifest.json", JSON.stringify(manifest, null, 2));
+    const content = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+    const fname = `brokermail_export_${selected.slice(0, 3).join("-")}_${new Date().toISOString().split("T")[0]}.zip`;
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${fname}"`);
+    res.setHeader("Content-Length", String(content.length));
+    res.send(content);
+    await db.insert(systemLogsTable).values({
+      userId: admin?.id ?? null, type: "selective_export", severity: "info",
+      description: `Selective export by ${admin?.email ?? "admin"}: ${selected.join(", ")}`,
+      metadata: { modules: selected, rowCounts },
+    }).catch(() => {});
+    logger.info({ modules: selected, rowCounts }, "Selective export completed");
+  } catch (err: any) {
+    logger.error({ err }, "Selective export error");
+    res.status(500).json({ error: err?.message ?? "Export failed" });
+  }
+});
+
 // ─── Backup Center ────────────────────────────────────────────────────────────
 
 const MAX_BACKUPS = 15;

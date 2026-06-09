@@ -98,6 +98,29 @@ const MODULE_LABELS: Record<string, string> = {
   drafts: "Drafts", settings: "Admin Settings & Plans",
 };
 
+const ALL_EXPORT_MODULES = [
+  "users", "campaigns", "leads", "templates", "mailboxes", "drafts",
+  "email_queue", "email_tracking", "suppression_list", "processed_bounces",
+  "branding", "settings", "plans", "billing",
+] as const;
+
+const EXPORT_MODULE_LABELS: Record<string, string> = {
+  users: "Users", campaigns: "Campaigns", leads: "Campaign Leads",
+  templates: "Templates", mailboxes: "SMTP Mailboxes", drafts: "Gmail Drafts",
+  email_queue: "Sent Emails", email_tracking: "Email Tracking Events",
+  suppression_list: "Suppression List", processed_bounces: "Processed Bounces",
+  branding: "Branding", settings: "Settings", plans: "Plans", billing: "Billing Data",
+};
+
+const FILE_TO_MODULE: Record<string, string> = {
+  "users.json": "users", "campaigns.json": "campaigns", "campaign_leads.json": "leads",
+  "templates.json": "templates", "mailboxes.json": "mailboxes", "drafts.json": "drafts",
+  "email_queue.json": "email_queue", "email_tracking_events.json": "email_tracking",
+  "suppression_list.json": "suppression_list", "processed_bounces.json": "processed_bounces",
+  "branding.json": "branding", "settings.json": "settings", "plans.json": "plans",
+  "billing.json": "billing",
+};
+
 interface SupportTicket {
   id: number; userEmail: string; userName: string | null;
   subject: string; message: string; status: string; priority: string;
@@ -507,6 +530,8 @@ export function AdminSettings() {
   const [deletingBackupId, setDeletingBackupId]     = useState<number | null>(null);
   const [backupVerifying, setBackupVerifying]         = useState(false);
   const [backupVerifyResult, setBackupVerifyResult]   = useState<BackupVerifyResult | null>(null);
+  const [exportSelectedModules, setExportSelectedModules] = useState<Set<string>>(new Set(ALL_EXPORT_MODULES));
+  const [exportingSelective, setExportingSelective]       = useState(false);
 
   // Migration verification state
   type VerifyCheck = { label: string; count: number; ok: boolean; partial?: boolean; detail: string };
@@ -884,13 +909,14 @@ export function AdminSettings() {
     } finally { setDeletingBackupId(null); }
   }
 
-  async function doValidateRestore() {
-    if (!restoreFile) { toast({ variant: "destructive", title: "Select a file first" }); return; }
+  async function doValidateRestore(fileOverride?: File) {
+    const file = fileOverride ?? restoreFile;
+    if (!file) { toast({ variant: "destructive", title: "Select a file first" }); return; }
     setValidating(true);
     setValidateResult(null);
     try {
       const form = new FormData();
-      form.append("file", restoreFile);
+      form.append("file", file);
       const res = await fetch("/api/admin/restore/validate", {
         method: "POST",
         headers: { Authorization: `Bearer ${token()}` },
@@ -899,9 +925,47 @@ export function AdminSettings() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error ?? "Validation failed");
       setValidateResult(result);
+      // Auto-select modules detected in the ZIP for selective mode
+      const zipFiles: string[] = result.files ?? [];
+      if (zipFiles.length > 0) {
+        const detected = [...ALL_MODULES].filter(m => {
+          const f = Object.entries(FILE_TO_MODULE).find(([, v]) => v === m)?.[0];
+          return f ? zipFiles.includes(f) : false;
+        });
+        if (detected.length > 0) setSelectedModules(new Set(detected));
+      }
     } catch (err: any) {
       toast({ variant: "destructive", title: "Validation failed", description: err.message });
     } finally { setValidating(false); }
+  }
+
+  async function doSelectiveExport() {
+    if (exportSelectedModules.size === 0) {
+      toast({ variant: "destructive", title: "Select at least one module" });
+      return;
+    }
+    setExportingSelective(true);
+    try {
+      const res = await fetch("/api/admin/export/selective", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ modules: [...exportSelectedModules] }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error ?? "Export failed");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `brokermail_export_${new Date().toISOString().split("T")[0]}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: "Export complete", description: `${exportSelectedModules.size} module(s) exported as ZIP` });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Export failed", description: err.message });
+    } finally { setExportingSelective(false); }
   }
 
   async function doRestoreFromHistory(id: number, name: string) {
@@ -2549,7 +2613,12 @@ export function AdminSettings() {
                         type="file"
                         accept=".zip"
                         className="block w-full text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-200 file:text-slate-700 hover:file:bg-slate-300 cursor-pointer"
-                        onChange={e => { setRestoreFile(e.target.files?.[0] ?? null); setValidateResult(null); }}
+                        onChange={e => {
+                          const f = e.target.files?.[0] ?? null;
+                          setRestoreFile(f);
+                          setValidateResult(null);
+                          if (f) doValidateRestore(f);
+                        }}
                       />
                       {restoreFile && <p className="text-[11px] text-slate-400 mt-1">{restoreFile.name} · {formatBytes(restoreFile.size)}</p>}
                     </div>
@@ -2633,27 +2702,49 @@ export function AdminSettings() {
                   {restoreMode === "selective" && (
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <p className="text-xs font-medium text-slate-600">Select Modules</p>
+                        <p className="text-xs font-medium text-slate-600">
+                          Select Modules to Restore
+                          {validateResult?.files?.length ? (
+                            <span className="ml-1.5 font-normal text-slate-400">
+                              (detected from ZIP)
+                            </span>
+                          ) : null}
+                        </p>
                         <div className="flex gap-2">
                           <button className="text-[11px] text-blue-600 hover:underline"
-                            onClick={() => setSelectedModules(new Set(ALL_MODULES))}>All</button>
+                            onClick={() => {
+                              const avail = validateResult?.files?.length
+                                ? [...ALL_MODULES].filter(m => { const f = Object.entries(FILE_TO_MODULE).find(([,v]) => v === m)?.[0]; return f ? validateResult.files!.includes(f) : true; })
+                                : [...ALL_MODULES];
+                              setSelectedModules(new Set(avail));
+                            }}>All</button>
                           <button className="text-[11px] text-slate-400 hover:underline"
                             onClick={() => setSelectedModules(new Set())}>None</button>
                         </div>
                       </div>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {ALL_MODULES.map(mod => (
-                          <label key={mod} className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-white cursor-pointer hover:border-slate-300 text-xs">
-                            <input type="checkbox" className="accent-blue-600"
-                              checked={selectedModules.has(mod)}
-                              onChange={e => {
-                                const next = new Set(selectedModules);
-                                e.target.checked ? next.add(mod) : next.delete(mod);
-                                setSelectedModules(next);
-                              }} />
-                            {MODULE_LABELS[mod]}
-                          </label>
-                        ))}
+                        {ALL_MODULES.map(mod => {
+                          const zipFile = Object.entries(FILE_TO_MODULE).find(([, v]) => v === mod)?.[0];
+                          const inZip = !validateResult?.files?.length || !zipFile || validateResult.files.includes(zipFile);
+                          return (
+                            <label key={mod} className={`flex items-center gap-2 p-2.5 rounded-lg border text-xs transition-colors ${
+                              inZip ? "border-slate-200 bg-white cursor-pointer hover:border-slate-300" : "border-slate-100 bg-slate-50 opacity-40 cursor-not-allowed"
+                            }`}>
+                              <input type="checkbox" className="accent-blue-600"
+                                checked={selectedModules.has(mod)}
+                                disabled={!inZip}
+                                onChange={e => {
+                                  const next = new Set(selectedModules);
+                                  e.target.checked ? next.add(mod) : next.delete(mod);
+                                  setSelectedModules(next);
+                                }} />
+                              <span className="flex-1">{MODULE_LABELS[mod]}</span>
+                              {validateResult?.files?.length && !inZip && (
+                                <span className="text-[10px] text-slate-300">not in ZIP</span>
+                              )}
+                            </label>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -2684,69 +2775,58 @@ export function AdminSettings() {
                 </div>
               </div>
 
-              {/* ── Export Individual ─────────────────────────────────────── */}
+              {/* ── Export Selected Data ──────────────────────────────────── */}
               <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Export Individual Data</p>
-                <div className="grid sm:grid-cols-3 gap-4">
-                  {[
-                    { type: "users",     label: "Export Users",     desc: "All user accounts. CSV format.", icon: Users },
-                    { type: "campaigns", label: "Export Campaigns", desc: "All campaigns & metadata. CSV format.", icon: Mail },
-                    { type: "settings",  label: "Export Settings",  desc: "Platform settings snapshot. JSON format.", icon: Database },
-                  ].map(e => (
-                    <div key={e.type} className="p-4 rounded-2xl border border-slate-200 bg-slate-50 space-y-3">
-                      <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                          <e.icon className="h-4 w-4 text-blue-700" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-slate-900 text-xs">{e.label}</p>
-                          <p className="text-xs text-slate-400 mt-0.5">{e.desc}</p>
-                        </div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Export Selected Data</p>
+                <div className="p-5 rounded-2xl border border-slate-200 bg-slate-50 space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-medium text-slate-600">Choose modules to include in ZIP</p>
+                      <div className="flex gap-2">
+                        <button className="text-[11px] text-blue-600 hover:underline"
+                          onClick={() => setExportSelectedModules(new Set(ALL_EXPORT_MODULES))}>Select All</button>
+                        <button className="text-[11px] text-slate-400 hover:underline"
+                          onClick={() => setExportSelectedModules(new Set())}>Clear All</button>
                       </div>
-                      <Button variant="outline" size="sm" className="w-full rounded-xl gap-2"
-                        disabled={exporting === e.type}
-                        onClick={() => doExport(e.type)}>
-                        {exporting === e.type ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-                        {exporting === e.type ? "Exporting..." : "Download"}
-                      </Button>
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* ── Import Individual ─────────────────────────────────────── */}
-              <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Import Individual Data</p>
-                <div className="grid sm:grid-cols-3 gap-4">
-                  {[
-                    { type: "users",     label: "Import Users",     desc: "JSON array of user objects. Upserts by email.", icon: Users,    color: "bg-purple-100 text-purple-700" },
-                    { type: "campaigns", label: "Import Campaigns", desc: "JSON array of campaigns. Skips duplicates.", icon: Mail,     color: "bg-indigo-100 text-indigo-700" },
-                    { type: "settings",  label: "Import Settings",  desc: "JSON settings object. Overwrites existing keys.", icon: Database, color: "bg-teal-100 text-teal-700"   },
-                  ].map(e => (
-                    <div key={e.type} className="p-4 rounded-2xl border border-slate-200 bg-slate-50 space-y-3">
-                      <div className="flex items-center gap-2">
-                        <div className={`h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 ${e.color}`}>
-                          <e.icon className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-slate-900 text-xs">{e.label}</p>
-                          <p className="text-xs text-slate-400 mt-0.5">{e.desc}</p>
-                        </div>
-                      </div>
-                      <Button variant="outline" size="sm" className="w-full rounded-xl gap-2"
-                        disabled={importing === e.type}
-                        onClick={() => doImport(e.type)}>
-                        {importing === e.type ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
-                        {importing === e.type ? "Importing..." : "Upload JSON"}
-                      </Button>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                      {ALL_EXPORT_MODULES.map(mod => (
+                        <label key={mod} className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 bg-white cursor-pointer hover:border-blue-300 text-xs transition-colors">
+                          <input type="checkbox" className="accent-blue-600"
+                            checked={exportSelectedModules.has(mod)}
+                            onChange={e => {
+                              const next = new Set(exportSelectedModules);
+                              e.target.checked ? next.add(mod) : next.delete(mod);
+                              setExportSelectedModules(next);
+                            }} />
+                          {EXPORT_MODULE_LABELS[mod]}
+                        </label>
+                      ))}
                     </div>
-                  ))}
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1 border-t border-slate-200">
+                    <p className="text-xs text-slate-500">
+                      {exportSelectedModules.size === 0
+                        ? "No modules selected"
+                        : `${exportSelectedModules.size} of ${ALL_EXPORT_MODULES.length} modules selected — ZIP includes manifest.json`}
+                    </p>
+                    <Button className="rounded-xl gap-2 bg-blue-600 hover:bg-blue-700 text-white shrink-0"
+                      disabled={exportSelectedModules.size === 0 || exportingSelective}
+                      onClick={doSelectiveExport}>
+                      {exportingSelective ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                      {exportingSelective ? "Exporting…" : "Export Selected"}
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    ZIP includes <code className="font-mono bg-slate-100 px-1 rounded">manifest.json</code> with backupVersion, schemaVersion, selectedModules, and row counts.
+                    Fully compatible with the Restore Center above — upload the ZIP and restore any subset of its modules.
+                  </p>
                 </div>
               </div>
 
               <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-700 leading-relaxed">
-                <span className="font-semibold text-blue-900">Full ZIP backup</span> includes password hashes — users log in immediately after restore with no password reset needed.
-                Individual imports (above) do not restore passwords; new users created that way must set a password via the reset flow.
+                <span className="font-semibold text-blue-900">Full ZIP backup</span> (Backup Center above) includes password hashes — users log in immediately after restore with no reset needed.
+                Selective exports use the same versioned ZIP format and are fully compatible with the Restore Center.
               </div>
             </div>
           )}
