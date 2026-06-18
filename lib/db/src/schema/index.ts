@@ -15,3 +15,4 @@ export * from "./suppressions";
 export * from "./processed_bounces";
 export * from "./backup_history";
 export * from "./composer_drafts";
+export * from "./design_templates";

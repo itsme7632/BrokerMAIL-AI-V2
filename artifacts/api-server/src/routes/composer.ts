@@ -1,7 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import {
-  db, mailboxesTable, composerDraftsTable, emailQueueTable, draftsTable,
+  db, mailboxesTable, composerDraftsTable, emailQueueTable, draftsTable, designTemplatesTable,
 } from "@workspace/db";
 import type { User } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
@@ -145,6 +145,154 @@ router.delete("/composer/drafts/:id", requireAuth, async (req, res) => {
   }
 });
 
+// ── GET /api/composer/design-templates ───────────────────────────────────────
+router.get("/composer/design-templates", requireAuth, async (req, res) => {
+  const user = req.user as User;
+  try {
+    const rows = await db
+      .select()
+      .from(designTemplatesTable)
+      .where(eq(designTemplatesTable.userId, user.id))
+      .orderBy(desc(designTemplatesTable.createdAt));
+    res.json(rows);
+  } catch (err: any) {
+    logger.error({ err }, "[COMPOSER] Failed to load design templates");
+    res.status(500).json({ error: "Failed to load design templates" });
+  }
+});
+
+// ── POST /api/composer/design-templates ──────────────────────────────────────
+router.post("/composer/design-templates", requireAuth, async (req, res) => {
+  const user = req.user as User;
+  try {
+    const { name, description, htmlLayout } = req.body;
+    if (!name?.trim()) { res.status(400).json({ error: "Name is required" }); return; }
+    if (!htmlLayout?.trim()) { res.status(400).json({ error: "HTML layout is required" }); return; }
+    const [row] = await db.insert(designTemplatesTable).values({
+      userId:      user.id,
+      name:        name.trim(),
+      description: description?.trim() || null,
+      htmlLayout:  htmlLayout,
+    }).returning();
+    res.json(row);
+  } catch (err: any) {
+    logger.error({ err }, "[COMPOSER] Failed to create design template");
+    res.status(500).json({ error: "Failed to create design template" });
+  }
+});
+
+// ── PUT /api/composer/design-templates/:id ────────────────────────────────────
+router.put("/composer/design-templates/:id", requireAuth, async (req, res) => {
+  const user = req.user as User;
+  const id   = parseInt(req.params.id);
+  try {
+    const { name, description, htmlLayout } = req.body;
+    const [row] = await db
+      .update(designTemplatesTable)
+      .set({
+        name:        name?.trim() || undefined,
+        description: description?.trim() || null,
+        htmlLayout:  htmlLayout || undefined,
+        updatedAt:   new Date(),
+      })
+      .where(and(eq(designTemplatesTable.id, id), eq(designTemplatesTable.userId, user.id)))
+      .returning();
+    if (!row) { res.status(404).json({ error: "Template not found" }); return; }
+    res.json(row);
+  } catch (err: any) {
+    logger.error({ err }, "[COMPOSER] Failed to update design template");
+    res.status(500).json({ error: "Failed to update design template" });
+  }
+});
+
+// ── DELETE /api/composer/design-templates/:id ─────────────────────────────────
+router.delete("/composer/design-templates/:id", requireAuth, async (req, res) => {
+  const user = req.user as User;
+  const id   = parseInt(req.params.id);
+  try {
+    await db.delete(designTemplatesTable)
+      .where(and(eq(designTemplatesTable.id, id), eq(designTemplatesTable.userId, user.id)));
+    res.json({ ok: true });
+  } catch (err: any) {
+    logger.error({ err }, "[COMPOSER] Failed to delete design template");
+    res.status(500).json({ error: "Failed to delete design template" });
+  }
+});
+
+// ── POST /api/composer/design-templates/:id/duplicate ────────────────────────
+router.post("/composer/design-templates/:id/duplicate", requireAuth, async (req, res) => {
+  const user = req.user as User;
+  const id   = parseInt(req.params.id);
+  try {
+    const [original] = await db.select()
+      .from(designTemplatesTable)
+      .where(and(eq(designTemplatesTable.id, id), eq(designTemplatesTable.userId, user.id)));
+    if (!original) { res.status(404).json({ error: "Template not found" }); return; }
+    const [copy] = await db.insert(designTemplatesTable).values({
+      userId:      user.id,
+      name:        `${original.name} (Copy)`,
+      description: original.description,
+      htmlLayout:  original.htmlLayout,
+    }).returning();
+    res.json(copy);
+  } catch (err: any) {
+    logger.error({ err }, "[COMPOSER] Failed to duplicate design template");
+    res.status(500).json({ error: "Failed to duplicate design template" });
+  }
+});
+
+// ── POST /api/composer/ai-generate ───────────────────────────────────────────
+router.post("/composer/ai-generate", requireAuth, async (req, res) => {
+  const { prompt, subject, tone } = req.body;
+  if (!prompt?.trim()) { res.status(400).json({ error: "Prompt is required" }); return; }
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    res.status(503).json({ error: "AI features require an OpenAI API key. Please configure OPENAI_API_KEY in Settings." });
+    return;
+  }
+
+  try {
+    const systemPrompt = `You are a professional email copywriter for an auto transport brokerage company. 
+Write compelling, professional email content in HTML format. 
+Use <p>, <ul>, <li>, <strong>, <em> tags. 
+Do NOT include <html>, <head>, <body> or CSS — just the inner content.
+Keep it concise, professional, and action-oriented.
+${tone ? `Tone: ${tone}` : ""}`;
+
+    const userPrompt = `Write email body HTML for: ${prompt}
+${subject ? `Email subject: ${subject}` : ""}
+
+Return ONLY the inner HTML content, no wrapper tags.`;
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        max_tokens: 1000,
+        temperature: 0.7,
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error((err as any)?.error?.message || `OpenAI error ${response.status}`);
+    }
+
+    const data = await response.json() as any;
+    const generatedHtml = data.choices?.[0]?.message?.content?.trim() || "";
+    res.json({ html: generatedHtml });
+  } catch (err: any) {
+    logger.error({ err }, "[COMPOSER] AI generate failed");
+    res.status(500).json({ error: err.message || "AI generation failed" });
+  }
+});
+
 // ── POST /api/composer/test ───────────────────────────────────────────────────
 router.post("/composer/test", requireAuth, upload.array("attachments"), async (req, res) => {
   const user  = req.user as User;
@@ -243,7 +391,6 @@ router.post("/composer/send", requireAuth, upload.array("attachments"), async (r
       });
     }
 
-    // Record in emailQueueTable so the email appears in Sent Emails
     await db.insert(emailQueueTable).values({
       jobId:              `composer:${trackingId}`,
       userId:             user.id,
@@ -259,7 +406,6 @@ router.post("/composer/send", requireAuth, upload.array("attachments"), async (r
       sentAt:             new Date(),
     });
 
-    // Insert minimal drafts record so open/click tracking events can resolve
     try {
       await db.insert(draftsTable).values({
         userId:       user.id,

@@ -1,11 +1,25 @@
 ---
 name: Single Email Composer architecture
-description: Architecture decisions for the standalone /compose page and its backend plumbing
+description: Architecture decisions for the standalone /compose page, design templates, and backend plumbing
 ---
 
 ## Key decisions
 
-**Route**: `/compose` — `ProtectedRoute` → `AppLayout` → `SingleEmailComposer`; nav item uses `PenLine` icon
+**Routes**: `/compose` → `SingleEmailComposer`; `/design-templates` → `DesignTemplateLibrary`
+
+**DB tables**:
+- `composerDraftsTable` (schema/composer_drafts.ts) — composer drafts with mailbox/tracking metadata
+- `designTemplatesTable` (schema/design_templates.ts) — user HTML layout wrappers with {{content}}, {{branding_footer}}, {{company_name}} tokens
+
+**Design Templates vs Content Templates**:
+- Content templates = hardcoded quick-start fills (Quote Email, Follow Up, Thank You, Newsletter)
+- Design templates = HTML layout wrappers; built-in via `buildTemplateHtml()` (frontend-only); user-created via `designTemplatesTable`
+- Built-in: string id ("professional","minimal","corporate","modern-blue","newsletter","custom"); user: "user:{id}" prefix
+- `buildTemplateHtml(templateId, content, branding, brandingEnabled)` → complete email HTML
+
+**New API endpoints**: GET/POST/PUT/DELETE /api/composer/design-templates, POST /api/composer/design-templates/:id/duplicate, POST /api/composer/ai-generate (GPT-4o-mini, requires OPENAI_API_KEY)
+
+**UX features added**: Empty state quick-start cards, Design Template Gallery modal, inline Editor|Desktop|Mobile tabs, Brand Preview panel (sidebar), improved attachments list, AI Generate inline panel, Save As Template panel.
 
 **DB**: New `composerDraftsTable` (schema/composer_drafts.ts) with userId, mailboxId (nullable), mailboxType, toEmail, ccEmail, bccEmail, subject, body, trackOpen, trackClick, includeBranding, status, sentAt, createdAt, updatedAt.
 
