@@ -1,0 +1,160 @@
+The Single Email Composer needs a major UX cleanup and Gmail-style redesign.
+
+IMPORTANT:
+Do NOT add AI generation features.
+Do NOT add campaign logic, variables, bulk sending, or automation features.
+This page is only for composing and sending a single email.
+
+ISSUES TO FIX
+
+1. LIVE PREVIEW IS NOT WORKING
+- Subject changes are not reflected in Desktop Preview.
+- Subject changes are not reflected in Mobile Preview.
+- Email body changes are not reflected in Desktop Preview.
+- Email body changes are not reflected in Mobile Preview.
+- Template changes must instantly update both preview modes.
+- Branding footer changes must instantly update previews.
+- Preview should always be WYSIWYG and update in real time.
+
+2. REMOVE AGGRESSIVE BLUE FOCUS BORDERS
+Current blue outline around:
+- From field
+- To field
+- Subject field
+
+looks unprofessional.
+
+Replace with:
+- subtle border
+- soft shadow
+- Gmail-style focus state
+- no bright blue rectangle
+
+Use platform design language consistent with BrokerMAIL AI.
+
+3. MOVE TEMPLATES / DRAFTS / LIBRARY
+Current location:
+Top-right header
+
+Problem:
+- Creates visual clutter
+- Competes with compose experience
+- Feels crowded
+
+Required:
+
+Create a left sidebar panel or collapsible drawer.
+
+Sidebar sections:
+
+DESIGN TEMPLATES
+- Professional Quote
+- Modern Blue
+- Corporate
+- Minimal
+- Newsletter
+
+DRAFTS
+- Saved drafts list
+
+LIBRARY
+- Saved reusable email layouts
+
+The compose experience should remain the primary focus.
+
+4. MAKE COMPOSER FEEL LIKE GMAIL
+
+Current layout feels like an admin form.
+
+Redesign to resemble Gmail compose:
+
+- Cleaner spacing
+- Larger content area
+- Softer borders
+- Better typography
+- Better field alignment
+
+Suggested structure:
+
+FROM
+TO
+CC / BCC
+SUBJECT
+EDITOR
+
+Then preview controls.
+
+5. IMPROVE PREVIEW EXPERIENCE
+
+Desktop Preview:
+- Real rendered email
+- Centered
+- Proper width
+- Professional frame
+
+Mobile Preview:
+- Real phone frame
+- Accurate mobile width
+- Show actual email rendering
+
+Do not use placeholder skeleton blocks.
+
+Show actual content.
+
+6. BETTER TEMPLATE EXPERIENCE
+
+When selecting:
+- Professional Quote
+- Modern Blue
+- Corporate
+- Minimal
+- Newsletter
+
+the actual email layout should load instantly.
+
+Users must see the design change immediately.
+
+7. BRANDING SYNC
+
+Preview must display:
+
+- Company logo
+- Company name
+- Agent name
+- Website
+- Phone
+- Signature
+
+using current branding settings.
+
+8. PROFESSIONAL EMAIL BUILDER
+
+Goal is not Mailchimp complexity.
+
+Goal is:
+
+Gmail simplicity
++
+Professional email design templates
+
+The composer should feel intuitive enough that a broker can send a polished email within 30 seconds.
+
+9. REMOVE ANY UNUSED OR HALF-COMPLETE FEATURES
+
+Remove:
+- AI generate placeholders
+- dead buttons
+- non-functional controls
+- template controls that do not affect preview
+
+Every visible control must work.
+
+10. FINAL RESULT
+
+The page should feel like:
+
+70% Gmail
+20% HubSpot
+10% Outlook
+
+Clean, professional, fast, and focused on composing a single email with beautiful design templates.
