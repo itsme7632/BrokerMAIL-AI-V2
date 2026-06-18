@@ -18,6 +18,7 @@ import billingRouter from "./billing";
 import sentEmailsRouter from "./sent-emails";
 import notificationsRouter from "./notifications";
 import suppressionsRouter from "./suppressions";
+import composerRouter from "./composer";
 
 const router: IRouter = Router();
 
@@ -40,5 +41,6 @@ router.use(billingRouter);
 router.use(sentEmailsRouter);
 router.use(notificationsRouter);
 router.use(suppressionsRouter);
+router.use(composerRouter);
 
 export default router;

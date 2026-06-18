@@ -199,10 +199,13 @@ export async function testSmtp(creds: SmtpCredentials & { rawPass?: string }): P
 }
 
 export interface SendOptions {
-  to:      string;
-  subject: string;
-  text:    string;
-  html:    string;
+  to:          string;
+  subject:     string;
+  text:        string;
+  html:        string;
+  cc?:         string;
+  bcc?:        string;
+  attachments?: Array<{ filename: string; content: Buffer; contentType: string }>;
 }
 
 /**
@@ -242,10 +245,19 @@ export async function sendEmail(
     const info = await transport.sendMail({
       from:    fromAddress,
       to:      opts.to,
+      ...(opts.cc  ? { cc:  opts.cc  } : {}),
+      ...(opts.bcc ? { bcc: opts.bcc } : {}),
       subject: opts.subject,
       text:    opts.text,
       html:    opts.html,
       replyTo: mailbox.replyTo ?? undefined,
+      ...(opts.attachments?.length ? {
+        attachments: opts.attachments.map(a => ({
+          filename:    a.filename,
+          content:     a.content,
+          contentType: a.contentType,
+        })),
+      } : {}),
     });
     logger.info({ ...ctx, messageId: info.messageId }, "[SMTP] 6. sendMail() completed successfully");
     return { messageId: info.messageId ?? "" };

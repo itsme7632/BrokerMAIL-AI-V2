@@ -192,6 +192,139 @@ export async function createGmailDraft(
   }
 }
 
+/**
+ * Send a Gmail message directly (not as a draft) from the authenticated user.
+ * Supports Cc, Bcc, HTML body, and file attachments.
+ * The gmail.compose scope covers both draft creation and direct sending.
+ */
+export async function sendGmailMessage(
+  user: User,
+  opts: {
+    to: string;
+    cc?: string;
+    bcc?: string;
+    subject: string;
+    bodyText: string;
+    bodyHtml?: string;
+    attachments?: Array<{ filename: string; content: Buffer; contentType: string }>;
+  }
+): Promise<string> {
+  if (!user.gmailAccessToken) {
+    throw new Error("Gmail not connected — please reconnect Gmail in Settings.");
+  }
+  if (!user.gmailRefreshToken) {
+    throw new Error("Gmail refresh token missing — please reconnect Gmail in Settings (click Reconnect).");
+  }
+
+  const gmail = await getGmailClient(user);
+  const subjectEncoded = `=?UTF-8?B?${Buffer.from(opts.subject, "utf-8").toString("base64")}?=`;
+  const outerBoundary = "====BROKERMAIL_OUTER====";
+  const innerBoundary = "====BROKERMAIL_INNER====";
+
+  const headers: string[] = [
+    `To: ${opts.to}`,
+    ...(opts.cc  ? [`Cc: ${opts.cc}`]  : []),
+    ...(opts.bcc ? [`Bcc: ${opts.bcc}`] : []),
+    `Subject: ${subjectEncoded}`,
+    "MIME-Version: 1.0",
+  ];
+
+  let rawMessage: string;
+
+  if (opts.attachments && opts.attachments.length > 0) {
+    const textB64 = Buffer.from(opts.bodyText, "utf-8").toString("base64");
+    const htmlB64 = opts.bodyHtml
+      ? Buffer.from(opts.bodyHtml, "utf-8").toString("base64")
+      : textB64;
+
+    const parts: string[] = [
+      ...headers,
+      `Content-Type: multipart/mixed; boundary="${outerBoundary}"`,
+      "",
+      `--${outerBoundary}`,
+      `Content-Type: multipart/alternative; boundary="${innerBoundary}"`,
+      "",
+      `--${innerBoundary}`,
+      "Content-Type: text/plain; charset=UTF-8",
+      "Content-Transfer-Encoding: base64",
+      "",
+      textB64,
+      "",
+      `--${innerBoundary}`,
+      "Content-Type: text/html; charset=UTF-8",
+      "Content-Transfer-Encoding: base64",
+      "",
+      htmlB64,
+      "",
+      `--${innerBoundary}--`,
+    ];
+
+    for (const att of opts.attachments) {
+      parts.push(
+        "",
+        `--${outerBoundary}`,
+        `Content-Type: ${att.contentType}; name="${att.filename}"`,
+        "Content-Transfer-Encoding: base64",
+        `Content-Disposition: attachment; filename="${att.filename}"`,
+        "",
+        att.content.toString("base64"),
+      );
+    }
+    parts.push("", `--${outerBoundary}--`);
+    rawMessage = parts.join("\r\n");
+  } else if (opts.bodyHtml) {
+    const textB64 = Buffer.from(opts.bodyText, "utf-8").toString("base64");
+    const htmlB64 = Buffer.from(opts.bodyHtml, "utf-8").toString("base64");
+    rawMessage = [
+      ...headers,
+      `Content-Type: multipart/alternative; boundary="${innerBoundary}"`,
+      "",
+      `--${innerBoundary}`,
+      "Content-Type: text/plain; charset=UTF-8",
+      "Content-Transfer-Encoding: base64",
+      "",
+      textB64,
+      "",
+      `--${innerBoundary}`,
+      "Content-Type: text/html; charset=UTF-8",
+      "Content-Transfer-Encoding: base64",
+      "",
+      htmlB64,
+      "",
+      `--${innerBoundary}--`,
+    ].join("\r\n");
+  } else {
+    rawMessage = [
+      ...headers,
+      "Content-Type: text/plain; charset=UTF-8",
+      "Content-Transfer-Encoding: quoted-printable",
+      "",
+      opts.bodyText,
+    ].join("\r\n");
+  }
+
+  const encoded = Buffer.from(rawMessage)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+  try {
+    const result = await gmail.users.messages.send({
+      userId: "me",
+      requestBody: { raw: encoded },
+    });
+    return result.data.id ?? "";
+  } catch (err: any) {
+    const status = err?.response?.status ?? err?.status;
+    const reason = err?.response?.data?.error?.message ?? err?.message ?? String(err);
+    if (status === 401) throw new Error("Gmail authentication expired — please reconnect Gmail in Settings.");
+    if (status === 403) throw new Error(`Gmail permission denied — ensure the Gmail Compose scope was granted. Detail: ${reason}`);
+    if (status === 429) throw new Error("Gmail API rate limit reached — please try again in a few minutes.");
+    throw new Error(`Gmail API error (${status ?? "unknown"}): ${reason}`);
+  }
+}
+
 export async function getOAuthUserInfo(accessToken: string) {
   const client = getOAuth2Client();
   client.setCredentials({ access_token: accessToken });

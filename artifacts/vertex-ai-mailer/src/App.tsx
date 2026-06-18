@@ -32,6 +32,7 @@ import SentEmails from "@/pages/SentEmails";
 import Campaigns from "@/pages/Campaigns";
 import CampaignDetail from "@/pages/CampaignDetail";
 import Maintenance from "@/pages/Maintenance";
+import SingleEmailComposer from "@/pages/SingleEmailComposer";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -121,6 +122,12 @@ function Router() {
       <Route path="/campaigns">
         <ProtectedRoute>
           <AppLayout><Campaigns /></AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/compose">
+        <ProtectedRoute>
+          <AppLayout><SingleEmailComposer /></AppLayout>
         </ProtectedRoute>
       </Route>
 

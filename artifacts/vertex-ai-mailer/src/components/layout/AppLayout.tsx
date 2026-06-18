@@ -5,7 +5,7 @@ import { Logo } from "@/components/Logo";
 import {
   LayoutDashboard, FileText, UploadCloud, Mail, Settings, ShieldAlert,
   Menu, X, Server, CreditCard, SendHorizonal, Megaphone, LayoutGrid,
-  Search, LogOut, Palette, HelpCircle, ChevronDown, Moon, Sun,
+  Search, LogOut, Palette, HelpCircle, ChevronDown, Moon, Sun, PenLine,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { href: "/dashboard",         icon: LayoutDashboard, label: "Dashboard",        exact: true  },
   { href: "/templates",         icon: FileText,        label: "Templates",        exact: true  },
   { href: "/templates/gallery", icon: LayoutGrid,      label: "Template Gallery", exact: true  },
+  { href: "/compose",           icon: PenLine,         label: "Compose Email",    exact: true  },
   { href: "/leads/import",      icon: UploadCloud,     label: "Upload & Send",    exact: true  },
   { href: "/campaigns",         icon: Megaphone,       label: "Campaigns",        exact: false },
   { href: "/sent-emails",       icon: SendHorizonal,   label: "Sent Emails",      exact: false },

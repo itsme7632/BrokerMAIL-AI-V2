@@ -14,3 +14,4 @@ export * from "./support_tickets";
 export * from "./suppressions";
 export * from "./processed_bounces";
 export * from "./backup_history";
+export * from "./composer_drafts";
