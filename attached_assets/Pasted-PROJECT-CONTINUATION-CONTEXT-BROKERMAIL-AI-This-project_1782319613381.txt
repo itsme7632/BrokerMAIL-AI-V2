@@ -1,0 +1,319 @@
+PROJECT CONTINUATION CONTEXT – BROKERMAIL AI
+
+This project was already heavily investigated on another Replit account before credits ran out. Continue from the current GitHub state and DO NOT restart discovery from scratch.
+
+Current repository already contains partial fixes for the Single Email Composer.
+
+====================================================
+WHAT WAS ALREADY DISCOVERED
+===========================
+
+1. DELIVERY STATUS BUG
+
+Current behavior:
+
+Emails are marked:
+
+"Delivered to inbox"
+
+immediately after SMTP returns success.
+
+This is incorrect.
+
+SMTP 250 OK only means:
+
+Message accepted by SMTP server.
+
+It DOES NOT mean inbox delivery.
+
+Required fix:
+
+SMTP accepted
+→ Status = Accepted
+
+Inbox delivery confirmation
+→ Status = Delivered
+
+Open tracking
+→ Status = Opened
+
+Do not show "Delivered to inbox" unless actual confirmation exists.
+
+====================================================
+2. PREVIEW NOT AVAILABLE
+========================
+
+Sent Emails page often shows:
+
+"Preview not available"
+
+Root cause investigation found:
+
+Single Composer emails use:
+
+templateId = 0
+
+Preview endpoint expects a template lookup.
+
+Template lookup fails.
+
+Preview returns empty.
+
+Required fix:
+
+Store complete sent email snapshot:
+
+subject
+html body
+plain text body
+attachments metadata
+branding snapshot
+template snapshot
+
+Preview must render EXACT email that was sent.
+
+No dependency on template existing later.
+
+====================================================
+3. EDITOR CONTENT LOSS
+======================
+
+Current bug:
+
+Write email
+→ Desktop preview
+→ Mobile preview
+→ Edit
+
+Body disappears.
+
+Root cause discovered:
+
+Editor component remounts.
+
+Content stored only in DOM.
+
+Required fix:
+
+Persist:
+
+subject
+body
+attachments
+selected template
+
+in React state.
+
+Switching views must never destroy content.
+
+====================================================
+4. COMPOSER UX PROBLEM
+======================
+
+Current screen feels like:
+
+Campaign Builder
++
+Template Builder
++
+Email Designer
+
+Users want:
+
+Gmail-style composer.
+
+Required redesign:
+
+PRIMARY VIEW ONLY:
+
+FROM
+TO
+CC/BCC
+SUBJECT
+BODY
+ATTACHMENTS
+
+BOTTOM ACTIONS:
+
+Save Draft
+Send Test
+Send Email
+
+Advanced tools hidden behind drawers:
+
+Templates
+Branding
+Preview
+Library
+
+Do not show everything simultaneously.
+
+====================================================
+5. MAILBOX ISSUE
+================
+
+Previously:
+
+Mailbox page showed connected mailbox.
+
+Compose page showed:
+
+"No mailboxes configured"
+
+Partial fix was attempted.
+
+Current status must be verified.
+
+Required:
+
+Compose must use SAME mailbox source as Mailbox Settings page.
+
+Verify:
+
+GET /api/composer/mailboxes
+
+returns actual mailbox records.
+
+If mailbox exists:
+
+Auto-select default mailbox.
+
+====================================================
+6. PREVIEW VIEWS
+================
+
+Current Desktop/Mobile preview system is over-engineered.
+
+Keep preview available but move it into:
+
+Preview Drawer
+
+or
+
+Preview Modal
+
+instead of dedicated page modes.
+
+Editing should always remain primary.
+
+====================================================
+7. SINGLE EMAIL TEMPLATES
+=========================
+
+Current received emails look unprofessional.
+
+Observed problems:
+
+* giant colored bars
+* large empty areas
+* poor spacing
+* hardcoded branding
+* inconsistent signature styling
+
+Required:
+
+Professional email-safe HTML.
+
+Create:
+
+Quote
+Follow Up
+Thank You
+Newsletter
+Plain Text
+
+All responsive.
+
+All use branding variables only:
+
+{{company_name}}
+{{company_logo}}
+{{company_phone}}
+{{company_email}}
+{{company_website}}
+
+Never hardcode BrokerMAIL.
+
+====================================================
+8. ATTACHMENTS
+==============
+
+Ensure:
+
+PDF
+DOCX
+XLSX
+CSV
+ZIP
+PNG
+JPG
+
+are visible after upload.
+
+Show:
+
+filename
+filesize
+remove button
+
+Store attachment metadata with sent email.
+
+====================================================
+9. SENT EMAILS IMPROVEMENTS
+===========================
+
+Sent Email Details page should display:
+
+Subject
+Recipient
+Sender
+Date
+Status
+Attachments
+HTML Preview
+Timeline
+
+Timeline should correctly show:
+
+Queued
+Sent
+Accepted
+Delivered (if confirmed)
+Opened (if tracked)
+
+====================================================
+10. IMPORTANT
+=============
+
+Do NOT spend credits rediscovering issues.
+
+Work directly from the current repository state.
+
+First inspect:
+
+SingleEmailComposer.tsx
+sent-emails.tsx
+composer routes
+preview endpoints
+email_queue schema
+
+Then continue implementing the fixes above.
+
+====================================================
+FINAL QA BEFORE MARKING COMPLETE
+================================
+
+✓ Send a real email
+✓ Verify subject saved
+✓ Verify body saved
+✓ Verify attachments saved
+✓ Verify preview loads
+✓ Verify switching views does not clear content
+✓ Verify mailbox selection works
+✓ Verify accepted vs delivered status logic
+✓ Verify received email renders professionally
+✓ Verify no hardcoded BrokerMAIL branding remains
+
+Do not stop after code changes.
+
+Actually test the complete flow end-to-end.

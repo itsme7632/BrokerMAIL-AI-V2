@@ -479,6 +479,14 @@ export default function SingleEmailComposer() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { rebuildPreview(); }, [subject, selectedDesign, branding, includeBranding]);
 
+  // Restore editor innerHTML from cache when switching back to editor tab
+  // (editor div is conditionally rendered so it remounts empty on tab return)
+  useEffect(() => {
+    if (activeTab === "editor" && editorRef.current) {
+      editorRef.current.innerHTML = editorContentRef.current;
+    }
+  }, [activeTab]);
+
   const loadMailboxes = async () => {
     try {
       const r = await apiFetch("composer/mailboxes");
@@ -722,7 +730,7 @@ export default function SingleEmailComposer() {
     try {
       const r = await fetch(apiUrl("composer/send"), { method: "POST", headers: authHeaders(), body: buildFormData() });
       if (!r.ok) throw new Error((await r.json()).error || "Failed to send");
-      toast({ title: "Email sent!", description: `Delivered to ${to}` });
+      toast({ title: "Email sent!", description: `Sent to ${to}` });
       if (draftId) { await apiDel(`composer/drafts/${draftId}`); setDraftId(null); await loadDrafts(); }
       setTo(""); setCc(""); setBcc(""); setSubject(""); setHtml("<p></p>");
       setAttachments([]); setShowCc(false); setShowBcc(false);

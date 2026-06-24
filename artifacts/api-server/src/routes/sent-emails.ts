@@ -317,6 +317,30 @@ router.get("/sent-emails/:id/preview", requireAuth, async (req, res): Promise<vo
     .where(and(eq(emailQueueTable.id, id), eq(emailQueueTable.userId, user.id)));
   if (!item) { res.status(404).json({ error: "Email not found" }); return; }
 
+  // ── Composer emails (templateId = 0) — serve stored HTML snapshot ──────────
+  if (!item.templateId || item.templateId === 0) {
+    // Look up the full rendered HTML body from draftsTable via trackingId
+    let html = "";
+    if (item.trackingId) {
+      const [draft] = await db
+        .select({ body: draftsTable.body })
+        .from(draftsTable)
+        .where(eq(draftsTable.trackingId, item.trackingId));
+      if (draft?.body) html = draft.body;
+    }
+    res.json({
+      html,
+      subject:      item.subject ?? "",
+      to:           item.email,
+      sentAt:       item.sentAt?.toISOString() ?? null,
+      customerName: null,
+      rawBody:      html,
+      isComposerEmail: true,
+    });
+    return;
+  }
+
+  // ── Campaign/template emails — rebuild from template ────────────────────────
   const [template] = await db.select().from(templatesTable)
     .where(and(eq(templatesTable.id, item.templateId), eq(templatesTable.userId, user.id)));
   if (!template) { res.status(404).json({ error: "Template not found" }); return; }
@@ -370,8 +394,8 @@ router.get("/sent-emails/:id/timeline", requireAuth, async (req, res): Promise<v
   if (item.status === "failed" && item.lastError) {
     events.push({ type: "failed", timestamp: new Date().toISOString(), detail: parseSMTPError(item.lastError) });
   } else if (item.sentAt) {
-    events.push({ type: "sent",      timestamp: item.sentAt.toISOString() });
-    events.push({ type: "delivered", timestamp: item.sentAt.toISOString() });
+    events.push({ type: "sent",     timestamp: item.sentAt.toISOString() });
+    events.push({ type: "accepted", timestamp: item.sentAt.toISOString() });
   }
 
   if (item.trackingId) {
