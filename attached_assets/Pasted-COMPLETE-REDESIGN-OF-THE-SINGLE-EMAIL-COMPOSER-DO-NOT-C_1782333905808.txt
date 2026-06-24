@@ -1,0 +1,366 @@
+COMPLETE REDESIGN OF THE SINGLE EMAIL COMPOSER
+
+DO NOT CHANGE ANY BACKEND LOGIC.
+
+This task is ONLY for redesigning the UI/UX of the Single Email Composer.
+
+Current composer feels outdated, cluttered and resembles an old admin panel instead of a modern professional email client.
+
+========================================================
+DESIGN GOAL
+===========
+
+The composer should feel inspired by:
+
+• Gmail
+• Superhuman
+• HubSpot
+• Outlook New
+
+Modern.
+
+Minimal.
+
+Fast.
+
+Professional.
+
+Focused on writing one email.
+
+NOT a campaign builder.
+
+========================================================
+REMOVE THE OLD LOOK
+===================
+
+Remove the heavy boxed layout.
+
+Remove unnecessary borders.
+
+Reduce visual noise.
+
+Reduce excessive separators.
+
+Increase whitespace.
+
+Use cleaner typography.
+
+Make the composer feel premium.
+
+========================================================
+NEW LAYOUT
+==========
+
+Top Toolbar
+
+← Back
+
+Compose Email
+
+Draft Status
+
+Save Draft
+
+Send Test
+
+Send Email
+
+---
+
+FROM
+
+TO
+
+CC/BCC
+
+SUBJECT
+
+---
+
+Large Email Editor
+
+---
+
+Attachment Area
+
+---
+
+Bottom Toolbar
+
+Branding Toggle
+
+Open Tracking
+
+Click Tracking
+
+========================================================
+LEFT SIDEBAR
+============
+
+Replace the current sidebar with a much cleaner one.
+
+Instead of huge cards:
+
+Design Templates
+
+Professional Quote
+
+Follow Up
+
+Thank You
+
+Newsletter
+
+Blank
+
+Display them as compact rows with icons.
+
+Example:
+
+📄 Professional Quote
+
+📄 Follow Up
+
+📄 Thank You
+
+📄 Blank Email
+
+Clicking instantly loads the design.
+
+No oversized cards.
+
+========================================================
+RIGHT SIDEBAR
+=============
+
+Create a collapsible side panel.
+
+Hide by default.
+
+Contains:
+
+Saved Drafts
+
+Saved Designs
+
+Branding
+
+Signature
+
+Attachments
+
+Recent Emails
+
+When collapsed:
+
+Editor gets full width.
+
+========================================================
+EMAIL EDITOR
+============
+
+Editor should occupy most of the page.
+
+Large writing area.
+
+Comfortable padding.
+
+Looks similar to Gmail compose.
+
+Toolbar should stay minimal.
+
+Hide advanced formatting under a More button.
+
+========================================================
+TOOLBAR
+=======
+
+Only show:
+
+Bold
+
+Italic
+
+Underline
+
+Link
+
+Image
+
+Bullet List
+
+Number List
+
+Align
+
+Clear Formatting
+
+Everything else belongs inside:
+
+More ▼
+
+========================================================
+COLOR SYSTEM
+============
+
+Avoid large blue outlines.
+
+Avoid thick borders.
+
+Primary:
+
+#2563EB
+
+Hover:
+
+#3B82F6
+
+Background:
+
+Dark slate
+
+Cards:
+
+Very subtle
+
+Inputs:
+
+Soft borders
+
+Rounded:
+
+10-12px
+
+========================================================
+BUTTONS
+=======
+
+Primary:
+
+Send Email
+
+Blue
+
+Secondary:
+
+Save Draft
+
+Send Test
+
+Gray
+
+Danger:
+
+Discard Draft
+
+Red
+
+========================================================
+DESIGN TEMPLATES
+================
+
+Instead of large template preview cards,
+
+Display:
+
+Professional Quote
+
+Follow Up
+
+Thank You
+
+Newsletter
+
+Minimal
+
+Blank
+
+Each row:
+
+small icon
+
+template name
+
+small description
+
+selected indicator
+
+========================================================
+ATTACHMENTS
+===========
+
+Show Gmail-style attachment chips.
+
+Example:
+
+📄 Quote.pdf
+
+245 KB
+
+✕
+
+🖼 vehicle.jpg
+
+1.4 MB
+
+✕
+
+========================================================
+RESPONSIVE
+==========
+
+Desktop:
+
+Editor centered.
+
+Sidebar collapsible.
+
+Tablet:
+
+Sidebar becomes drawer.
+
+Mobile:
+
+Fullscreen compose.
+
+========================================================
+ANIMATIONS
+==========
+
+Soft transitions only.
+
+Hover effects.
+
+No flashy animations.
+
+========================================================
+REMOVE EVERYTHING THAT FEELS LIKE A CAMPAIGN BUILDER
+====================================================
+
+Do NOT display:
+
+Desktop Preview
+
+Mobile Preview
+
+Large Design Cards
+
+Content Blocks
+
+Multiple side panels open simultaneously
+
+Keep the workflow simple.
+
+========================================================
+FINAL GOAL
+==========
+
+When someone opens BrokerMAIL AI,
+
+their first impression should be:
+
+"This feels like Gmail built specifically for auto transport brokers."
+
+Do not change any backend functionality.
+
+Only redesign the interface while preserving all existing features and logic.

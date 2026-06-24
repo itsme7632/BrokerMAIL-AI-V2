@@ -1,0 +1,187 @@
+CRITICAL SINGLE EMAIL COMPOSER FIXES
+
+There are two major issues that must be fixed.
+
+==================================================
+1. LINK INSERTION IS UNPROFESSIONAL
+==================================================
+
+The current Link button opens:
+
+window.prompt("Enter URL")
+
+This must be removed completely.
+
+Replace it with a modern Gmail-style link dialog.
+
+When user:
+
+- highlights text
+- clicks the Link icon
+
+Open a small popover.
+
+Fields:
+
+URL
+https://example.com
+
+Optional:
+
+☐ Open in new tab
+
+Buttons:
+
+Cancel
+Save
+
+If cursor is already inside a link:
+
+show:
+
+Edit Link
+Remove Link
+
+Never use browser prompt().
+
+==================================================
+2. ATTACHMENTS DO NOT SEND
+==================================================
+
+Currently:
+
+Select file
+↓
+
+UI shows attachment
+
+↓
+
+Email arrives
+
+↓
+
+NO attachment exists.
+
+Audit the ENTIRE attachment flow.
+
+Verify:
+
+Frontend
+
+✓ file picker
+✓ FormData
+✓ multipart upload
+✓ file list
+✓ remove attachment
+
+Backend
+
+✓ multer/upload middleware
+✓ request parsing
+✓ temp storage
+✓ MIME type
+✓ size validation
+
+SMTP
+
+Verify Nodemailer receives:
+
+attachments: [
+
+{
+filename,
+path OR content,
+contentType
+}
+
+]
+
+Do NOT rely on metadata only.
+
+Actually attach binary files.
+
+==================================================
+3. VERIFY WITH REAL EMAIL
+==================================================
+
+Send:
+
+PDF
+PNG
+DOCX
+
+Confirm they appear in:
+
+Gmail
+Outlook
+
+==================================================
+4. IMPROVE ATTACHMENT UI
+==================================================
+
+Instead of:
+
+Attach files
+
+Show chips/cards like Gmail.
+
+Example:
+
+📄 Quote.pdf
+248 KB
+✕
+
+🖼 Vehicle.jpg
+1.8 MB
+✕
+
+Show:
+
+Total attachments
+
+Total size
+
+==================================================
+5. LINK RENDERING
+==================================================
+
+Links inserted into editor should render normally.
+
+Example:
+
+Click here
+
+should become
+
+<a href="https://vertexcarship.com">
+Click here
+</a>
+
+NOT plain text.
+
+Preview should render links correctly.
+
+Sent email should preserve formatting.
+
+==================================================
+6. TEST BEFORE FINISHING
+==================================================
+
+Do NOT stop after writing code.
+
+Actually test:
+
+✓ insert link
+✓ edit link
+✓ remove link
+✓ attach PDF
+✓ attach image
+✓ attach DOCX
+✓ send email
+✓ receive email
+✓ verify attachments open
+✓ verify links work
+✓ verify preview matches final email
+
+Only finish when all tests pass.

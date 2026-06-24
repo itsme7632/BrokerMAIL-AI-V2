@@ -435,6 +435,9 @@ export default function SingleEmailComposer() {
 
   const [attachments, setAttachments] = useState<File[]>([]);
   const fileInputRef                  = useRef<HTMLInputElement>(null);
+  const savedRangeRef                 = useRef<Range | null>(null);
+  const linkDialogRef                 = useRef<HTMLDivElement>(null);
+  const linkInputRef                  = useRef<HTMLInputElement>(null);
 
   const [drafts,     setDrafts]     = useState<any[]>([]);
   const [draftId,    setDraftId]    = useState<number | null>(null);
@@ -448,6 +451,11 @@ export default function SingleEmailComposer() {
 
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showFontSize,    setShowFontSize]    = useState(false);
+
+  const [showLinkDialog, setShowLinkDialog]   = useState(false);
+  const [linkUrl,        setLinkUrl]          = useState("https://");
+  const [linkNewTab,     setLinkNewTab]       = useState(false);
+  const [linkIsEdit,     setLinkIsEdit]       = useState(false);
 
   const [loading,     setLoading]     = useState(true);
   const [sending,     setSending]     = useState(false);
@@ -551,9 +559,78 @@ export default function SingleEmailComposer() {
     }
   };
 
-  const insertLink = () => {
-    const url = window.prompt("Enter URL:", "https://");
-    if (url) exec("createLink", url);
+  const openLinkDialog = () => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) {
+      setLinkUrl("https://");
+      setLinkNewTab(false);
+      setLinkIsEdit(false);
+      savedRangeRef.current = null;
+      setShowLinkDialog(true);
+      setTimeout(() => linkInputRef.current?.focus(), 50);
+      return;
+    }
+    savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+    const node = sel.getRangeAt(0).commonAncestorContainer;
+    const el = (node.nodeType === Node.TEXT_NODE ? node.parentElement : node) as Element | null;
+    const anchor = el?.closest?.("a") as HTMLAnchorElement | null;
+    if (anchor) {
+      setLinkUrl(anchor.getAttribute("href") || "https://");
+      setLinkNewTab(anchor.target === "_blank");
+      setLinkIsEdit(true);
+    } else {
+      setLinkUrl("https://");
+      setLinkNewTab(false);
+      setLinkIsEdit(false);
+    }
+    setShowLinkDialog(true);
+    setTimeout(() => { linkInputRef.current?.focus(); linkInputRef.current?.select(); }, 50);
+  };
+
+  const insertLink = openLinkDialog;
+
+  const applyLink = () => {
+    const clean = linkUrl.trim();
+    const finalUrl = clean && clean !== "https://" ? clean : "";
+    if (!finalUrl) { setShowLinkDialog(false); return; }
+    editorRef.current?.focus();
+    if (savedRangeRef.current) {
+      const sel = window.getSelection();
+      if (sel) { sel.removeAllRanges(); sel.addRange(savedRangeRef.current); }
+    }
+    const sel = window.getSelection();
+    const hasSelection = sel && !sel.isCollapsed;
+    const range = savedRangeRef.current;
+    if (hasSelection && range) {
+      const frag = range.cloneContents();
+      const tmp = document.createElement("div");
+      tmp.appendChild(frag);
+      const inner = tmp.innerHTML || range.toString() || finalUrl;
+      const target = linkNewTab ? ` target="_blank" rel="noopener noreferrer"` : "";
+      document.execCommand("insertHTML", false, `<a href="${finalUrl}"${target}>${inner}</a>`);
+    } else {
+      const target = linkNewTab ? ` target="_blank" rel="noopener noreferrer"` : "";
+      document.execCommand("insertHTML", false, `<a href="${finalUrl}"${target}>${finalUrl}</a>`);
+    }
+    setShowLinkDialog(false);
+    setTimeout(() => {
+      editorContentRef.current = editorRef.current?.innerHTML ?? editorContentRef.current;
+      rebuildPreview();
+    }, 0);
+  };
+
+  const removeLink = () => {
+    editorRef.current?.focus();
+    if (savedRangeRef.current) {
+      const sel = window.getSelection();
+      if (sel) { sel.removeAllRanges(); sel.addRange(savedRangeRef.current); }
+    }
+    document.execCommand("unlink", false);
+    setShowLinkDialog(false);
+    setTimeout(() => {
+      editorContentRef.current = editorRef.current?.innerHTML ?? editorContentRef.current;
+      rebuildPreview();
+    }, 0);
   };
 
   const insertImage = () => {
@@ -1142,7 +1219,72 @@ export default function SingleEmailComposer() {
 
                   <div className="w-px h-4 bg-slate-200 dark:bg-slate-600 mx-0.5" />
 
-                  <TBtn onClick={insertLink}   title="Insert link"><Link2 className="h-3.5 w-3.5" /></TBtn>
+                  {/* Link button + popover dialog */}
+                  <div className="relative">
+                    <TBtn onClick={insertLink} title="Insert link"><Link2 className="h-3.5 w-3.5" /></TBtn>
+                    {showLinkDialog && (
+                      <>
+                        {/* Invisible backdrop to close on outside click */}
+                        <div className="fixed inset-0 z-40" onMouseDown={() => setShowLinkDialog(false)} />
+                        <div
+                          ref={linkDialogRef}
+                          className="absolute top-full left-0 mt-1.5 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl p-4 w-72"
+                          onMouseDown={e => e.stopPropagation()}
+                        >
+                          <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
+                            {linkIsEdit ? "Edit Link" : "Insert Link"}
+                          </p>
+                          <input
+                            ref={linkInputRef}
+                            type="url"
+                            value={linkUrl}
+                            onChange={e => setLinkUrl(e.target.value)}
+                            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); applyLink(); } if (e.key === "Escape") setShowLinkDialog(false); }}
+                            placeholder="https://example.com"
+                            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3"
+                          />
+                          <label className="flex items-center gap-2 mb-4 cursor-pointer select-none group">
+                            <input
+                              type="checkbox"
+                              checked={linkNewTab}
+                              onChange={e => setLinkNewTab(e.target.checked)}
+                              className="w-3.5 h-3.5 rounded accent-blue-600"
+                            />
+                            <span className="text-xs text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-slate-100 transition-colors">
+                              Open in new tab
+                            </span>
+                          </label>
+                          <div className="flex items-center justify-between gap-2">
+                            {linkIsEdit && (
+                              <button
+                                type="button"
+                                onMouseDown={e => { e.preventDefault(); removeLink(); }}
+                                className="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400 font-medium transition-colors px-1"
+                              >
+                                Remove link
+                              </button>
+                            )}
+                            <div className={cn("flex items-center gap-2", !linkIsEdit && "ml-auto")}>
+                              <button
+                                type="button"
+                                onMouseDown={e => { e.preventDefault(); setShowLinkDialog(false); }}
+                                className="px-3 py-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg border border-transparent hover:border-slate-200 dark:hover:border-slate-600 transition-all"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onMouseDown={e => { e.preventDefault(); applyLink(); }}
+                                className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                              >
+                                Save
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
                   <TBtn onClick={insertImage}  title="Insert image"><ImageIcon className="h-3.5 w-3.5" /></TBtn>
                   <TBtn onClick={insertButton} title="Insert button"><Mail className="h-3.5 w-3.5" /></TBtn>
 
