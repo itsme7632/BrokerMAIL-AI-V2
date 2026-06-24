@@ -466,9 +466,9 @@ export default function SingleEmailComposer() {
   }, []);
 
   // Always rebuild preview (live), triggered by subject/template/branding changes
-  useEffect(() => {
-    rebuildPreview();
-  }, [subject, selectedDesign, branding, includeBranding]);
+  // rebuildPreview reads editorContentRef (a ref) so omitting it from deps is intentional
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { rebuildPreview(); }, [subject, selectedDesign, branding, includeBranding]);
 
   const loadMailboxes = async () => {
     try {
@@ -754,11 +754,14 @@ export default function SingleEmailComposer() {
           sidebarCollapsed ? "w-0 overflow-hidden" : "w-56"
         )}
       >
-        <div className="p-3 space-y-5">
+        <div className="p-3 space-y-1">
 
-          {/* Design Templates */}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-2 mb-2">Design</p>
+          {/* ── DESIGNS ─────────────────────────── */}
+          <div className="pt-2">
+            <div className="flex items-center gap-1.5 px-2 mb-1.5">
+              <Palette className="h-3 w-3 text-slate-400" />
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Designs</p>
+            </div>
             <div className="space-y-0.5">
               {BUILT_IN_TEMPLATES.map(t => (
                 <TemplateThumbnail
@@ -779,9 +782,14 @@ export default function SingleEmailComposer() {
             </div>
           </div>
 
-          {/* Content Templates */}
+          <div className="h-px bg-slate-100 dark:bg-slate-700 mx-2 my-1" />
+
+          {/* ── CONTENT BLOCKS ──────────────────── */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-2 mb-2">Content</p>
+            <div className="flex items-center gap-1.5 px-2 mb-1.5">
+              <FileText className="h-3 w-3 text-slate-400" />
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Content Blocks</p>
+            </div>
             <div className="space-y-0.5">
               {Object.entries(CONTENT_TEMPLATES).map(([key, t]) => (
                 <button
@@ -789,31 +797,38 @@ export default function SingleEmailComposer() {
                   onClick={() => applyContentTemplate(key)}
                   className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group"
                 >
-                  <t.icon className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300 shrink-0" />
-                  <span className="text-xs text-slate-600 dark:text-slate-300 truncate">{t.label}</span>
+                  <t.icon className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-500 dark:group-hover:text-blue-400 shrink-0 transition-colors" />
+                  <span className="text-xs text-slate-600 dark:text-slate-300 truncate group-hover:text-slate-900 dark:group-hover:text-white transition-colors">{t.label}</span>
                 </button>
               ))}
               <button
                 onClick={() => { setHtml("<p></p>"); setTimeout(() => rebuildPreview(), 0); }}
                 className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group"
               >
-                <FileCode className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                <span className="text-xs text-slate-600 dark:text-slate-300">Blank</span>
+                <FileCode className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-500 dark:group-hover:text-blue-400 shrink-0 transition-colors" />
+                <span className="text-xs text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Blank</span>
               </button>
             </div>
           </div>
 
-          {/* Drafts */}
+          <div className="h-px bg-slate-100 dark:bg-slate-700 mx-2 my-1" />
+
+          {/* ── DRAFTS ──────────────────────────── */}
           <div>
             <button
               onClick={() => setShowDrafts(!showDrafts)}
-              className="w-full flex items-center justify-between px-2 mb-2 group"
+              className="w-full flex items-center justify-between px-2 py-1 mb-0.5 rounded hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group"
             >
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Drafts {drafts.length > 0 && `(${drafts.length})`}</p>
+              <div className="flex items-center gap-1.5">
+                <Clock className="h-3 w-3 text-slate-400" />
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                  Drafts{drafts.length > 0 && ` (${drafts.length})`}
+                </p>
+              </div>
               <ChevronDown className={cn("h-3 w-3 text-slate-400 transition-transform", showDrafts && "rotate-180")} />
             </button>
             {showDrafts && (
-              <div className="space-y-0.5">
+              <div className="space-y-0.5 mt-0.5">
                 {drafts.length === 0 ? (
                   <p className="text-xs text-slate-400 px-3 py-2">No saved drafts</p>
                 ) : (
@@ -823,7 +838,7 @@ export default function SingleEmailComposer() {
                       onClick={() => doLoadDraft(d)}
                       className={cn(
                         "flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer group transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/50",
-                        draftId === d.id && "bg-amber-50 dark:bg-amber-900/20"
+                        draftId === d.id && "bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800"
                       )}
                     >
                       <Clock className="h-3 w-3 text-slate-400 shrink-0" />
@@ -844,15 +859,34 @@ export default function SingleEmailComposer() {
             )}
           </div>
 
-          {/* Library link */}
+          <div className="h-px bg-slate-100 dark:bg-slate-700 mx-2 my-1" />
+
+          {/* ── LIBRARY ─────────────────────────── */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 px-2 mb-2">Library</p>
-            <Link href="/design-templates">
-              <button className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                <Layout className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                <span className="text-xs text-slate-600 dark:text-slate-300">Design Library</span>
-              </button>
-            </Link>
+            <div className="flex items-center gap-1.5 px-2 mb-1.5">
+              <Layout className="h-3 w-3 text-slate-400" />
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Library</p>
+            </div>
+            <div className="space-y-0.5">
+              <Link href="/design-templates">
+                <button className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group">
+                  <Palette className="h-3.5 w-3.5 text-slate-400 group-hover:text-violet-500 shrink-0 transition-colors" />
+                  <span className="text-xs text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Saved Designs</span>
+                </button>
+              </Link>
+              <Link href="/admin?tab=branding">
+                <button className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group">
+                  <Building2 className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-500 shrink-0 transition-colors" />
+                  <span className="text-xs text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Branding</span>
+                </button>
+              </Link>
+              <Link href="/admin?tab=mailbox">
+                <button className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group">
+                  <Mail className="h-3.5 w-3.5 text-slate-400 group-hover:text-emerald-500 shrink-0 transition-colors" />
+                  <span className="text-xs text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Mailboxes</span>
+                </button>
+              </Link>
+            </div>
           </div>
 
         </div>
@@ -947,24 +981,58 @@ export default function SingleEmailComposer() {
               <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
 
                 {/* From row */}
-                <div className="flex items-center gap-0 border-b border-slate-100 dark:border-slate-700 group">
-                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest w-16 pl-4 shrink-0">From</span>
-                  <div className="relative flex-1 pr-4">
-                    <select
-                      value={mailboxId}
-                      onChange={e => { const v = e.target.value; setMailboxId(v); setMailboxType(v === "gmail" ? "gmail" : "smtp"); }}
-                      className="w-full py-3 text-sm bg-transparent text-slate-700 dark:text-slate-200 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 cursor-pointer appearance-none pr-6"
-                    >
-                      {mailboxes.map(mb => (
-                        <option key={mb.id} value={String(mb.id)}>
-                          {mb.fromName ? `${mb.fromName} <${mb.smtpUser}>` : mb.smtpUser}
-                        </option>
-                      ))}
-                      {gmailConnected && <option value="gmail">Gmail — {userEmail}</option>}
-                      {mailboxes.length === 0 && !gmailConnected && <option value="">No mailboxes configured</option>}
-                    </select>
-                    <ChevronDown className="h-3.5 w-3.5 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <div className="border-b border-slate-100 dark:border-slate-700">
+                  <div className="flex items-center">
+                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest w-16 pl-4 shrink-0">From</span>
+                    <div className="relative flex-1 pr-4">
+                      <select
+                        value={mailboxId}
+                        onChange={e => { const v = e.target.value; setMailboxId(v); setMailboxType(v === "gmail" ? "gmail" : "smtp"); }}
+                        className="w-full py-3 text-sm bg-transparent text-slate-700 dark:text-slate-200 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 cursor-pointer appearance-none pr-6"
+                      >
+                        {mailboxes.map(mb => (
+                          <option key={mb.id} value={String(mb.id)}>
+                            {mb.fromName ? `${mb.fromName} <${mb.smtpUser}>` : mb.smtpUser}
+                          </option>
+                        ))}
+                        {gmailConnected && <option value="gmail">Gmail — {userEmail}</option>}
+                        {mailboxes.length === 0 && !gmailConnected && <option value="">No mailboxes configured</option>}
+                      </select>
+                      <ChevronDown className="h-3.5 w-3.5 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
                   </div>
+                  {/* Connection status badges */}
+                  {mailboxes.length === 0 && !gmailConnected ? (
+                    <div className="px-4 pb-2 pl-20">
+                      <Link href="/admin?tab=mailbox" className="text-[11px] text-blue-500 hover:text-blue-700 transition-colors">
+                        + Configure a mailbox in Settings →
+                      </Link>
+                    </div>
+                  ) : mailboxType === "smtp" && mailboxes.find(m => String(m.id) === mailboxId) ? (() => {
+                    const mb = mailboxes.find(m => String(m.id) === mailboxId)!;
+                    return (
+                      <div className="flex items-center gap-2 px-4 pb-2 pl-20">
+                        <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                          SMTP Connected
+                        </span>
+                        {mb.imapHost && (
+                          <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                            IMAP Connected
+                          </span>
+                        )}
+                        <span className="text-[10px] text-slate-400 ml-1">{mb.smtpHost}</span>
+                      </div>
+                    );
+                  })() : mailboxType === "gmail" ? (
+                    <div className="flex items-center gap-2 px-4 pb-2 pl-20">
+                      <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                        Gmail Connected
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
 
                 {/* To row */}
@@ -1014,8 +1082,8 @@ export default function SingleEmailComposer() {
                   <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest w-16 pl-4 shrink-0">Subject</span>
                   <input
                     type="text" value={subject} onChange={e => setSubject(e.target.value)}
-                    placeholder="Email subject"
-                    className="flex-1 py-3 pr-4 text-sm font-medium bg-transparent text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-500 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                    placeholder="Write a compelling subject line…"
+                    className="flex-1 py-3 pr-4 text-sm font-semibold bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
                   />
                 </div>
 
@@ -1113,19 +1181,28 @@ export default function SingleEmailComposer() {
                   )}
                 </div>
 
-                {/* Attachments */}
+                {/* Attachments list */}
                 {attachments.length > 0 && (
-                  <div className="px-4 pb-3 pt-1 border-t border-slate-100 dark:border-slate-700 space-y-1.5">
+                  <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-700 space-y-1.5">
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
+                        {attachments.length} attachment{attachments.length !== 1 ? "s" : ""} · {fmtSize(attachments.reduce((s, f) => s + f.size, 0))} total
+                      </p>
+                    </div>
                     {attachments.map((f, i) => (
-                      <div key={i} className="flex items-center gap-2.5 p-2 rounded-lg bg-slate-50 dark:bg-slate-700/50 border border-slate-100 dark:border-slate-700">
-                        <div className="p-1.5 rounded-md bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600">
+                      <div key={i} className="flex items-center gap-2.5 p-2 rounded-lg bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600">
+                        <div className="p-1.5 rounded-md bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 shrink-0">
                           {fileIcon(f.name)}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate">{f.name}</p>
+                          <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">{f.name}</p>
                           <p className="text-[10px] text-slate-400">{fmtSize(f.size)}</p>
                         </div>
-                        <button onClick={() => setAttachments(a => a.filter((_, j) => j !== i))} className="p-1 text-slate-400 hover:text-red-500 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                        <button
+                          onClick={() => setAttachments(a => a.filter((_, j) => j !== i))}
+                          className="p-1.5 text-slate-400 hover:text-red-500 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors shrink-0"
+                          title="Remove"
+                        >
                           <X className="h-3.5 w-3.5" />
                         </button>
                       </div>
@@ -1137,10 +1214,17 @@ export default function SingleEmailComposer() {
                 <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-t border-slate-100 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80">
                   <div className="flex items-center gap-2">
                     {/* Attach */}
-                    <input type="file" multiple ref={fileInputRef} className="hidden" onChange={e => { if (e.target.files) setAttachments(a => [...a, ...Array.from(e.target.files!)]); e.target.value = ""; }} />
-                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                    <input
+                      type="file" multiple ref={fileInputRef} className="hidden"
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.webp,.zip"
+                      onChange={e => { if (e.target.files) setAttachments(a => [...a, ...Array.from(e.target.files!)]); e.target.value = ""; }}
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-transparent hover:border-blue-200 dark:hover:border-blue-700 transition-all font-medium"
+                    >
                       <Paperclip className="h-3.5 w-3.5" />
-                      Attach
+                      Attach files
                     </button>
 
                     {/* Template badge */}
@@ -1152,16 +1236,16 @@ export default function SingleEmailComposer() {
 
                   <div className="flex items-center gap-3">
                     {/* Toggles */}
-                    <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 cursor-pointer select-none">
-                      <input type="checkbox" checked={includeBranding} onChange={e => setIncludeBranding(e.target.checked)} className="w-3 h-3 rounded" />
+                    <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 cursor-pointer select-none hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
+                      <input type="checkbox" checked={includeBranding} onChange={e => setIncludeBranding(e.target.checked)} className="w-3 h-3 rounded accent-blue-600" />
                       Branding
                     </label>
-                    <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 cursor-pointer select-none">
-                      <input type="checkbox" checked={trackOpen} onChange={e => setTrackOpen(e.target.checked)} className="w-3 h-3 rounded" />
+                    <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 cursor-pointer select-none hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
+                      <input type="checkbox" checked={trackOpen} onChange={e => setTrackOpen(e.target.checked)} className="w-3 h-3 rounded accent-blue-600" />
                       Track opens
                     </label>
-                    <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 cursor-pointer select-none">
-                      <input type="checkbox" checked={trackClick} onChange={e => setTrackClick(e.target.checked)} className="w-3 h-3 rounded" />
+                    <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 cursor-pointer select-none hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
+                      <input type="checkbox" checked={trackClick} onChange={e => setTrackClick(e.target.checked)} className="w-3 h-3 rounded accent-blue-600" />
                       Track clicks
                     </label>
                   </div>

@@ -1,0 +1,282 @@
+COMPOSE EMAIL PAGE – FINAL UX/UI & FUNCTIONALITY FIXES
+
+The current Compose Email page still has several critical UI and functionality issues. Please fix ALL of the following and do not mark complete until each item is verified working.
+
+========================================
+1. MAILBOX DROPDOWN NOT SHOWING CONNECTED MAILBOX
+========================================
+
+Issue:
+Mailbox page shows a connected mailbox:
+
+miller@vertexcarship.com
+SMTP Connected
+IMAP Connected
+Sent Folder Sync Active
+
+But Compose Email still shows:
+"No mailboxes configured"
+
+Requirements:
+
+- Use the exact same mailbox source as the Mailbox page.
+- If a mailbox is connected and working in Mailbox Settings, it MUST appear automatically in Compose Email.
+- Display:
+  Name
+  Email
+  Provider
+- Auto-select the default mailbox.
+- Show sender avatar/icon.
+- Show:
+  Connected
+  SMTP Connected
+  IMAP Connected
+
+If mailbox exists in database but does not appear, fix the API query and frontend binding.
+
+========================================
+2. ATTACHMENT SYSTEM NOT WORKING
+========================================
+
+Issue:
+Attach button exists but uploaded files are not visible.
+
+Requirements:
+
+- After selecting a file:
+  - show filename
+  - show file size
+  - show remove icon
+  - show upload progress
+
+Example:
+
+📎 Quote.pdf
+245 KB
+[X]
+
+Support:
+
+- PDF
+- DOCX
+- XLSX
+- CSV
+- JPG
+- PNG
+- ZIP
+
+Allow multiple attachments.
+
+Show total attachment size.
+
+========================================
+3. SUBJECT FIELD VISIBILITY ISSUE
+========================================
+
+Issue:
+Subject text is difficult to read and appears broken.
+
+Requirements:
+
+- Increase contrast.
+- Proper placeholder.
+- Proper font weight.
+- Subject should always display correctly.
+
+Example:
+
+Subject: Vehicle Shipping Quote – Order #25097791
+
+No clipping.
+No transparency.
+No overlay issue.
+
+========================================
+4. REMOVE ALL BLUE FOCUS BOXES
+========================================
+
+Current UI has ugly blue outlines around:
+
+- From
+- To
+- Subject
+- CC
+- BCC
+
+Requirements:
+
+Remove ALL browser-style blue focus borders.
+
+Use clean professional styling:
+
+Normal:
+border-color: rgba(255,255,255,.08)
+
+Focused:
+border-color: rgba(255,255,255,.18)
+
+No glowing blue rings.
+No accessibility ring overlay.
+No browser default outline.
+
+========================================
+5. PROFESSIONAL GMAIL-LIKE DESIGN
+========================================
+
+Current layout feels unfinished.
+
+Redesign to feel closer to:
+
+- Gmail
+- Outlook
+- Superhuman
+
+Requirements:
+
+Cleaner spacing
+Better hierarchy
+Better typography
+More breathing room
+
+Composer should feel premium and modern.
+
+========================================
+6. LIVE PREVIEW STILL NOT ACCURATE
+========================================
+
+Issue:
+Desktop and Mobile previews often show blank template sections.
+
+Requirements:
+
+Preview must instantly reflect:
+
+- Subject
+- Body content
+- Selected design template
+- Branding
+- Signature
+- Images
+- Buttons
+
+Every keystroke should update preview.
+
+No refresh required.
+
+========================================
+7. REMOVE ALL HARD-CODED BROKERMAIL BRANDING
+========================================
+
+Issue:
+Preview still shows:
+
+"Sent via BrokerMAIL AI"
+
+Some templates still contain BrokerMAIL branding.
+
+Requirements:
+
+Remove ALL hardcoded branding.
+
+Only use:
+
+{{company_name}}
+{{company_logo}}
+{{company_phone}}
+{{company_email}}
+{{company_website}}
+
+If branding is disabled:
+show nothing.
+
+Never inject BrokerMAIL branding.
+
+========================================
+8. TEMPLATE SYSTEM IMPROVEMENT
+========================================
+
+Current templates look basic.
+
+Requirements:
+
+Create professional responsive templates:
+
+- Auto Transport Quote
+- Follow Up
+- Thank You
+- Newsletter
+- Corporate
+- Plain Text
+
+Each template should:
+
+- render correctly in Gmail
+- render correctly in Outlook
+- render correctly on mobile
+
+Use real email-safe HTML.
+
+No placeholder blocks.
+
+Show realistic preview content.
+
+========================================
+9. LEFT SIDEBAR IMPROVEMENTS
+========================================
+
+Current sidebar feels cluttered.
+
+Requirements:
+
+Sections:
+
+DESIGNS
+- Professional Quote
+- Modern Blue
+- Corporate
+- Minimal
+- Newsletter
+- Plain Text
+
+CONTENT BLOCKS
+- Quote
+- Follow Up
+- Thank You
+- Newsletter
+- Blank
+
+DRAFTS
+- Collapsible
+
+LIBRARY
+- Saved Designs
+- Saved Blocks
+- Images
+
+Better spacing.
+Better icons.
+Hover states.
+
+========================================
+10. COMPOSER QA CHECKLIST
+========================================
+
+Verify before completion:
+
+✓ Connected mailbox appears
+✓ Mailbox can be selected
+✓ Subject displays correctly
+✓ Attachments visible after upload
+✓ Remove attachment works
+✓ No blue focus borders
+✓ Preview updates live
+✓ Branding variables work
+✓ No BrokerMAIL hardcoding
+✓ Templates render professionally
+✓ Desktop preview works
+✓ Mobile preview works
+✓ Send Test works
+✓ Send Email works
+
+Do not stop after code changes.
+Actually test the complete compose flow and confirm each checklist item passes.
