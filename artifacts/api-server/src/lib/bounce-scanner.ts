@@ -495,6 +495,55 @@ async function _scanMailbox(
             .limit(1);
 
           if (draft) {
+            // ── SAFETY CHECK: Never bounce a draft that has open/click events ──
+            // draftsTable.id is the direct FK used by emailTrackingEventsTable.draftId,
+            // so we can query open events without an intermediate lookup.
+            let draftOpenEventCount = 0;
+            try {
+              const [{ total: draftOpenTotal }] = await db
+                .select({ total: count() })
+                .from(emailTrackingEventsTable)
+                .where(
+                  and(
+                    eq(emailTrackingEventsTable.draftId, draft.id),
+                    eq(emailTrackingEventsTable.eventType, "open"),
+                  ),
+                );
+              draftOpenEventCount = draftOpenTotal ?? 0;
+            } catch (checkErr) {
+              logger.warn(
+                { checkErr, draftId: draft.id },
+                "[BOUNCE-SCAN] Could not check open events for draft — proceeding with bounce (safe side)",
+              );
+            }
+
+            if (draftOpenEventCount > 0) {
+              logger.error(
+                {
+                  mailboxId:       mailbox.id,
+                  seq:             msg.seq,
+                  bounceMessageId: messageId ?? "(missing)",
+                  recipient,
+                  draftId:         draft.id,
+                  draftOpenEvents: draftOpenEventCount,
+                  bounceReason:    reason,
+                  action:          "SKIPPED — false positive bounce suppressed (draft path)",
+                },
+                "[BOUNCE-PROTECT] FALSE POSITIVE DETECTED (draft path): bounce NDR received for draft that has open tracking events. " +
+                "Email was delivered and opened. Bounce NOT recorded.",
+              );
+              if (messageId) {
+                try {
+                  await db.insert(processedBouncesTable).values({
+                    mailboxId: mailbox.id,
+                    messageId,
+                    recipient: recipient + ":FALSE_POSITIVE",
+                  }).onConflictDoNothing();
+                } catch { /* non-fatal */ }
+              }
+              continue;
+            }
+
             try {
               await db
                 .update(draftsTable)
@@ -516,12 +565,13 @@ async function _scanMailbox(
 
             logger.info(
               {
-                mailboxId: mailbox.id,
-                seq:       msg.seq,
-                messageId: messageId ?? "(missing)",
+                mailboxId:       mailbox.id,
+                seq:             msg.seq,
+                messageId:       messageId ?? "(missing)",
                 recipient,
-                draftId:   draft.id,
-                source:    "drafts_fallback",
+                draftId:         draft.id,
+                draftOpenEvents: draftOpenEventCount,
+                source:          "drafts_fallback",
               },
               "[BOUNCE-SCAN-DEBUG] Bounce processed — drafts row updated to bounced",
             );
