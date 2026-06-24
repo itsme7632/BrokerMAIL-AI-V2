@@ -1,0 +1,210 @@
+PROJECT: BrokerMAIL AI
+
+CONTEXT
+
+We identified a critical false-bounce bug in the bounce scanner.
+
+CURRENT STATUS
+
+The bug is NOT SMTP related.
+
+Emails are being:
+
+✓ Sent successfully
+✓ Accepted by SMTP
+✓ Received in Gmail inbox
+✓ Opened multiple times (tracking events recorded)
+
+BUT
+
+The bounce scanner later changes the same email status to:
+
+status = "bounced"
+
+with a permanent delivery failure.
+
+This is incorrect.
+
+ROOT CAUSE FOUND
+
+In bounce-scanner.ts:
+
+Current matching logic is performed using recipient email address + status='success'.
+
+The scanner does NOT:
+
+* correlate SMTP Message-ID
+* correlate trackingId
+* correlate draftId
+* correlate emailQueue row precisely
+
+It also does NOT check whether:
+
+* email has open events
+* email has tracking events
+* email was already opened
+* email was already confirmed delivered
+
+before overwriting status.
+
+Because of this:
+
+A bounce email for [recipient@example.com](mailto:recipient@example.com) can incorrectly mark an unrelated previously delivered email to the same recipient as bounced.
+
+FINDINGS ALREADY VERIFIED
+
+* emailTrackingEventsTable links to draftsTable via draftId
+* emailQueueTable links to draftsTable via trackingId
+* bounce scanner currently does NOT import emailTrackingEventsTable
+* matching query has NO orderBy()
+* matching query can select arbitrary success records
+* emails with open tracking events are being overwritten as bounced
+
+PARTIALLY COMPLETED WORK
+
+The previous Replit agent already:
+
+1. Read the full bounce scanner
+2. Located the matching section around line 316-337
+3. Identified the exact root cause
+4. Started editing bounce-scanner.ts
+
+The session ended because credits ran out.
+
+DO NOT RESTART INVESTIGATION.
+
+Continue from this point.
+
+REQUIRED FIXES
+
+1. Import emailTrackingEventsTable.
+
+2. Before marking any email as bounced:
+
+Check whether tracking/open events exist.
+
+Example logic:
+
+IF open_count > 0
+OR tracking events exist
+OR email already has confirmed engagement
+
+THEN:
+
+* DO NOT mark as bounced
+* DO NOT overwrite email_queue.status
+* Log warning
+* Skip bounce update
+
+3. Tighten matching logic.
+
+Current matching:
+
+recipient + success status
+
+This is unsafe.
+
+Prefer:
+
+* Message-ID correlation
+* trackingId correlation
+* draftId correlation
+
+Only use recipient fallback when absolutely necessary.
+
+4. Add deterministic ordering.
+
+Any recipient fallback query must include explicit ordering.
+
+Never allow arbitrary row selection.
+
+5. Add diagnostic logging.
+
+Log:
+
+* bounce recipient
+* bounce Message-ID
+* matched emailQueue id
+* matched trackingId
+* matched draftId
+* open event count
+* decision taken
+
+Examples:
+
+[BOUNCE-PROTECT] Open events found — skipping bounce update
+[BOUNCE-MATCH] Matched by trackingId
+[BOUNCE-MATCH] Matched by Message-ID
+[BOUNCE-MATCH] Fallback recipient match used
+
+6. Preserve legitimate bounce handling.
+
+If:
+
+* no tracking events
+* no opens
+* real bounce detected
+
+then continue:
+
+status = "bounced"
+suppression list insert
+processed_bounces insert
+
+as normal.
+
+REQUIRED TESTS
+
+Run all tests after coding:
+
+TEST 1
+
+Send email to Gmail
+Open email twice
+Run bounce scanner
+
+Expected:
+
+Status remains:
+accepted/opened
+
+NOT bounced
+
+TEST 2
+
+Send email to invalid address
+
+Expected:
+
+Status becomes:
+bounced
+
+Suppression list updated
+
+TEST 3
+
+Multiple emails to same recipient
+
+Expected:
+
+Bounce cannot overwrite unrelated delivered email
+
+TEST 4
+
+Verify Sent Emails page
+
+Expected:
+
+Opened email remains Opened
+Preview still loads
+Timeline remains intact
+
+DELIVERABLE
+
+Provide:
+
+1. Exact code changes
+2. Files modified
+3. Test results
+4. Any remaining edge cases
+5. Confirmation that false-positive bounce overwrites are eliminated
