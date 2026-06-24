@@ -449,8 +449,9 @@ export default function SingleEmailComposer() {
   const [selectedDesign,      setSelectedDesign]      = useState("professional");
   const [userDesignTemplates, setUserDesignTemplates] = useState<any[]>([]);
 
-  const [showColorPicker, setShowColorPicker] = useState(false);
-  const [showFontSize,    setShowFontSize]    = useState(false);
+  const [showColorPicker,  setShowColorPicker]  = useState(false);
+  const [showFontSize,     setShowFontSize]     = useState(false);
+  const [showMoreToolbar,  setShowMoreToolbar]  = useState(false);
 
   const [showLinkDialog, setShowLinkDialog]   = useState(false);
   const [linkUrl,        setLinkUrl]          = useState("https://");
@@ -830,8 +831,9 @@ export default function SingleEmailComposer() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64 text-slate-400">
-        <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading…
+      <div className="flex items-center justify-center h-screen text-slate-400 dark:text-slate-500">
+        <Loader2 className="h-5 w-5 animate-spin mr-2" />
+        <span className="text-sm">Loading composer…</span>
       </div>
     );
   }
@@ -841,703 +843,461 @@ export default function SingleEmailComposer() {
   return (
     <div className="flex h-full min-h-0" style={{ height: "calc(100vh - 64px)" }}>
 
-      {/* ══════════════ LEFT SIDEBAR ══════════════ */}
+      {/* ════════════ LEFT SIDEBAR ════════════ */}
       <aside
         className={cn(
-          "flex flex-col border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 transition-all duration-200 shrink-0 overflow-y-auto",
-          sidebarCollapsed ? "w-0 overflow-hidden" : "w-56"
+          "flex flex-col bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-slate-800 transition-all duration-200 shrink-0 overflow-hidden",
+          sidebarCollapsed ? "w-0" : "w-52"
         )}
       >
-        <div className="p-3 space-y-1">
+        <div className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
 
-          {/* ── DESIGNS ─────────────────────────── */}
-          <div className="pt-2">
-            <div className="flex items-center gap-1.5 px-2 mb-1.5">
-              <Palette className="h-3 w-3 text-slate-400" />
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Designs</p>
-            </div>
+          {/* ── Templates ─────────────────────── */}
+          <section>
+            <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1 mb-2">Templates</p>
             <div className="space-y-0.5">
               {BUILT_IN_TEMPLATES.map(t => (
-                <TemplateThumbnail
+                <button
                   key={t.id}
-                  template={t}
-                  selected={selectedDesign === t.id}
                   onClick={() => applyDesignTemplate(t.id)}
-                />
+                  className={cn(
+                    "w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all",
+                    selectedDesign === t.id
+                      ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400"
+                      : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
+                  )}
+                >
+                  <span className="w-2 h-2 rounded-full shrink-0 ring-1 ring-current opacity-70" style={{ background: t.accentColor }} />
+                  <span className="text-xs font-medium truncate">{t.name}</span>
+                  {selectedDesign === t.id && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />}
+                </button>
               ))}
               {userDesignTemplates.map(t => (
-                <TemplateThumbnail
+                <button
                   key={`user:${t.id}`}
-                  template={{ id: `user:${t.id}`, name: t.name, accentColor: "#6b7280", category: "Custom" }}
-                  selected={selectedDesign === `user:${t.id}`}
                   onClick={() => applyDesignTemplate(`user:${t.id}`)}
-                />
+                  className={cn(
+                    "w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all",
+                    selectedDesign === `user:${t.id}`
+                      ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400"
+                      : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
+                  )}
+                >
+                  <Layout className="h-3 w-3 shrink-0 text-slate-400" />
+                  <span className="text-xs font-medium truncate">{t.name}</span>
+                </button>
               ))}
             </div>
-          </div>
+          </section>
 
-          <div className="h-px bg-slate-100 dark:bg-slate-700 mx-2 my-1" />
-
-          {/* ── CONTENT BLOCKS ──────────────────── */}
-          <div>
-            <div className="flex items-center gap-1.5 px-2 mb-1.5">
-              <FileText className="h-3 w-3 text-slate-400" />
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Content Blocks</p>
-            </div>
+          {/* ── Start with ──────────────────────── */}
+          <section>
+            <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1 mb-2">Start with</p>
             <div className="space-y-0.5">
               {Object.entries(CONTENT_TEMPLATES).map(([key, t]) => (
                 <button
                   key={key}
                   onClick={() => applyContentTemplate(key)}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group"
+                  className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 transition-all group"
                 >
-                  <t.icon className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-500 dark:group-hover:text-blue-400 shrink-0 transition-colors" />
-                  <span className="text-xs text-slate-600 dark:text-slate-300 truncate group-hover:text-slate-900 dark:group-hover:text-white transition-colors">{t.label}</span>
+                  <t.icon className="h-3.5 w-3.5 shrink-0 text-slate-400 group-hover:text-blue-500 transition-colors" />
+                  <span className="text-xs truncate">{t.label}</span>
                 </button>
               ))}
               <button
                 onClick={() => { setHtml("<p></p>"); setTimeout(() => rebuildPreview(), 0); }}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group"
+                className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 transition-all group"
               >
-                <FileCode className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-500 dark:group-hover:text-blue-400 shrink-0 transition-colors" />
-                <span className="text-xs text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Blank</span>
+                <FileCode className="h-3.5 w-3.5 shrink-0 text-slate-400 group-hover:text-blue-500 transition-colors" />
+                <span className="text-xs">Blank</span>
               </button>
             </div>
-          </div>
+          </section>
 
-          <div className="h-px bg-slate-100 dark:bg-slate-700 mx-2 my-1" />
-
-          {/* ── DRAFTS ──────────────────────────── */}
-          <div>
-            <button
-              onClick={() => setShowDrafts(!showDrafts)}
-              className="w-full flex items-center justify-between px-2 py-1 mb-0.5 rounded hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group"
-            >
-              <div className="flex items-center gap-1.5">
-                <Clock className="h-3 w-3 text-slate-400" />
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                  Drafts{drafts.length > 0 && ` (${drafts.length})`}
+          {/* ── Drafts ──────────────────────────── */}
+          {drafts.length > 0 && (
+            <section>
+              <button
+                onClick={() => setShowDrafts(!showDrafts)}
+                className="w-full flex items-center justify-between px-1 mb-2 group"
+              >
+                <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors">
+                  Drafts ({drafts.length})
                 </p>
-              </div>
-              <ChevronDown className={cn("h-3 w-3 text-slate-400 transition-transform", showDrafts && "rotate-180")} />
-            </button>
-            {showDrafts && (
-              <div className="space-y-0.5 mt-0.5">
-                {drafts.length === 0 ? (
-                  <p className="text-xs text-slate-400 px-3 py-2">No saved drafts</p>
-                ) : (
-                  drafts.map(d => (
+                <ChevronDown className={cn("h-3 w-3 text-slate-400 transition-transform", showDrafts && "rotate-180")} />
+              </button>
+              {showDrafts && (
+                <div className="space-y-0.5">
+                  {drafts.map(d => (
                     <div
                       key={d.id}
                       onClick={() => doLoadDraft(d)}
                       className={cn(
-                        "flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer group transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/50",
-                        draftId === d.id && "bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800"
+                        "flex items-start gap-2 px-2 py-2 rounded-lg cursor-pointer group transition-colors",
+                        draftId === d.id
+                          ? "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400"
+                          : "hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
                       )}
                     >
-                      <Clock className="h-3 w-3 text-slate-400 shrink-0" />
+                      <Clock className="h-3 w-3 shrink-0 mt-0.5 text-slate-400" />
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs text-slate-700 dark:text-slate-300 truncate font-medium">{d.subject || "(No subject)"}</p>
+                        <p className="text-xs font-medium truncate">{d.subject || "(No subject)"}</p>
                         <p className="text-[10px] text-slate-400 truncate">{d.toEmail || "No recipient"}</p>
                       </div>
-                      <button
-                        onClick={e => doDeleteDraft(d.id, e)}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-red-500 transition-all"
-                      >
+                      <button onClick={e => doDeleteDraft(d.id, e)} className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-red-500 transition-all shrink-0">
                         <X className="h-3 w-3" />
                       </button>
                     </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="h-px bg-slate-100 dark:bg-slate-700 mx-2 my-1" />
-
-          {/* ── LIBRARY ─────────────────────────── */}
-          <div>
-            <div className="flex items-center gap-1.5 px-2 mb-1.5">
-              <Layout className="h-3 w-3 text-slate-400" />
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Library</p>
-            </div>
-            <div className="space-y-0.5">
-              <Link href="/design-templates">
-                <button className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group">
-                  <Palette className="h-3.5 w-3.5 text-slate-400 group-hover:text-violet-500 shrink-0 transition-colors" />
-                  <span className="text-xs text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Saved Designs</span>
-                </button>
-              </Link>
-              <Link href="/settings">
-                <button className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group">
-                  <Building2 className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-500 shrink-0 transition-colors" />
-                  <span className="text-xs text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Branding</span>
-                </button>
-              </Link>
-              <Link href="/admin?tab=mailbox">
-                <button className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group">
-                  <Mail className="h-3.5 w-3.5 text-slate-400 group-hover:text-emerald-500 shrink-0 transition-colors" />
-                  <span className="text-xs text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Mailboxes</span>
-                </button>
-              </Link>
-            </div>
-          </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
 
         </div>
       </aside>
 
-      {/* ══════════════ MAIN COMPOSE AREA ══════════════ */}
-      <div className="flex-1 min-w-0 flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden">
+      {/* ════════════ MAIN COMPOSE AREA ════════════ */}
+      <div className="flex-1 min-w-0 flex flex-col bg-slate-50 dark:bg-slate-950 overflow-hidden">
 
         {/* Top bar */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shrink-0">
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shrink-0">
+          {/* Sidebar toggle */}
+          <button
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+          >
+            <ChevronLeft className={cn("h-4 w-4 transition-transform duration-200", sidebarCollapsed && "rotate-180")} />
+          </button>
+
+          <Link href="/">
+            <button className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
+              <ChevronLeft className="h-3.5 w-3.5" />
+              Back
+            </button>
+          </Link>
+
+          <div className="w-px h-4 bg-slate-200 dark:bg-slate-700" />
+
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-              title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
-            >
-              <ChevronLeft className={cn("h-4 w-4 transition-transform", sidebarCollapsed && "rotate-180")} />
-            </button>
-            <div className="flex items-center gap-2">
-              <div className="p-1 bg-gradient-to-br from-blue-500 to-violet-500 rounded-md">
-                <PenLine className="h-3.5 w-3.5 text-white" />
-              </div>
-              <h1 className="text-sm font-semibold text-slate-800 dark:text-white">Compose Email</h1>
-            </div>
-            {draftId && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium border border-amber-200 dark:border-amber-700">
-                Saved draft
-              </span>
-            )}
+            <PenLine className="h-3.5 w-3.5 text-slate-400" />
+            <h1 className="text-sm font-semibold text-slate-800 dark:text-white">Compose</h1>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            {/* Preview tabs */}
-            <div className="flex items-center bg-slate-100 dark:bg-slate-700 rounded-lg p-0.5">
-              {(["editor", "desktop", "mobile"] as const).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => { setActiveTab(tab); if (tab !== "editor") rebuildPreview(); }}
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-                    activeTab === tab
-                      ? "bg-white dark:bg-slate-600 text-slate-800 dark:text-white shadow-sm"
-                      : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                  )}
-                >
-                  {tab === "editor"  && <><FileCode className="h-3 w-3" />Edit</>}
-                  {tab === "desktop" && <><Monitor className="h-3 w-3" />Desktop</>}
-                  {tab === "mobile"  && <><Smartphone className="h-3 w-3" />Mobile</>}
-                </button>
-              ))}
-            </div>
+          {draftId && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 font-medium border border-amber-200 dark:border-amber-800">
+              Draft saved
+            </span>
+          )}
 
-            {/* Send test */}
-            <button
-              onClick={doSendTest}
-              disabled={sendingTest}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-500 transition-colors disabled:opacity-50"
-            >
-              {sendingTest ? <Loader2 className="h-3 w-3 animate-spin" /> : <Eye className="h-3 w-3" />}
-              Test
-            </button>
+          <div className="flex-1" />
 
-            {/* Save draft */}
-            <button
-              onClick={doSaveDraft}
-              disabled={savingDraft}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-500 transition-colors disabled:opacity-50"
-            >
-              {savingDraft ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              Save
-            </button>
-
-            {/* Send */}
-            <button
-              onClick={doSend}
-              disabled={sending}
-              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-50 shadow-sm"
-            >
-              {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-              Send
-            </button>
-          </div>
+          <button
+            onClick={doSendTest}
+            disabled={sendingTest}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors disabled:opacity-40"
+          >
+            {sendingTest ? <Loader2 className="h-3 w-3 animate-spin" /> : <Eye className="h-3 w-3" />}
+            Send Test
+          </button>
+          <button
+            onClick={doSaveDraft}
+            disabled={savingDraft}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors disabled:opacity-40"
+          >
+            {savingDraft ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+            Save
+          </button>
+          <button
+            onClick={doSend}
+            disabled={sending}
+            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white transition-colors disabled:opacity-40 shadow-sm"
+          >
+            {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+            Send Email
+          </button>
         </div>
 
-        {/* Content area */}
-        <div className="flex-1 min-h-0 overflow-auto p-4">
+        {/* Scrollable compose area */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="max-w-2xl mx-auto px-4 py-8">
 
-          {activeTab === "editor" ? (
+            {/* ── Compose card ── */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-visible">
 
-            /* ── Editor view ── */
-            <div className="max-w-2xl mx-auto">
-              <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+              {/* From row */}
+              <div className="flex items-center px-5 py-3.5 border-b border-slate-50 dark:border-slate-800/60">
+                <span className="text-xs text-slate-400 w-14 shrink-0 font-medium">From</span>
+                <div className="relative flex-1">
+                  <select
+                    value={mailboxId}
+                    onChange={e => { const v = e.target.value; setMailboxId(v); setMailboxType(v === "gmail" ? "gmail" : "smtp"); }}
+                    className="w-full text-sm bg-transparent text-slate-700 dark:text-slate-200 focus:outline-none appearance-none pr-6 cursor-pointer"
+                  >
+                    {mailboxes.map(mb => (
+                      <option key={mb.id} value={String(mb.id)}>
+                        {mb.fromName ? `${mb.fromName} <${mb.smtpUser}>` : mb.smtpUser}
+                      </option>
+                    ))}
+                    {gmailConnected && <option value="gmail">Gmail — {userEmail}</option>}
+                    {mailboxes.length === 0 && !gmailConnected && <option value="">No mailboxes configured</option>}
+                  </select>
+                  <ChevronDown className="h-3 w-3 text-slate-400 absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+                {mailboxes.length === 0 && !gmailConnected && (
+                  <Link href="/mailbox" className="text-[11px] text-blue-500 hover:text-blue-700 shrink-0 ml-2 transition-colors">
+                    Configure →
+                  </Link>
+                )}
+              </div>
 
-                {/* From row */}
-                <div className="border-b border-slate-100 dark:border-slate-700">
-                  <div className="flex items-center">
-                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest w-[84px] pl-4 shrink-0">From</span>
-                    <div className="relative flex-1 pr-4">
-                      <select
-                        value={mailboxId}
-                        onChange={e => { const v = e.target.value; setMailboxId(v); setMailboxType(v === "gmail" ? "gmail" : "smtp"); }}
-                        className="w-full py-3 text-sm bg-transparent text-slate-700 dark:text-slate-200 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 cursor-pointer appearance-none pr-6"
+              {/* To row */}
+              <div className="flex items-center px-5 py-3.5 border-b border-slate-50 dark:border-slate-800/60">
+                <span className="text-xs text-slate-400 w-14 shrink-0 font-medium">To</span>
+                <input
+                  type="email" value={to} onChange={e => setTo(e.target.value)}
+                  placeholder="recipient@example.com"
+                  className="flex-1 text-sm bg-transparent text-slate-800 dark:text-slate-100 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none"
+                />
+                <div className="flex items-center gap-1 shrink-0">
+                  {!showCc  && <button onClick={() => setShowCc(true)}  className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 px-1.5 py-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 font-medium transition-colors">Cc</button>}
+                  {!showBcc && <button onClick={() => setShowBcc(true)} className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 px-1.5 py-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 font-medium transition-colors">Bcc</button>}
+                </div>
+              </div>
+
+              {showCc && (
+                <div className="flex items-center px-5 py-3.5 border-b border-slate-50 dark:border-slate-800/60">
+                  <span className="text-xs text-slate-400 w-14 shrink-0 font-medium">Cc</span>
+                  <input type="text" value={cc} onChange={e => setCc(e.target.value)} placeholder="cc@example.com"
+                    className="flex-1 text-sm bg-transparent text-slate-800 dark:text-slate-100 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none" />
+                  <button onClick={() => { setShowCc(false); setCc(""); }} className="text-slate-300 hover:text-slate-500 transition-colors shrink-0">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {showBcc && (
+                <div className="flex items-center px-5 py-3.5 border-b border-slate-50 dark:border-slate-800/60">
+                  <span className="text-xs text-slate-400 w-14 shrink-0 font-medium">Bcc</span>
+                  <input type="text" value={bcc} onChange={e => setBcc(e.target.value)} placeholder="bcc@example.com"
+                    className="flex-1 text-sm bg-transparent text-slate-800 dark:text-slate-100 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none" />
+                  <button onClick={() => { setShowBcc(false); setBcc(""); }} className="text-slate-300 hover:text-slate-500 transition-colors shrink-0">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Subject row */}
+              <div className="flex items-center px-5 py-3.5 border-b border-slate-100 dark:border-slate-800">
+                <span className="text-xs text-slate-400 w-14 shrink-0 font-medium">Subject</span>
+                <input
+                  type="text" value={subject} onChange={e => setSubject(e.target.value)}
+                  placeholder="Email subject…"
+                  className="flex-1 text-sm font-medium bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none"
+                />
+              </div>
+
+              {/* Minimal toolbar */}
+              <div className="flex items-center gap-0.5 px-3 py-1.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 flex-wrap">
+                <TBtn onClick={() => exec("bold")}      title="Bold"><Bold className="h-3.5 w-3.5" /></TBtn>
+                <TBtn onClick={() => exec("italic")}    title="Italic"><Italic className="h-3.5 w-3.5" /></TBtn>
+                <TBtn onClick={() => exec("underline")} title="Underline"><Underline className="h-3.5 w-3.5" /></TBtn>
+
+                <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
+
+                <TBtn onClick={() => exec("insertUnorderedList")} title="Bullet list"><List className="h-3.5 w-3.5" /></TBtn>
+                <TBtn onClick={() => exec("insertOrderedList")}   title="Numbered list"><ListOrdered className="h-3.5 w-3.5" /></TBtn>
+
+                <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
+
+                <TBtn onClick={() => exec("justifyLeft")}   title="Align left"><AlignLeft className="h-3.5 w-3.5" /></TBtn>
+                <TBtn onClick={() => exec("justifyCenter")} title="Center"><AlignCenter className="h-3.5 w-3.5" /></TBtn>
+                <TBtn onClick={() => exec("justifyRight")}  title="Align right"><AlignRight className="h-3.5 w-3.5" /></TBtn>
+
+                <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
+
+                {/* Link button with popover */}
+                <div className="relative">
+                  <TBtn onClick={insertLink} title="Insert link"><Link2 className="h-3.5 w-3.5" /></TBtn>
+                  {showLinkDialog && (
+                    <>
+                      <div className="fixed inset-0 z-40" onMouseDown={() => setShowLinkDialog(false)} />
+                      <div
+                        ref={linkDialogRef}
+                        className="absolute top-full left-0 mt-1.5 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl p-4 w-72"
+                        onMouseDown={e => e.stopPropagation()}
                       >
-                        {mailboxes.map(mb => (
-                          <option key={mb.id} value={String(mb.id)}>
-                            {mb.fromName ? `${mb.fromName} <${mb.smtpUser}>` : mb.smtpUser}
-                          </option>
-                        ))}
-                        {gmailConnected && <option value="gmail">Gmail — {userEmail}</option>}
-                        {mailboxes.length === 0 && !gmailConnected && <option value="">No mailboxes configured</option>}
-                      </select>
-                      <ChevronDown className="h-3.5 w-3.5 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    </div>
-                  </div>
-                  {/* Connection status badges */}
-                  {mailboxes.length === 0 && !gmailConnected ? (
-                    <div className="px-4 pb-2 pl-20">
-                      <Link href="/mailbox" className="text-[11px] text-blue-500 hover:text-blue-700 transition-colors">
-                        + Configure a mailbox in Settings →
-                      </Link>
-                    </div>
-                  ) : mailboxType === "smtp" && mailboxes.find(m => String(m.id) === mailboxId) ? (() => {
-                    const mb = mailboxes.find(m => String(m.id) === mailboxId)!;
-                    return (
-                      <div className="flex items-center gap-2 px-4 pb-2 pl-20">
-                        <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                          SMTP Connected
-                        </span>
-                        {mb.imapHost && (
-                          <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                            IMAP Connected
-                          </span>
-                        )}
-                        <span className="text-[10px] text-slate-400 ml-1">{mb.smtpHost}</span>
-                      </div>
-                    );
-                  })() : mailboxType === "gmail" ? (
-                    <div className="flex items-center gap-2 px-4 pb-2 pl-20">
-                      <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                        Gmail Connected
-                      </span>
-                    </div>
-                  ) : null}
-                </div>
-
-                {/* To row */}
-                <div className="flex items-center border-b border-slate-100 dark:border-slate-700">
-                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest w-[84px] pl-4 shrink-0">To</span>
-                  <input
-                    type="email" value={to} onChange={e => setTo(e.target.value)}
-                    placeholder="recipient@example.com"
-                    className="flex-1 py-3 text-sm bg-transparent text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-500 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
-                  />
-                  <div className="flex gap-1 pr-3">
-                    {!showCc  && <button onClick={() => setShowCc(true)}  className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 px-1.5 py-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 font-medium transition-colors">Cc</button>}
-                    {!showBcc && <button onClick={() => setShowBcc(true)} className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 px-1.5 py-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 font-medium transition-colors">Bcc</button>}
-                  </div>
-                </div>
-
-                {showCc && (
-                  <div className="flex items-center border-b border-slate-100 dark:border-slate-700">
-                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest w-[84px] pl-4 shrink-0">Cc</span>
-                    <input
-                      type="text" value={cc} onChange={e => setCc(e.target.value)}
-                      placeholder="cc@example.com"
-                      className="flex-1 py-3 text-sm bg-transparent text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-500 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
-                    />
-                    <button onClick={() => { setShowCc(false); setCc(""); }} className="pr-3 text-slate-300 hover:text-slate-500 transition-colors">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )}
-
-                {showBcc && (
-                  <div className="flex items-center border-b border-slate-100 dark:border-slate-700">
-                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest w-[84px] pl-4 shrink-0">Bcc</span>
-                    <input
-                      type="text" value={bcc} onChange={e => setBcc(e.target.value)}
-                      placeholder="bcc@example.com"
-                      className="flex-1 py-3 text-sm bg-transparent text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-500 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
-                    />
-                    <button onClick={() => { setShowBcc(false); setBcc(""); }} className="pr-3 text-slate-300 hover:text-slate-500 transition-colors">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )}
-
-                {/* Subject row */}
-                <div className="flex items-center border-b border-slate-100 dark:border-slate-700">
-                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest w-[84px] pl-4 shrink-0">Subject</span>
-                  <input
-                    type="text" value={subject} onChange={e => setSubject(e.target.value)}
-                    placeholder="Write a compelling subject line…"
-                    className="flex-1 py-3 pr-4 text-sm font-semibold bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
-                  />
-                </div>
-
-                {/* Formatting toolbar */}
-                <div className="flex flex-wrap items-center gap-0.5 px-3 py-2 border-b border-slate-100 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80">
-                  {/* Font size */}
-                  <div className="relative">
-                    <TBtn onClick={() => { setShowFontSize(!showFontSize); setShowColorPicker(false); }} title="Font size">
-                      <Type className="h-3.5 w-3.5" />
-                    </TBtn>
-                    {showFontSize && (
-                      <div className="absolute top-full left-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg z-30 py-1 w-28 overflow-hidden">
-                        {FONT_SIZES.map(s => (
-                          <button key={s.value} onMouseDown={e => { e.preventDefault(); exec("fontSize", s.value); setShowFontSize(false); }}
-                            className="w-full text-left px-3 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-                          >{s.label}</button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="w-px h-4 bg-slate-200 dark:bg-slate-600 mx-0.5" />
-
-                  <TBtn onClick={() => exec("bold")}          title="Bold"><Bold className="h-3.5 w-3.5" /></TBtn>
-                  <TBtn onClick={() => exec("italic")}        title="Italic"><Italic className="h-3.5 w-3.5" /></TBtn>
-                  <TBtn onClick={() => exec("underline")}     title="Underline"><Underline className="h-3.5 w-3.5" /></TBtn>
-                  <TBtn onClick={() => exec("strikeThrough")} title="Strike"><Strikethrough className="h-3.5 w-3.5" /></TBtn>
-
-                  <div className="w-px h-4 bg-slate-200 dark:bg-slate-600 mx-0.5" />
-
-                  <TBtn onClick={() => exec("justifyLeft")}   title="Left"><AlignLeft className="h-3.5 w-3.5" /></TBtn>
-                  <TBtn onClick={() => exec("justifyCenter")} title="Center"><AlignCenter className="h-3.5 w-3.5" /></TBtn>
-                  <TBtn onClick={() => exec("justifyRight")}  title="Right"><AlignRight className="h-3.5 w-3.5" /></TBtn>
-
-                  <div className="w-px h-4 bg-slate-200 dark:bg-slate-600 mx-0.5" />
-
-                  <TBtn onClick={() => exec("insertUnorderedList")} title="Bullet list"><List className="h-3.5 w-3.5" /></TBtn>
-                  <TBtn onClick={() => exec("insertOrderedList")}   title="Numbered list"><ListOrdered className="h-3.5 w-3.5" /></TBtn>
-
-                  <div className="w-px h-4 bg-slate-200 dark:bg-slate-600 mx-0.5" />
-
-                  {/* Link button + popover dialog */}
-                  <div className="relative">
-                    <TBtn onClick={insertLink} title="Insert link"><Link2 className="h-3.5 w-3.5" /></TBtn>
-                    {showLinkDialog && (
-                      <>
-                        {/* Invisible backdrop to close on outside click */}
-                        <div className="fixed inset-0 z-40" onMouseDown={() => setShowLinkDialog(false)} />
-                        <div
-                          ref={linkDialogRef}
-                          className="absolute top-full left-0 mt-1.5 z-50 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl p-4 w-72"
-                          onMouseDown={e => e.stopPropagation()}
-                        >
-                          <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
-                            {linkIsEdit ? "Edit Link" : "Insert Link"}
-                          </p>
-                          <input
-                            ref={linkInputRef}
-                            type="url"
-                            value={linkUrl}
-                            onChange={e => setLinkUrl(e.target.value)}
-                            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); applyLink(); } if (e.key === "Escape") setShowLinkDialog(false); }}
-                            placeholder="https://example.com"
-                            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3"
-                          />
-                          <label className="flex items-center gap-2 mb-4 cursor-pointer select-none group">
-                            <input
-                              type="checkbox"
-                              checked={linkNewTab}
-                              onChange={e => setLinkNewTab(e.target.checked)}
-                              className="w-3.5 h-3.5 rounded accent-blue-600"
-                            />
-                            <span className="text-xs text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-slate-100 transition-colors">
-                              Open in new tab
-                            </span>
-                          </label>
-                          <div className="flex items-center justify-between gap-2">
-                            {linkIsEdit && (
-                              <button
-                                type="button"
-                                onMouseDown={e => { e.preventDefault(); removeLink(); }}
-                                className="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400 font-medium transition-colors px-1"
-                              >
-                                Remove link
-                              </button>
-                            )}
-                            <div className={cn("flex items-center gap-2", !linkIsEdit && "ml-auto")}>
-                              <button
-                                type="button"
-                                onMouseDown={e => { e.preventDefault(); setShowLinkDialog(false); }}
-                                className="px-3 py-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg border border-transparent hover:border-slate-200 dark:hover:border-slate-600 transition-all"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="button"
-                                onMouseDown={e => { e.preventDefault(); applyLink(); }}
-                                className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-                              >
-                                Save
-                              </button>
-                            </div>
+                        <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">
+                          {linkIsEdit ? "Edit Link" : "Insert Link"}
+                        </p>
+                        <input
+                          ref={linkInputRef}
+                          type="url"
+                          value={linkUrl}
+                          onChange={e => setLinkUrl(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); applyLink(); } if (e.key === "Escape") setShowLinkDialog(false); }}
+                          placeholder="https://example.com"
+                          className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3"
+                        />
+                        <label className="flex items-center gap-2 mb-4 cursor-pointer select-none group">
+                          <input type="checkbox" checked={linkNewTab} onChange={e => setLinkNewTab(e.target.checked)} className="w-3.5 h-3.5 rounded accent-blue-600" />
+                          <span className="text-xs text-slate-600 dark:text-slate-300">Open in new tab</span>
+                        </label>
+                        <div className="flex items-center justify-between gap-2">
+                          {linkIsEdit && (
+                            <button type="button" onMouseDown={e => { e.preventDefault(); removeLink(); }}
+                              className="text-xs text-red-500 hover:text-red-700 font-medium transition-colors px-1">
+                              Remove link
+                            </button>
+                          )}
+                          <div className={cn("flex items-center gap-2", !linkIsEdit && "ml-auto")}>
+                            <button type="button" onMouseDown={e => { e.preventDefault(); setShowLinkDialog(false); }}
+                              className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700 rounded-lg border border-transparent hover:border-slate-200 transition-all">
+                              Cancel
+                            </button>
+                            <button type="button" onMouseDown={e => { e.preventDefault(); applyLink(); }}
+                              className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
+                              Save
+                            </button>
                           </div>
                         </div>
-                      </>
-                    )}
-                  </div>
-                  <TBtn onClick={insertImage}  title="Insert image"><ImageIcon className="h-3.5 w-3.5" /></TBtn>
-                  <TBtn onClick={insertButton} title="Insert button"><Mail className="h-3.5 w-3.5" /></TBtn>
-
-                  <div className="w-px h-4 bg-slate-200 dark:bg-slate-600 mx-0.5" />
-
-                  {/* Text color */}
-                  <div className="relative">
-                    <TBtn onClick={() => { setShowColorPicker(!showColorPicker); setShowFontSize(false); }} title="Text color">
-                      <span className="text-xs font-bold" style={{ fontFamily: "serif" }}>A</span>
-                    </TBtn>
-                    {showColorPicker && (
-                      <div className="absolute top-full left-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg z-30 p-2">
-                        <div className="grid grid-cols-6 gap-1">
-                          {COLORS.map(c => (
-                            <button key={c} onMouseDown={e => { e.preventDefault(); exec("foreColor", c); setShowColorPicker(false); }}
-                              className="w-5 h-5 rounded border border-slate-300 dark:border-slate-600 hover:scale-110 transition-transform"
-                              style={{ background: c }}
-                            />
-                          ))}
-                        </div>
                       </div>
-                    )}
-                  </div>
-
-                  <TBtn onClick={() => exec("removeFormat")}         title="Clear formatting"><Minus className="h-3.5 w-3.5" /></TBtn>
-                  <TBtn onClick={() => exec("insertHorizontalRule")} title="Divider line"><Minus className="h-3.5 w-3.5 opacity-60" /></TBtn>
-
-                  <div className="w-px h-4 bg-slate-200 dark:bg-slate-600 mx-0.5" />
-
-                  <TBtn onClick={toggleHtmlMode} active={htmlSourceMode} title="HTML source">
-                    <Code2 className="h-3.5 w-3.5" />
-                  </TBtn>
-                </div>
-
-                {/* Editor body */}
-                <div className="relative">
-                  {htmlSourceMode ? (
-                    <textarea
-                      value={htmlSource}
-                      onChange={e => { setHtmlSource(e.target.value); setTimeout(() => rebuildPreview(), 0); }}
-                      className="w-full px-5 py-4 min-h-64 font-mono text-xs bg-slate-900 text-green-400 focus:outline-none resize-none"
-                      placeholder="<p>Your HTML here...</p>"
-                    />
-                  ) : (
-                    <div
-                      ref={editorRef}
-                      contentEditable
-                      suppressContentEditableWarning
-                      onInput={onEditorInput}
-                      className="w-full px-5 py-4 min-h-64 text-sm text-slate-800 dark:text-slate-200 focus:outline-none leading-relaxed"
-                      style={{ lineHeight: "1.75" }}
-                    />
+                    </>
                   )}
                 </div>
 
-                {/* Attachments list */}
-                {attachments.length > 0 && (
-                  <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-700 space-y-1.5">
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
-                        {attachments.length} attachment{attachments.length !== 1 ? "s" : ""} · {fmtSize(attachments.reduce((s, f) => s + f.size, 0))} total
-                      </p>
-                    </div>
-                    {attachments.map((f, i) => (
-                      <div key={i} className="flex items-center gap-2.5 p-2 rounded-lg bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600">
-                        <div className="p-1.5 rounded-md bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 shrink-0">
-                          {fileIcon(f.name)}
+                <TBtn onClick={insertImage} title="Insert image"><ImageIcon className="h-3.5 w-3.5" /></TBtn>
+                <TBtn onClick={() => exec("removeFormat")} title="Clear formatting"><Minus className="h-3.5 w-3.5" /></TBtn>
+
+                <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
+
+                {/* More dropdown */}
+                <div className="relative">
+                  <TBtn onClick={() => setShowMoreToolbar(!showMoreToolbar)} title="More formatting" active={showMoreToolbar}>
+                    <span className="text-[10px] font-semibold leading-none">More</span>
+                    <ChevronDown className={cn("h-3 w-3 ml-0.5 transition-transform", showMoreToolbar && "rotate-180")} />
+                  </TBtn>
+                  {showMoreToolbar && (
+                    <>
+                      <div className="fixed inset-0 z-20" onMouseDown={() => setShowMoreToolbar(false)} />
+                      <div className="absolute top-full left-0 mt-1 z-30 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-xl p-2 w-44"
+                        onMouseDown={e => e.stopPropagation()}>
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 px-2 mb-1">Size</p>
+                        {FONT_SIZES.map(s => (
+                          <button key={s.value} onMouseDown={e => { e.preventDefault(); exec("fontSize", s.value); setShowMoreToolbar(false); }}
+                            className="w-full text-left flex items-center gap-2 px-2 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                            <Type className="h-3 w-3 text-slate-400" />{s.label}
+                          </button>
+                        ))}
+                        <div className="h-px bg-slate-100 dark:bg-slate-700 my-1" />
+                        <button onMouseDown={e => { e.preventDefault(); exec("strikeThrough"); setShowMoreToolbar(false); }}
+                          className="w-full text-left flex items-center gap-2 px-2 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                          <Strikethrough className="h-3 w-3 text-slate-400" />Strikethrough
+                        </button>
+                        <div className="h-px bg-slate-100 dark:bg-slate-700 my-1" />
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 px-2 mb-1">Color</p>
+                        <div className="grid grid-cols-6 gap-1 px-2 pb-1">
+                          {COLORS.map(c => (
+                            <button key={c} onMouseDown={e => { e.preventDefault(); exec("foreColor", c); setShowMoreToolbar(false); }}
+                              className="w-4 h-4 rounded border border-slate-300 dark:border-slate-600 hover:scale-110 transition-transform"
+                              style={{ background: c }} />
+                          ))}
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">{f.name}</p>
-                          <p className="text-[10px] text-slate-400">{fmtSize(f.size)}</p>
-                        </div>
-                        <button
-                          onClick={() => setAttachments(a => a.filter((_, j) => j !== i))}
-                          className="p-1.5 text-slate-400 hover:text-red-500 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors shrink-0"
-                          title="Remove"
-                        >
-                          <X className="h-3.5 w-3.5" />
+                        <div className="h-px bg-slate-100 dark:bg-slate-700 my-1" />
+                        <button onMouseDown={e => { e.preventDefault(); insertButton(); setShowMoreToolbar(false); }}
+                          className="w-full text-left flex items-center gap-2 px-2 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                          <Mail className="h-3 w-3 text-slate-400" />Insert Button
+                        </button>
+                        <button onMouseDown={e => { e.preventDefault(); exec("insertHorizontalRule"); setShowMoreToolbar(false); }}
+                          className="w-full text-left flex items-center gap-2 px-2 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                          <Minus className="h-3 w-3 text-slate-400" />Divider Line
+                        </button>
+                        <button onMouseDown={e => { e.preventDefault(); toggleHtmlMode(); setShowMoreToolbar(false); }}
+                          className="w-full text-left flex items-center gap-2 px-2 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                          <Code2 className="h-3 w-3 text-slate-400" />HTML Source
                         </button>
                       </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Bottom action row */}
-                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-t border-slate-100 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80">
-                  <div className="flex items-center gap-2">
-                    {/* Attach */}
-                    <input
-                      type="file" multiple ref={fileInputRef} className="hidden"
-                      accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.webp,.zip"
-                      onChange={e => { if (e.target.files) setAttachments(a => [...a, ...Array.from(e.target.files!)]); e.target.value = ""; }}
-                    />
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-transparent hover:border-blue-200 dark:hover:border-blue-700 transition-all font-medium"
-                    >
-                      <Paperclip className="h-3.5 w-3.5" />
-                      Attach files
-                    </button>
-
-                    {/* Template badge */}
-                    <span className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
-                      <Palette className="h-3 w-3" />
-                      {selectedDesignLabel}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    {/* Toggles */}
-                    <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 cursor-pointer select-none hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
-                      <input type="checkbox" checked={includeBranding} onChange={e => setIncludeBranding(e.target.checked)} className="w-3 h-3 rounded accent-blue-600" />
-                      Branding
-                    </label>
-                    <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 cursor-pointer select-none hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
-                      <input type="checkbox" checked={trackOpen} onChange={e => setTrackOpen(e.target.checked)} className="w-3 h-3 rounded accent-blue-600" />
-                      Track opens
-                    </label>
-                    <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 cursor-pointer select-none hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
-                      <input type="checkbox" checked={trackClick} onChange={e => setTrackClick(e.target.checked)} className="w-3 h-3 rounded accent-blue-600" />
-                      Track clicks
-                    </label>
-                  </div>
-                </div>
-
-              </div>
-            </div>
-
-          ) : activeTab === "desktop" ? (
-
-            /* ── Desktop Preview ── */
-            <div className="flex flex-col items-center gap-3">
-              {/* Browser chrome */}
-              <div className="w-full max-w-2xl bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-md overflow-hidden">
-                {/* Chrome bar */}
-                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700/80">
-                  <div className="flex gap-1.5">
-                    <div className="w-3 h-3 rounded-full bg-red-400" />
-                    <div className="w-3 h-3 rounded-full bg-amber-400" />
-                    <div className="w-3 h-3 rounded-full bg-emerald-400" />
-                  </div>
-                  <div className="flex-1 mx-3 bg-white dark:bg-slate-600 rounded-md px-3 py-1 text-[11px] text-slate-400 border border-slate-200 dark:border-slate-500 truncate">
-                    {subject || "Email Preview"}
-                  </div>
-                </div>
-                {/* Preview email metadata bar */}
-                <div className="border-b border-slate-100 dark:border-slate-700 px-5 py-3 bg-white dark:bg-slate-800">
-                  <h2 className="text-base font-semibold text-slate-800 dark:text-white truncate">{subject || "(No subject)"}</h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    {mailboxType === "gmail" ? `Gmail — ${userEmail}` : mailboxes.find(m => String(m.id) === mailboxId)?.smtpUser || "—"}
-                    {" → "}
-                    {to || "recipient@example.com"}
-                  </p>
-                </div>
-                {/* Email iframe */}
-                <div className="bg-slate-100 dark:bg-slate-700 p-4">
-                  <iframe
-                    key={`desktop-${previewHtml.length}`}
-                    srcDoc={previewHtml || "<body style='font-family:sans-serif;color:#94a3b8;padding:40px;text-align:center;'>Start typing to see your preview…</body>"}
-                    sandbox="allow-same-origin"
-                    className="w-full bg-white rounded-lg border border-slate-200 dark:border-slate-600"
-                    style={{ height: 480, display: "block" }}
-                    title="Desktop preview"
-                  />
+                    </>
+                  )}
                 </div>
               </div>
-              <p className="text-xs text-slate-400">Desktop preview at 600px — actual rendering may vary by email client</p>
-            </div>
 
-          ) : (
+              {/* Editor body */}
+              {htmlSourceMode ? (
+                <textarea
+                  value={htmlSource}
+                  onChange={e => { setHtmlSource(e.target.value); setTimeout(() => rebuildPreview(), 0); }}
+                  className="w-full px-6 py-5 min-h-72 font-mono text-xs bg-slate-900 text-green-400 focus:outline-none resize-none"
+                  placeholder="<p>Your HTML here...</p>"
+                />
+              ) : (
+                <div
+                  ref={editorRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  onInput={onEditorInput}
+                  className="w-full px-6 py-5 min-h-72 text-sm text-slate-800 dark:text-slate-200 focus:outline-none"
+                  style={{ lineHeight: "1.8" }}
+                />
+              )}
 
-            /* ── Mobile Preview ── */
-            <div className="flex flex-col items-center gap-3">
-              <div
-                className="relative"
-                style={{ width: 320 }}
-              >
-                {/* Phone shell */}
-                <div className="absolute inset-0 rounded-[36px] bg-slate-800 dark:bg-slate-900 border-4 border-slate-700 dark:border-slate-600 shadow-2xl pointer-events-none" style={{ zIndex: 1 }} />
-                {/* Screen */}
-                <div className="relative overflow-hidden rounded-[30px] mx-2 my-2" style={{ zIndex: 2 }}>
-                  {/* Status bar */}
-                  <div className="flex items-center justify-between px-5 pt-3 pb-1.5 bg-white dark:bg-slate-800 text-[9px] text-slate-500 dark:text-slate-400">
-                    <span>9:41</span>
-                    <div className="flex items-center gap-1">
-                      <div className="flex gap-0.5 items-end h-2.5">
-                        {[1,2,3,4].map(i => <div key={i} className="w-0.5 bg-current rounded-sm" style={{ height: `${i * 25}%` }} />)}
-                      </div>
-                      <span>WiFi</span>
-                      <span>100%</span>
+              {/* Attachment chips */}
+              {attachments.length > 0 && (
+                <div className="px-5 py-3 border-t border-slate-50 dark:border-slate-800/60 flex flex-wrap gap-2">
+                  {attachments.map((f, i) => (
+                    <div key={i} className="flex items-center gap-2 pl-3 pr-2 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-xs text-slate-700 dark:text-slate-300 max-w-[200px]">
+                      {fileIcon(f.name)}
+                      <span className="truncate font-medium">{f.name}</span>
+                      <span className="text-slate-400 shrink-0 text-[10px]">{fmtSize(f.size)}</span>
+                      <button
+                        onClick={() => setAttachments(a => a.filter((_, j) => j !== i))}
+                        className="text-slate-400 hover:text-red-500 transition-colors shrink-0"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
                     </div>
-                  </div>
-                  {/* Email header in phone */}
-                  <div className="px-3 py-2 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700">
-                    <p className="text-[11px] font-semibold text-slate-800 dark:text-white truncate">{subject || "(No subject)"}</p>
-                    <p className="text-[9px] text-slate-400 truncate">To: {to || "recipient@example.com"}</p>
-                  </div>
-                  {/* Email iframe */}
-                  <iframe
-                    key={`mobile-${previewHtml.length}`}
-                    srcDoc={previewHtml || "<body style='font-family:sans-serif;color:#94a3b8;padding:24px;text-align:center;font-size:13px;'>Start typing to see your preview…</body>"}
-                    sandbox="allow-same-origin"
-                    className="w-full bg-white"
-                    style={{ height: 480, display: "block" }}
-                    title="Mobile preview"
+                  ))}
+                </div>
+              )}
+
+              {/* Bottom bar */}
+              <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/20 rounded-b-2xl">
+                <div className="flex items-center gap-1">
+                  <input
+                    type="file" multiple ref={fileInputRef} className="hidden"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.webp,.zip"
+                    onChange={e => { if (e.target.files) setAttachments(a => [...a, ...Array.from(e.target.files!)]); e.target.value = ""; }}
                   />
-                  {/* Home indicator */}
-                  <div className="flex items-center justify-center py-2 bg-white dark:bg-slate-800">
-                    <div className="w-20 h-1 rounded-full bg-slate-300 dark:bg-slate-600" />
-                  </div>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors font-medium"
+                  >
+                    <Paperclip className="h-3.5 w-3.5" />
+                    Attach
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500 cursor-pointer select-none hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
+                    <input type="checkbox" checked={includeBranding} onChange={e => setIncludeBranding(e.target.checked)} className="w-3 h-3 rounded accent-blue-600" />
+                    Branding
+                  </label>
+                  <label className="flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500 cursor-pointer select-none hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
+                    <input type="checkbox" checked={trackOpen} onChange={e => setTrackOpen(e.target.checked)} className="w-3 h-3 rounded accent-blue-600" />
+                    Track opens
+                  </label>
+                  <label className="flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500 cursor-pointer select-none hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
+                    <input type="checkbox" checked={trackClick} onChange={e => setTrackClick(e.target.checked)} className="w-3 h-3 rounded accent-blue-600" />
+                    Track clicks
+                  </label>
                 </div>
               </div>
-              <p className="text-xs text-slate-400">Mobile preview — 375px viewport</p>
+
             </div>
 
-          )}
-        </div>
-
-        {/* ── Branding info bar (at bottom) ── */}
-        {branding && (
-          <div className="shrink-0 flex items-center gap-4 px-4 py-2 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-x-auto">
-            {branding.logoUrl && (
-              <img src={branding.logoUrl} alt="logo" className="h-5 object-contain shrink-0" />
-            )}
-            {branding.companyName && (
-              <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 shrink-0">
-                <Building2 className="h-3 w-3" />{branding.companyName}
-              </span>
-            )}
-            {branding.agentName && (
-              <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 shrink-0">
-                <User className="h-3 w-3" />{branding.agentName}
-              </span>
-            )}
-            {branding.companyPhone && (
-              <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 shrink-0">
-                <Phone className="h-3 w-3" />{branding.companyPhone}
-              </span>
-            )}
-            {branding.companyWebsite && (
-              <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 shrink-0">
-                <Globe className="h-3 w-3" />{branding.companyWebsite}
-              </span>
-            )}
-            {branding.accentColor && (
-              <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 shrink-0">
-                <div className="w-3 h-3 rounded-full border border-slate-300" style={{ background: branding.accentColor }} />
-                {branding.accentColor}
-              </span>
-            )}
-            <Link href="/settings" className="ml-auto text-[11px] text-blue-500 hover:text-blue-700 shrink-0 transition-colors">Edit branding →</Link>
           </div>
-        )}
+        </div>
 
       </div>
     </div>
