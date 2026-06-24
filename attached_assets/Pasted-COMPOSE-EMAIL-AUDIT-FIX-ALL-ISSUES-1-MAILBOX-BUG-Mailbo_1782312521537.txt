@@ -1,0 +1,89 @@
+COMPOSE EMAIL AUDIT - FIX ALL ISSUES
+1. MAILBOX BUG
+Mailbox Settings shows:
+- SMTP Connected
+- IMAP Connected
+- Sent Folder Sync Active
+- Connected mailbox exists
+But Compose Email still shows:
+"No mailboxes configured"
+Fix mailbox loading.
+Compose Email must load the user's connected mailbox records from the same source used by Mailbox Settings.
+The From dropdown should automatically display connected mailboxes.
+--------------------------------------------------
+2. REMOVE HARDCODED BROKERMAIL BRANDING
+Preview currently shows:
+"Sent via BrokerMAIL AI"
+This must never appear.
+Replace with branding system.
+Use:
+- company logo
+- company name
+- agent name
+- website
+- phone
+- signature
+from Branding Settings.
+If branding footer disabled:
+render nothing.
+No BrokerMAIL branding inside customer emails.
+--------------------------------------------------
+3. FIX LIVE PREVIEW
+Preview is still rendering placeholder data.
+Desktop and Mobile preview must instantly update when:
+- subject changes
+- recipient changes
+- editor content changes
+- template changes
+- branding settings change
+No placeholder content.
+Preview must render actual email HTML.
+--------------------------------------------------
+4. IMPROVE TEMPLATE DESIGNS
+Current templates are placeholder blocks.
+Create real professional templates:
+Professional Quote:
+- logo
+- hero section
+- quote details
+- CTA button
+- signature
+Modern Blue:
+- modern card design
+Corporate:
+- clean enterprise style
+Minimal:
+- plain professional email
+Newsletter:
+- section-based layout
+Plain Text:
+- simple text email
+All templates must be fully responsive.
+--------------------------------------------------
+5. IMPROVE FIELD STYLING
+Remove bright blue focus borders.
+Use Gmail-style focus states:
+- subtle border
+- subtle shadow
+- professional appearance
+Apply to:
+- From
+- To
+- Subject
+--------------------------------------------------
+6. PREVIEW QUALITY
+Desktop Preview:
+- render actual email
+- realistic email frame
+Mobile Preview:
+- realistic phone frame
+- render actual email HTML
+No gray placeholder boxes.
+--------------------------------------------------
+7. COMPOSER SHOULD FEEL PRODUCTION READY
+Current page still feels like a prototype.
+Goal:
+- Gmail simplicity
+- HubSpot polish
+- Outlook familiarity
+Professional, clean, and fully functional.

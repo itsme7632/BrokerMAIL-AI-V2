@@ -35,6 +35,10 @@ description: Architecture decisions for the standalone /compose page, design tem
 
 **Frontend RTE**: `contentEditable` div + `document.execCommand` — zero new npm deps, all browsers, handles all required formatting. Toolbar buttons use `onMouseDown + e.preventDefault()` to prevent focus loss. Toggle to HTML source textarea for raw editing.
 
+**Live preview tab-switch bug**: The editor div is ternary-rendered (unmounted when not on editor tab). This causes `editorRef.current` to be `null` when `rebuildPreview()` is called after switching to Desktop/Mobile tab — preview renders empty. **Fix**: `editorContentRef = useRef<string>("")` caches the HTML on every `onInput` event and in `setHtml`; `getHtml()` and `rebuildPreview()` read from this ref instead of `editorRef.current?.innerHTML`.
+
+**Focus-visible blue ring suppression**: Global `index.css :focus-visible { ring-2 ring-ring }` (--ring=#2563EB) overrides per-input `focus:outline-none`. Fix is to add `focus-visible:ring-0 focus-visible:ring-offset-0` to each input's className — not a global reset (would break other UI components).
+
 **Method override**: PUT (draft update) and DELETE (draft delete) sent as POST + `X-HTTP-Method-Override` header (standard pattern for this codebase).
 
 **Branding endpoint**: `/api/users/branding` (NOT `/api/branding`). Returns `{agentName, companyName, companyTagline, companyPhone, companyWebsite, usdot, mcNumber, accentColor, logoUrl}`.

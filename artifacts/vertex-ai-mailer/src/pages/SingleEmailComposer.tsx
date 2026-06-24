@@ -105,110 +105,175 @@ const BUILT_IN_TEMPLATES: BuiltInTemplate[] = [
 ];
 
 function buildTemplateHtml(templateId: string, content: string, branding: any, brandingEnabled: boolean): string {
-  const accentColor = branding?.accentColor || (BUILT_IN_TEMPLATES.find(t => t.id === templateId)?.accentColor ?? "#2563eb");
+  const accentColor = (branding?.accentColor && branding.accentColor !== "#000000")
+    ? branding.accentColor
+    : (BUILT_IN_TEMPLATES.find(t => t.id === templateId)?.accentColor ?? "#2563eb");
   const logoHtml = branding?.logoUrl
-    ? `<img src="${branding.logoUrl}" style="max-height:44px;max-width:160px;object-fit:contain;" alt="logo" />`
+    ? `<img src="${branding.logoUrl}" style="max-height:48px;max-width:180px;object-fit:contain;display:block;" alt="${branding.companyName || ""}" />`
     : "";
   const company = branding?.companyName || "";
+  const agent   = branding?.agentName   || "";
+  const phone   = branding?.companyPhone   || "";
+  const website = branding?.companyWebsite || "";
+  const tagline = branding?.companyTagline || "";
 
-  const brandingBlock = brandingEnabled && branding ? `
-    <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e2e8f0;font-family:sans-serif;font-size:13px;color:#64748b;line-height:1.9;">
-      ${branding.agentName      ? `<strong style="color:#1e293b;font-size:14px;display:block;">${branding.agentName}</strong>` : ""}
-      ${branding.companyName    ? `<span style="display:block;">${branding.companyName}</span>` : ""}
-      ${branding.companyTagline ? `<span style="color:#94a3b8;font-style:italic;display:block;">${branding.companyTagline}</span>` : ""}
-      ${branding.companyPhone   ? `<span style="display:block;">📞 ${branding.companyPhone}</span>` : ""}
-      ${branding.companyWebsite ? `<a href="${branding.companyWebsite}" style="color:${accentColor};display:block;">${branding.companyWebsite}</a>` : ""}
-    </div>` : "";
+  const year = new Date().getFullYear();
 
-  const baseStyles = `body{margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;}a{color:${accentColor};}p{margin:0 0 14px;}ul,ol{padding-left:20px;margin:0 0 14px;}img{max-width:100%;}`;
+  // Signature block — only when brandingEnabled AND branding data exists
+  const hasSignatureData = brandingEnabled && branding && (agent || company || phone || website);
+  const signatureBlock = hasSignatureData ? `
+    <table cellpadding="0" cellspacing="0" border="0" style="margin-top:28px;padding-top:20px;border-top:1px solid #e2e8f0;font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#64748b;line-height:1.8;width:100%;">
+      <tr><td>
+        ${logoHtml ? `<div style="margin-bottom:10px;">${logoHtml}</div>` : ""}
+        ${agent   ? `<div style="font-weight:700;font-size:14px;color:#1e293b;">${agent}</div>` : ""}
+        ${company ? `<div style="color:#475569;">${company}</div>` : ""}
+        ${tagline ? `<div style="color:#94a3b8;font-style:italic;font-size:12px;">${tagline}</div>` : ""}
+        ${phone   ? `<div style="margin-top:4px;">📞 <a href="tel:${phone}" style="color:#64748b;text-decoration:none;">${phone}</a></div>` : ""}
+        ${website ? `<div><a href="${website}" style="color:${accentColor};text-decoration:none;">${website}</a></div>` : ""}
+      </td></tr>
+    </table>` : "";
 
+  const base = `
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <style>
+      body{margin:0;padding:0;background:#f1f5f9;font-family:'Segoe UI',Helvetica,Arial,sans-serif;}
+      a{color:${accentColor};}
+      p{margin:0 0 14px;}
+      ul,ol{padding-left:22px;margin:0 0 14px;}
+      img{max-width:100%;height:auto;}
+      @media only screen and (max-width:600px){
+        .wrap{width:100%!important;padding:12px 0!important;}
+        .body{padding:24px 20px!important;}
+        .header{padding:20px!important;}
+      }
+    </style>`;
+
+  // ── Plain Text / Custom ─────────────────────────────────────────────────────
   if (templateId === "custom") {
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${baseStyles}body{max-width:600px;margin:0 auto;padding:24px;color:#1e293b;line-height:1.7;font-size:15px;}</style></head><body>${content}${brandingBlock}</body></html>`;
+    return `<!DOCTYPE html><html><head>${base}</head><body style="background:#fff;">
+      <div style="max-width:600px;margin:0 auto;padding:32px 24px;color:#1e293b;line-height:1.75;font-size:15px;">
+        ${content}
+        ${signatureBlock}
+      </div>
+    </body></html>`;
   }
+
+  // ── Minimal ─────────────────────────────────────────────────────────────────
   if (templateId === "minimal") {
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-      ${baseStyles}
-      .wrap{max-width:600px;margin:0 auto;padding:20px 0;background:#f8fafc;}
-      .card{background:#fff;border-radius:4px;overflow:hidden;border-top:4px solid ${accentColor};}
-      .body{padding:32px;color:#1e293b;line-height:1.7;font-size:15px;}
-      .foot{padding:16px 32px;font-size:12px;color:#94a3b8;text-align:center;border-top:1px solid #f1f5f9;}
-    </style></head><body><div class="wrap"><div class="card">
-      ${logoHtml || company ? `<div style="padding:20px 32px 0;">${logoHtml}${!logoHtml && company ? `<span style="font-weight:700;color:${accentColor};font-size:16px;">${company}</span>` : ""}</div>` : ""}
-      <div class="body">${content}${brandingBlock}</div>
-      <div class="foot">This email was sent by ${company || "BrokerMAIL"}.</div>
+    return `<!DOCTYPE html><html><head>${base}
+      <style>
+        .wrap{max-width:600px;margin:0 auto;padding:20px 0;}
+        .card{background:#fff;border-radius:6px;overflow:hidden;border-top:3px solid ${accentColor};}
+        .logo-row{padding:24px 32px 0;}
+        .body{padding:32px;color:#1e293b;line-height:1.75;font-size:15px;}
+        .foot{padding:16px 32px;font-size:11px;color:#94a3b8;border-top:1px solid #f1f5f9;}
+      </style>
+    </head><body><div class="wrap"><div class="card">
+      ${logoHtml || company ? `<div class="logo-row">${logoHtml || `<span style="font-weight:700;color:${accentColor};font-size:15px;">${company}</span>`}</div>` : ""}
+      <div class="body">${content}${signatureBlock}</div>
+      ${company ? `<div class="foot">© ${year} ${company}</div>` : ""}
     </div></div></body></html>`;
   }
+
+  // ── Corporate ───────────────────────────────────────────────────────────────
   if (templateId === "corporate") {
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-      ${baseStyles}
-      .wrap{max-width:600px;margin:0 auto;background:#f1f5f9;padding:20px 0;}
-      .header{background:#1e3a5f;padding:0;}
-      .header-top{padding:20px 32px;display:flex;align-items:center;gap:16px;}
-      .header-company{color:rgba(255,255,255,0.85);font-size:13px;font-weight:600;letter-spacing:1px;text-transform:uppercase;}
-      .header-divider{height:4px;background:${accentColor};}
-      .body{background:#fff;padding:32px;color:#1e293b;line-height:1.7;font-size:15px;}
-      .foot{padding:16px 32px;background:#fff;border-top:2px solid #e2e8f0;font-size:12px;color:#94a3b8;text-align:center;}
-    </style></head><body><div class="wrap">
+    return `<!DOCTYPE html><html><head>${base}
+      <style>
+        .wrap{max-width:600px;margin:0 auto;padding:20px 0;}
+        .header{background:#1c2d4a;padding:0;}
+        .header-inner{padding:22px 32px;display:table;width:100%;box-sizing:border-box;}
+        .header-logo{display:table-cell;vertical-align:middle;}
+        .header-name{display:table-cell;vertical-align:middle;padding-left:16px;color:rgba(255,255,255,0.9);font-size:13px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;white-space:nowrap;}
+        .accent-bar{height:3px;background:${accentColor};}
+        .body{background:#fff;padding:36px 32px;color:#1e293b;line-height:1.75;font-size:15px;}
+        .foot{background:#fff;padding:16px 32px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;}
+      </style>
+    </head><body><div class="wrap">
       <div class="header">
-        <div class="header-top">${logoHtml}<span class="header-company">${company}</span></div>
-        <div class="header-divider"></div>
+        <div class="header-inner">
+          <div class="header-logo">${logoHtml}</div>
+          ${company ? `<div class="header-name">${company}</div>` : ""}
+        </div>
+        <div class="accent-bar"></div>
       </div>
-      <div class="body">${content}${brandingBlock}</div>
-      <div class="foot">Confidential • Auto Transport Services</div>
+      <div class="body">${content}${signatureBlock}</div>
+      ${company ? `<div class="foot">© ${year} ${company} · All rights reserved</div>` : ""}
     </div></body></html>`;
   }
+
+  // ── Modern Blue ─────────────────────────────────────────────────────────────
   if (templateId === "modern-blue") {
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-      ${baseStyles}
-      .wrap{max-width:600px;margin:0 auto;background:#eef2ff;padding:20px 0;}
-      .header{background:linear-gradient(135deg,${accentColor} 0%,#7c3aed 100%);padding:32px;text-align:center;}
-      .header-logo{display:flex;justify-content:center;margin-bottom:12px;}
-      .header-title{color:#fff;font-size:22px;font-weight:700;margin:0;letter-spacing:-0.3px;}
-      .header-sub{color:rgba(255,255,255,0.8);font-size:13px;margin:6px 0 0;}
-      .body{background:#fff;padding:32px;color:#1e293b;line-height:1.7;font-size:15px;border-radius:0 0 8px 8px;}
-    </style></head><body><div class="wrap">
+    return `<!DOCTYPE html><html><head>${base}
+      <style>
+        .wrap{max-width:600px;margin:0 auto;padding:20px 0;}
+        .header{background:linear-gradient(135deg,${accentColor} 0%,#7c3aed 100%);padding:36px 32px;text-align:center;border-radius:8px 8px 0 0;}
+        .header-logo{margin-bottom:14px;}
+        .header-title{color:#fff;font-size:24px;font-weight:700;margin:0 0 6px;letter-spacing:-0.5px;}
+        .header-tagline{color:rgba(255,255,255,0.8);font-size:13px;margin:0;}
+        .body{background:#fff;padding:36px 32px;color:#1e293b;line-height:1.75;font-size:15px;border-radius:0 0 8px 8px;box-shadow:0 4px 16px rgba(0,0,0,0.06);}
+      </style>
+    </head><body><div class="wrap">
       <div class="header">
-        ${logoHtml ? `<div class="header-logo">${logoHtml}</div>` : ""}
+        ${logoHtml ? `<div class="header-logo">${logoHtml.replace('style="', 'style="margin:0 auto;')}</div>` : ""}
         ${company ? `<h1 class="header-title">${company}</h1>` : ""}
-        <p class="header-sub">Professional Auto Transport Services</p>
+        ${tagline ? `<p class="header-tagline">${tagline}</p>` : ""}
       </div>
-      <div class="body">${content}${brandingBlock}</div>
+      <div class="body">${content}${signatureBlock}</div>
     </div></body></html>`;
   }
+
+  // ── Newsletter ──────────────────────────────────────────────────────────────
   if (templateId === "newsletter") {
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-      ${baseStyles}
-      .wrap{max-width:600px;margin:0 auto;background:#f8f9fc;padding:20px 0;}
-      .header{background:${accentColor};padding:24px 32px;display:flex;align-items:center;gap:16px;}
-      .header-company{color:#fff;font-size:18px;font-weight:700;}
-      .header-tag{color:rgba(255,255,255,0.7);font-size:12px;font-weight:400;margin-top:2px;}
-      .body{background:#fff;padding:32px;color:#1e293b;line-height:1.7;font-size:15px;}
-      .foot{padding:20px 32px;font-size:12px;color:#94a3b8;text-align:center;border-top:1px solid #e2e8f0;}
-    </style></head><body><div class="wrap">
+    return `<!DOCTYPE html><html><head>${base}
+      <style>
+        .wrap{max-width:600px;margin:0 auto;padding:20px 0;background:#f8f9fc;}
+        .header{background:${accentColor};padding:22px 32px;}
+        .header-inner{display:table;width:100%;}
+        .header-logo-cell{display:table-cell;vertical-align:middle;}
+        .header-text-cell{display:table-cell;vertical-align:middle;padding-left:14px;}
+        .header-company{color:#fff;font-size:17px;font-weight:700;display:block;}
+        .header-label{color:rgba(255,255,255,0.7);font-size:11px;text-transform:uppercase;letter-spacing:1px;display:block;margin-top:2px;}
+        .body{background:#fff;padding:32px;color:#1e293b;line-height:1.75;font-size:15px;}
+        .divider{height:1px;background:#e2e8f0;margin:24px 0;}
+        .foot{padding:20px 32px;font-size:11px;color:#94a3b8;text-align:center;border-top:1px solid #e2e8f0;background:#fff;}
+      </style>
+    </head><body><div class="wrap">
       <div class="header">
-        ${logoHtml}
-        <div>
-          ${company ? `<div class="header-company">${company}</div>` : ""}
-          <div class="header-tag">Newsletter</div>
+        <div class="header-inner">
+          ${logoHtml ? `<div class="header-logo-cell">${logoHtml}</div>` : ""}
+          <div class="header-text-cell">
+            ${company ? `<span class="header-company">${company}</span>` : ""}
+            <span class="header-label">Newsletter</span>
+          </div>
         </div>
       </div>
-      <div class="body">${content}${brandingBlock}</div>
-      <div class="foot">© ${new Date().getFullYear()} ${company || "BrokerMAIL"}. All rights reserved.</div>
+      <div class="body">${content}${signatureBlock}</div>
+      ${company ? `<div class="foot">© ${year} ${company} · You received this as a valued contact.</div>` : ""}
     </div></body></html>`;
   }
-  // Default: professional
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    ${baseStyles}
-    .wrap{max-width:600px;margin:0 auto;background:#f1f5f9;padding:20px 0;}
-    .card{background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);}
-    .header{background:${accentColor};padding:22px 32px;display:flex;align-items:center;gap:16px;}
-    .header-company{color:rgba(255,255,255,0.92);font-size:16px;font-weight:600;}
-    .body{padding:32px;color:#1e293b;line-height:1.7;font-size:15px;}
-    .foot{padding:16px 32px;font-size:12px;color:#94a3b8;border-top:1px solid #f1f5f9;text-align:center;}
-  </style></head><body><div class="wrap"><div class="card">
-    <div class="header">${logoHtml}<span class="header-company">${company}</span></div>
-    <div class="body">${content}${brandingBlock}</div>
-    <div class="foot">Sent via BrokerMAIL AI</div>
+
+  // ── Professional (default) ──────────────────────────────────────────────────
+  return `<!DOCTYPE html><html><head>${base}
+    <style>
+      .wrap{max-width:600px;margin:0 auto;padding:20px 0;}
+      .card{background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.07);}
+      .header{background:${accentColor};padding:24px 32px;}
+      .header-inner{display:table;width:100%;}
+      .header-logo-cell{display:table-cell;vertical-align:middle;}
+      .header-name-cell{display:table-cell;vertical-align:middle;padding-left:14px;color:rgba(255,255,255,0.95);font-size:15px;font-weight:600;white-space:nowrap;}
+      .body{padding:36px 32px;color:#1e293b;line-height:1.75;font-size:15px;}
+      .foot{padding:16px 32px;font-size:11px;color:#94a3b8;border-top:1px solid #f1f5f9;}
+    </style>
+  </head><body><div class="wrap"><div class="card">
+    <div class="header">
+      <div class="header-inner">
+        ${logoHtml ? `<div class="header-logo-cell">${logoHtml}</div>` : ""}
+        ${company ? `<div class="header-name-cell">${company}</div>` : ""}
+      </div>
+    </div>
+    <div class="body">${content}${signatureBlock}</div>
+    ${company ? `<div class="foot">© ${year} ${company}</div>` : ""}
   </div></div></body></html>`;
 }
 
@@ -350,6 +415,7 @@ export default function SingleEmailComposer() {
   const [showBcc, setShowBcc] = useState(false);
 
   const editorRef                     = useRef<HTMLDivElement>(null);
+  const editorContentRef              = useRef<string>("");   // persists across tab switches
   const [htmlSourceMode, setHtmlMode] = useState(false);
   const [htmlSource, setHtmlSource]   = useState("");
 
@@ -445,18 +511,23 @@ export default function SingleEmailComposer() {
     editorRef.current?.focus();
   };
 
-  const getHtml = () => htmlSourceMode ? htmlSource : (editorRef.current?.innerHTML ?? "");
+  // Always read from the cache ref so preview works even when editor tab is unmounted
+  const getHtml = () => htmlSourceMode ? htmlSource : editorContentRef.current;
 
   const setHtml = (html: string) => {
+    editorContentRef.current = html;
     if (editorRef.current) editorRef.current.innerHTML = html;
     if (htmlSourceMode) setHtmlSource(html);
   };
 
   const toggleHtmlMode = () => {
     if (!htmlSourceMode) {
-      setHtmlSource(editorRef.current?.innerHTML ?? "");
+      const cur = editorRef.current?.innerHTML ?? editorContentRef.current;
+      setHtmlSource(cur);
+      editorContentRef.current = cur;
       setHtmlMode(true);
     } else {
+      editorContentRef.current = htmlSource;
       if (editorRef.current) editorRef.current.innerHTML = htmlSource;
       setHtmlMode(false);
       setTimeout(() => editorRef.current?.focus(), 50);
@@ -485,7 +556,8 @@ export default function SingleEmailComposer() {
   // ── Live preview builder ───────────────────────────────────────────────────
 
   const rebuildPreview = useCallback(() => {
-    const content = htmlSourceMode ? htmlSource : (editorRef.current?.innerHTML ?? "");
+    // Use cached ref so preview is accurate even when editor tab is unmounted
+    const content = htmlSourceMode ? htmlSource : editorContentRef.current;
     const userTpl = selectedDesign.startsWith("user:")
       ? userDesignTemplates.find(t => `user:${t.id}` === selectedDesign)
       : null;
@@ -509,8 +581,9 @@ export default function SingleEmailComposer() {
     setPreviewHtml(html);
   }, [selectedDesign, branding, includeBranding, htmlSourceMode, htmlSource, userDesignTemplates]);
 
-  // Called on every editor keystroke
+  // Called on every editor keystroke — update cache then rebuild
   const onEditorInput = useCallback(() => {
+    editorContentRef.current = editorRef.current?.innerHTML ?? "";
     rebuildPreview();
   }, [rebuildPreview]);
 
@@ -880,7 +953,7 @@ export default function SingleEmailComposer() {
                     <select
                       value={mailboxId}
                       onChange={e => { const v = e.target.value; setMailboxId(v); setMailboxType(v === "gmail" ? "gmail" : "smtp"); }}
-                      className="w-full py-3 text-sm bg-transparent text-slate-700 dark:text-slate-200 focus:outline-none cursor-pointer appearance-none pr-6"
+                      className="w-full py-3 text-sm bg-transparent text-slate-700 dark:text-slate-200 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 cursor-pointer appearance-none pr-6"
                     >
                       {mailboxes.map(mb => (
                         <option key={mb.id} value={String(mb.id)}>
@@ -900,7 +973,7 @@ export default function SingleEmailComposer() {
                   <input
                     type="email" value={to} onChange={e => setTo(e.target.value)}
                     placeholder="recipient@example.com"
-                    className="flex-1 py-3 text-sm bg-transparent text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-500 focus:outline-none"
+                    className="flex-1 py-3 text-sm bg-transparent text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-500 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
                   />
                   <div className="flex gap-1 pr-3">
                     {!showCc  && <button onClick={() => setShowCc(true)}  className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 px-1.5 py-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 font-medium transition-colors">Cc</button>}
@@ -914,7 +987,7 @@ export default function SingleEmailComposer() {
                     <input
                       type="text" value={cc} onChange={e => setCc(e.target.value)}
                       placeholder="cc@example.com"
-                      className="flex-1 py-3 text-sm bg-transparent text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-500 focus:outline-none"
+                      className="flex-1 py-3 text-sm bg-transparent text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-500 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
                     />
                     <button onClick={() => { setShowCc(false); setCc(""); }} className="pr-3 text-slate-300 hover:text-slate-500 transition-colors">
                       <X className="h-3.5 w-3.5" />
@@ -928,7 +1001,7 @@ export default function SingleEmailComposer() {
                     <input
                       type="text" value={bcc} onChange={e => setBcc(e.target.value)}
                       placeholder="bcc@example.com"
-                      className="flex-1 py-3 text-sm bg-transparent text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-500 focus:outline-none"
+                      className="flex-1 py-3 text-sm bg-transparent text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-500 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
                     />
                     <button onClick={() => { setShowBcc(false); setBcc(""); }} className="pr-3 text-slate-300 hover:text-slate-500 transition-colors">
                       <X className="h-3.5 w-3.5" />
@@ -942,7 +1015,7 @@ export default function SingleEmailComposer() {
                   <input
                     type="text" value={subject} onChange={e => setSubject(e.target.value)}
                     placeholder="Email subject"
-                    className="flex-1 py-3 pr-4 text-sm font-medium bg-transparent text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-500 focus:outline-none"
+                    className="flex-1 py-3 pr-4 text-sm font-medium bg-transparent text-slate-800 dark:text-slate-200 placeholder-slate-300 dark:placeholder-slate-500 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
                   />
                 </div>
 

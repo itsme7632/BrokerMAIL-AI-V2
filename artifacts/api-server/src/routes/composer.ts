@@ -47,7 +47,7 @@ router.get("/composer/mailboxes", requireAuth, async (req, res) => {
         isActive:  mailboxesTable.isActive,
       })
       .from(mailboxesTable)
-      .where(and(eq(mailboxesTable.userId, user.id), eq(mailboxesTable.isActive, true)))
+      .where(eq(mailboxesTable.userId, user.id))
       .orderBy(mailboxesTable.id);
 
     const gmailConnected = !!(user.gmailAccessToken && user.gmailRefreshToken);
