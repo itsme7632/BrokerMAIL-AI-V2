@@ -1,0 +1,111 @@
+COMPOSE EMAIL STILL HAS CRITICAL BUGS.
+
+DO NOT MAKE ASSUMPTIONS. DEBUG THE ACTUAL DATA FLOW.
+
+====================================================
+BUG #1 — MAILBOX NOT SHOWING
+====================================================
+
+Mailbox Settings page shows:
+
+miller@vertexcarship.com
+SMTP Connected
+IMAP Connected
+Sent Folder Sync Active
+
+But Compose Email shows:
+
+"No mailboxes configured"
+
+I need you to debug the ACTUAL API response.
+
+Add temporary logging and verify:
+
+1. Logged-in user ID
+2. Mailbox query user ID
+3. Mailboxes returned by:
+   GET /api/composer/mailboxes
+4. Mailboxes returned by Mailbox Settings page
+5. Compare both results
+
+Do NOT tell me the query is correct.
+
+Actually log:
+
+- current user id
+- mailbox count
+- mailbox ids
+- mailbox email addresses
+
+Then identify exactly why Mailbox page sees the mailbox but Compose page does not.
+
+Expected result:
+
+Compose Email must automatically display:
+
+miller@vertexcarship.com
+
+with SMTP / IMAP badges.
+
+====================================================
+BUG #2 — SETTINGS LINK WRONG
+====================================================
+
+The link:
+
+"Configure a mailbox in Settings →"
+
+currently redirects to Dashboard.
+
+Fix it.
+
+It must open:
+
+/mailbox
+
+or the actual mailbox settings page.
+
+====================================================
+BUG #3 — SUBJECT ROW BROKEN
+====================================================
+
+Current UI:
+
+SUBJECWrite a compelling subject line...
+
+Label and input overlap.
+
+Fix layout completely.
+
+Use same structure as Gmail:
+
+[SUBJECT LABEL]
+[INPUT FIELD]
+
+Requirements:
+
+- Fixed label width
+- Input starts after label
+- No overlap
+- No clipping
+- No hidden characters
+
+====================================================
+BUG #4 — VERIFY BEFORE CLOSING
+====================================================
+
+Before marking complete:
+
+1. Open Compose Email
+2. Confirm mailbox appears
+3. Confirm mailbox selectable
+4. Confirm Settings link opens mailbox page
+5. Confirm Subject row renders correctly
+6. Provide actual API response from:
+
+GET /api/composer/mailboxes
+
+7. Provide screenshot proof
+
+Do not stop after code changes.
+Actually verify the behavior works end-to-end.

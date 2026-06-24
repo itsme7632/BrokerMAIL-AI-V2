@@ -19,8 +19,17 @@ import { cn } from "@/lib/utils";
 
 const BASE = (import.meta.env.BASE_URL as string).replace(/\/$/, "");
 const apiUrl = (p: string) => `${BASE}/api/${p}`;
+// Auth is JWT Bearer token stored in localStorage (NOT session cookies)
+const getToken = () => localStorage.getItem("auth_token") ?? "";
+const authHeaders = (extra: Record<string, string> = {}): Record<string, string> => ({
+  "Authorization": `Bearer ${getToken()}`,
+  ...extra,
+});
 const apiFetch = (p: string, init?: RequestInit) =>
-  fetch(apiUrl(p), { credentials: "include", ...init });
+  fetch(apiUrl(p), {
+    ...init,
+    headers: authHeaders(init?.headers as Record<string, string> ?? {}),
+  });
 const apiPost = (p: string, body: unknown) =>
   apiFetch(p, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 const apiPut = (p: string, body: unknown) =>
@@ -697,7 +706,7 @@ export default function SingleEmailComposer() {
     if (!mailboxId) { toast({ title: "No mailbox", description: "Select a sending mailbox.", variant: "destructive" }); return; }
     setSendingTest(true);
     try {
-      const r = await fetch(apiUrl("composer/test"), { method: "POST", credentials: "include", body: buildFormData(true) });
+      const r = await fetch(apiUrl("composer/test"), { method: "POST", headers: authHeaders(), body: buildFormData(true) });
       if (!r.ok) throw new Error((await r.json()).error || "Failed");
       toast({ title: "Test email sent!", description: `Sent to ${userEmail || to}` });
     } catch (e: any) {
@@ -711,7 +720,7 @@ export default function SingleEmailComposer() {
     if (!mailboxId)      { toast({ title: "No mailbox",    description: "Select a sending mailbox.", variant: "destructive" }); return; }
     setSending(true);
     try {
-      const r = await fetch(apiUrl("composer/send"), { method: "POST", credentials: "include", body: buildFormData() });
+      const r = await fetch(apiUrl("composer/send"), { method: "POST", headers: authHeaders(), body: buildFormData() });
       if (!r.ok) throw new Error((await r.json()).error || "Failed to send");
       toast({ title: "Email sent!", description: `Delivered to ${to}` });
       if (draftId) { await apiDel(`composer/drafts/${draftId}`); setDraftId(null); await loadDrafts(); }
@@ -874,7 +883,7 @@ export default function SingleEmailComposer() {
                   <span className="text-xs text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Saved Designs</span>
                 </button>
               </Link>
-              <Link href="/admin?tab=branding">
+              <Link href="/settings">
                 <button className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group">
                   <Building2 className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-500 shrink-0 transition-colors" />
                   <span className="text-xs text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Branding</span>
@@ -983,7 +992,7 @@ export default function SingleEmailComposer() {
                 {/* From row */}
                 <div className="border-b border-slate-100 dark:border-slate-700">
                   <div className="flex items-center">
-                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest w-16 pl-4 shrink-0">From</span>
+                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest w-[84px] pl-4 shrink-0">From</span>
                     <div className="relative flex-1 pr-4">
                       <select
                         value={mailboxId}
@@ -1004,7 +1013,7 @@ export default function SingleEmailComposer() {
                   {/* Connection status badges */}
                   {mailboxes.length === 0 && !gmailConnected ? (
                     <div className="px-4 pb-2 pl-20">
-                      <Link href="/admin?tab=mailbox" className="text-[11px] text-blue-500 hover:text-blue-700 transition-colors">
+                      <Link href="/mailbox" className="text-[11px] text-blue-500 hover:text-blue-700 transition-colors">
                         + Configure a mailbox in Settings →
                       </Link>
                     </div>
@@ -1037,7 +1046,7 @@ export default function SingleEmailComposer() {
 
                 {/* To row */}
                 <div className="flex items-center border-b border-slate-100 dark:border-slate-700">
-                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest w-16 pl-4 shrink-0">To</span>
+                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest w-[84px] pl-4 shrink-0">To</span>
                   <input
                     type="email" value={to} onChange={e => setTo(e.target.value)}
                     placeholder="recipient@example.com"
@@ -1051,7 +1060,7 @@ export default function SingleEmailComposer() {
 
                 {showCc && (
                   <div className="flex items-center border-b border-slate-100 dark:border-slate-700">
-                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest w-16 pl-4 shrink-0">Cc</span>
+                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest w-[84px] pl-4 shrink-0">Cc</span>
                     <input
                       type="text" value={cc} onChange={e => setCc(e.target.value)}
                       placeholder="cc@example.com"
@@ -1065,7 +1074,7 @@ export default function SingleEmailComposer() {
 
                 {showBcc && (
                   <div className="flex items-center border-b border-slate-100 dark:border-slate-700">
-                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest w-16 pl-4 shrink-0">Bcc</span>
+                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest w-[84px] pl-4 shrink-0">Bcc</span>
                     <input
                       type="text" value={bcc} onChange={e => setBcc(e.target.value)}
                       placeholder="bcc@example.com"
@@ -1079,7 +1088,7 @@ export default function SingleEmailComposer() {
 
                 {/* Subject row */}
                 <div className="flex items-center border-b border-slate-100 dark:border-slate-700">
-                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest w-16 pl-4 shrink-0">Subject</span>
+                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest w-[84px] pl-4 shrink-0">Subject</span>
                   <input
                     type="text" value={subject} onChange={e => setSubject(e.target.value)}
                     placeholder="Write a compelling subject line…"
@@ -1376,7 +1385,7 @@ export default function SingleEmailComposer() {
                 {branding.accentColor}
               </span>
             )}
-            <Link href="/admin?tab=branding" className="ml-auto text-[11px] text-blue-500 hover:text-blue-700 shrink-0 transition-colors">Edit branding →</Link>
+            <Link href="/settings" className="ml-auto text-[11px] text-blue-500 hover:text-blue-700 shrink-0 transition-colors">Edit branding →</Link>
           </div>
         )}
 
