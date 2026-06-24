@@ -23,8 +23,9 @@ import {
   draftsTable,
   leadsTable,
   processedBouncesTable,
+  emailTrackingEventsTable,
 } from "@workspace/db";
-import { and, eq, isNotNull, desc } from "drizzle-orm";
+import { and, eq, isNotNull, desc, count } from "drizzle-orm";
 import { isPermanentBounce, extractBounceCode } from "./email-validator";
 import { decrypt } from "./crypto";
 import { logger } from "./logger";
@@ -314,6 +315,7 @@ async function _scanMailbox(
         );
 
         // Find the most-recently-sent (status=success) email to this address.
+        // ORDER BY sentAt DESC so we match the most-recent email, never an older one.
         // When scanning the admin bounce mailbox (userId < 0), search across all users.
         const whereConditions = mailbox.userId > 0
           ? and(
@@ -331,14 +333,81 @@ async function _scanMailbox(
             id:         emailQueueTable.id,
             userId:     emailQueueTable.userId,
             campaignId: emailQueueTable.campaignId,
+            trackingId: emailQueueTable.trackingId,
           })
           .from(emailQueueTable)
           .where(whereConditions)
+          .orderBy(desc(emailQueueTable.sentAt))
           .limit(1);
 
         let bounceRecorded = false;
 
         if (item) {
+          // ── SAFETY CHECK: Never bounce an email that has open/click events ──
+          // If the recipient actually opened the email (tracking pixel fired), it
+          // reached the inbox. A bounce NDR for the same address must be spurious,
+          // stale, or a false match. Log it for review and skip the update.
+          let openEventCount = 0;
+          if (item.trackingId) {
+            try {
+              const [draftRow] = await db
+                .select({ id: draftsTable.id })
+                .from(draftsTable)
+                .where(eq(draftsTable.trackingId, item.trackingId))
+                .limit(1);
+
+              if (draftRow) {
+                const [{ total }] = await db
+                  .select({ total: count() })
+                  .from(emailTrackingEventsTable)
+                  .where(
+                    and(
+                      eq(emailTrackingEventsTable.draftId, draftRow.id),
+                      eq(emailTrackingEventsTable.eventType, "open"),
+                    ),
+                  );
+                openEventCount = total ?? 0;
+              }
+            } catch (checkErr) {
+              logger.warn(
+                { checkErr, emailQueueId: item.id },
+                "[BOUNCE-SCAN] Could not check open events — proceeding with bounce (safe side)",
+              );
+            }
+          }
+
+          if (openEventCount > 0) {
+            // Email was definitively opened — this bounce is a false positive.
+            // Do NOT mark as bounced. Log everything for diagnosis.
+            logger.error(
+              {
+                mailboxId:        mailbox.id,
+                seq:              msg.seq,
+                bounceMessageId:  messageId ?? "(missing)",
+                recipient,
+                emailQueueId:     item.id,
+                trackingId:       item.trackingId ?? "(none)",
+                openEventCount,
+                bounceReason:     reason,
+                action:           "SKIPPED — false positive bounce suppressed",
+              },
+              "[BOUNCE-SCAN] FALSE POSITIVE DETECTED: bounce NDR received for email that has open tracking events. " +
+              "Email was delivered and opened. Bounce NOT recorded. Flagged for review.",
+            );
+            // Record in processed_bounces with messageId so we don't re-process
+            // this NDR, but do not touch email_queue status.
+            if (messageId) {
+              try {
+                await db.insert(processedBouncesTable).values({
+                  mailboxId:   mailbox.id,
+                  messageId,
+                  recipient:   recipient + ":FALSE_POSITIVE",
+                }).onConflictDoNothing();
+              } catch { /* non-fatal */ }
+            }
+            continue;
+          }
+
           await db
             .update(emailQueueTable)
             .set({
@@ -358,6 +427,8 @@ async function _scanMailbox(
               messageId:    messageId ?? "(missing)",
               recipient,
               emailQueueId: item.id,
+              trackingId:   item.trackingId ?? "(none)",
+              openEvents:   openEventCount,
               source:       "email_queue",
             },
             "[BOUNCE-SCAN-DEBUG] Bounce processed — email_queue row updated to bounced",
