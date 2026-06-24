@@ -15,6 +15,7 @@ export const composerDraftsTable = pgTable("composer_drafts", {
   trackClick: boolean("track_click").notNull().default(true),
   includeBranding: boolean("include_branding").notNull().default(true),
   status: text("status").notNull().default("draft"),
+  attachmentsMeta: text("attachments_meta").notNull().default("[]"),
   sentAt: timestamp("sent_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

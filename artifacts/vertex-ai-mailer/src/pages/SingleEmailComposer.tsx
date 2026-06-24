@@ -15,6 +15,10 @@ import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+type AttachmentMeta = { id: string; name: string; size: number; type: string };
+
 // ── API helpers ────────────────────────────────────────────────────────────────
 
 const BASE = (import.meta.env.BASE_URL as string).replace(/\/$/, "");
@@ -433,8 +437,10 @@ export default function SingleEmailComposer() {
   const [trackClick,      setTrackClick]      = useState(true);
   const [branding, setBranding]               = useState<any>(null);
 
-  const [attachments, setAttachments] = useState<File[]>([]);
+  const [attachments,          setAttachments]          = useState<AttachmentMeta[]>([]);
+  const [uploadingAttachment,  setUploadingAttachment]  = useState(false);
   const fileInputRef                  = useRef<HTMLInputElement>(null);
+  const imageInputRef                 = useRef<HTMLInputElement>(null);
   const savedRangeRef                 = useRef<Range | null>(null);
   const linkDialogRef                 = useRef<HTMLDivElement>(null);
   const linkInputRef                  = useRef<HTMLInputElement>(null);
@@ -635,8 +641,59 @@ export default function SingleEmailComposer() {
   };
 
   const insertImage = () => {
-    const url = window.prompt("Enter image URL:", "https://");
-    if (url) exec("insertImage", url);
+    // Save cursor position then open file picker — no prompt()
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+    imageInputRef.current?.click();
+  };
+
+  const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      if (!dataUrl) return;
+      editorRef.current?.focus();
+      if (savedRangeRef.current) {
+        const sel = window.getSelection();
+        if (sel) { sel.removeAllRanges(); sel.addRange(savedRangeRef.current); }
+      }
+      document.execCommand("insertHTML", false,
+        `<img src="${dataUrl}" style="max-width:100%;height:auto;display:block;margin:8px 0;cursor:default;" />`
+      );
+      setTimeout(() => {
+        editorContentRef.current = editorRef.current?.innerHTML ?? editorContentRef.current;
+        rebuildPreview();
+      }, 0);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAttachmentFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploadingAttachment(true);
+    try {
+      for (const file of Array.from(files)) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const r = await fetch(apiUrl("composer/upload-attachment"), {
+          method: "POST",
+          headers: authHeaders(),
+          body: fd,
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          toast({ title: "Upload failed", description: (err as any).error || file.name, variant: "destructive" });
+          continue;
+        }
+        const meta: AttachmentMeta = await r.json();
+        setAttachments(prev => [...prev, meta]);
+      }
+    } finally {
+      setUploadingAttachment(false);
+    }
   };
 
   const insertButton = () => {
@@ -709,6 +766,7 @@ export default function SingleEmailComposer() {
         mailboxId: mailboxType === "gmail" ? null : mailboxId,
         mailboxType, toEmail: to, ccEmail: cc, bccEmail: bcc,
         subject, body: getHtml(), trackOpen, trackClick, includeBranding,
+        attachmentsMeta: JSON.stringify(attachments),
       };
       const r = draftId
         ? await apiPut(`composer/drafts/${draftId}`, payload)
@@ -735,6 +793,7 @@ export default function SingleEmailComposer() {
     setTrackOpen(d.trackOpen ?? true);
     setTrackClick(d.trackClick ?? true);
     setIncludeBranding(d.includeBranding ?? true);
+    try { setAttachments(JSON.parse(d.attachmentsMeta ?? "[]")); } catch { setAttachments([]); }
     setShowDrafts(false);
     setActiveTab("editor");
     setTimeout(() => rebuildPreview(), 0);
@@ -781,10 +840,10 @@ export default function SingleEmailComposer() {
     } else {
       bodyHtml = buildTemplateHtml(selectedDesign, content, branding, includeBranding);
     }
-    fd.append("bodyHtml",   bodyHtml);
-    fd.append("trackOpen",  String(trackOpen));
-    fd.append("trackClick", String(trackClick));
-    for (const f of attachments) fd.append("attachments", f);
+    fd.append("bodyHtml",      bodyHtml);
+    fd.append("trackOpen",     String(trackOpen));
+    fd.append("trackClick",    String(trackClick));
+    fd.append("attachmentIds", JSON.stringify(attachments.map(a => a.id)));
     return fd;
   };
 
@@ -1264,17 +1323,27 @@ export default function SingleEmailComposer() {
               {/* Bottom bar */}
               <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/20 rounded-b-2xl">
                 <div className="flex items-center gap-1">
+                  {/* Attachment file picker (non-image files) */}
                   <input
                     type="file" multiple ref={fileInputRef} className="hidden"
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.webp,.zip"
-                    onChange={e => { if (e.target.files) setAttachments(a => [...a, ...Array.from(e.target.files!)]); e.target.value = ""; }}
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.zip"
+                    onChange={e => { handleAttachmentFiles(e.target.files); e.target.value = ""; }}
+                  />
+                  {/* Image file picker (for inline insertion) */}
+                  <input
+                    type="file" ref={imageInputRef} className="hidden"
+                    accept="image/jpeg,image/png,image/gif,image/webp,image/jpg"
+                    onChange={handleImageFile}
                   />
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors font-medium"
+                    disabled={uploadingAttachment}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors font-medium disabled:opacity-50"
                   >
-                    <Paperclip className="h-3.5 w-3.5" />
-                    Attach
+                    {uploadingAttachment
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <Paperclip className="h-3.5 w-3.5" />}
+                    {uploadingAttachment ? "Uploading…" : "Attach"}
                   </button>
                 </div>
 

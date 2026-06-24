@@ -1,5 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
+import fs from "fs";
+import path from "path";
 import {
   db, mailboxesTable, composerDraftsTable, emailQueueTable, draftsTable, designTemplatesTable,
 } from "@workspace/db";
@@ -13,7 +15,22 @@ import { randomUUID } from "crypto";
 import { getTrackingSettings } from "../lib/tracking-settings";
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+// ── Upload storage ────────────────────────────────────────────────────────────
+const UPLOAD_DIR = path.join(process.cwd(), "../../data/composer-uploads");
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const diskStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
+  filename:    (_req, file, cb) => cb(null, `${randomUUID()}__${file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`),
+});
+const uploadDisk = multer({
+  storage: diskStorage,
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
+const uploadMem  = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function injectClickTracking(html: string, trackingId: string, base: string): string {
   return html.replace(
@@ -32,6 +49,24 @@ function injectOpenPixel(html: string, trackingId: string, base: string): string
 
 function stripHtml(html: string): string {
   return html.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/** Resolve saved attachment IDs → { filename, content, contentType } for nodemailer/gmail */
+function resolveAttachmentIds(ids: string[]): { filename: string; content: Buffer; contentType: string }[] {
+  const result: { filename: string; content: Buffer; contentType: string }[] = [];
+  for (const id of ids) {
+    const filePath = path.join(UPLOAD_DIR, id);
+    if (!fs.existsSync(filePath)) continue;
+    const originalName = id.replace(/^[a-f0-9-]+__/, "").replace(/_/g, " ");
+    try {
+      result.push({
+        filename:    originalName,
+        content:     fs.readFileSync(filePath),
+        contentType: "application/octet-stream",
+      });
+    } catch { /* skip unreadable */ }
+  }
+  return result;
 }
 
 // ── GET /api/composer/mailboxes ───────────────────────────────────────────────
@@ -79,7 +114,7 @@ router.get("/composer/drafts", requireAuth, async (req, res) => {
 router.post("/composer/drafts", requireAuth, async (req, res) => {
   const user = req.user as User;
   try {
-    const { mailboxId, mailboxType, toEmail, ccEmail, bccEmail, subject, body, trackOpen, trackClick, includeBranding } = req.body;
+    const { mailboxId, mailboxType, toEmail, ccEmail, bccEmail, subject, body, trackOpen, trackClick, includeBranding, attachmentsMeta } = req.body;
     const [draft] = await db.insert(composerDraftsTable).values({
       userId:          user.id,
       mailboxId:       mailboxId ? parseInt(mailboxId) : null,
@@ -92,6 +127,7 @@ router.post("/composer/drafts", requireAuth, async (req, res) => {
       trackOpen:       trackOpen !== undefined ? (trackOpen === true || trackOpen === "true") : true,
       trackClick:      trackClick !== undefined ? (trackClick === true || trackClick === "true") : true,
       includeBranding: includeBranding !== undefined ? (includeBranding === true || includeBranding === "true") : true,
+      attachmentsMeta: attachmentsMeta ?? "[]",
       status:          "draft",
     }).returning();
     res.json(draft);
@@ -106,7 +142,7 @@ router.put("/composer/drafts/:id", requireAuth, async (req, res) => {
   const user = req.user as User;
   const id   = parseInt(req.params.id);
   try {
-    const { mailboxId, mailboxType, toEmail, ccEmail, bccEmail, subject, body, trackOpen, trackClick, includeBranding } = req.body;
+    const { mailboxId, mailboxType, toEmail, ccEmail, bccEmail, subject, body, trackOpen, trackClick, includeBranding, attachmentsMeta } = req.body;
     const [draft] = await db
       .update(composerDraftsTable)
       .set({
@@ -120,6 +156,7 @@ router.put("/composer/drafts/:id", requireAuth, async (req, res) => {
         trackOpen:       trackOpen !== undefined ? (trackOpen === true || trackOpen === "true") : true,
         trackClick:      trackClick !== undefined ? (trackClick === true || trackClick === "true") : true,
         includeBranding: includeBranding !== undefined ? (includeBranding === true || includeBranding === "true") : true,
+        attachmentsMeta: attachmentsMeta ?? "[]",
         updatedAt:       new Date(),
       })
       .where(and(eq(composerDraftsTable.id, id), eq(composerDraftsTable.userId, user.id)))
@@ -143,6 +180,23 @@ router.delete("/composer/drafts/:id", requireAuth, async (req, res) => {
   } catch (err: any) {
     logger.error({ err }, "[COMPOSER] Failed to delete draft");
     res.status(500).json({ error: "Failed to delete draft" });
+  }
+});
+
+// ── POST /api/composer/upload-attachment ──────────────────────────────────────
+router.post("/composer/upload-attachment", requireAuth, uploadDisk.single("file"), async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) { res.status(400).json({ error: "No file provided" }); return; }
+    res.json({
+      id:   file.filename,
+      name: file.originalname,
+      size: file.size,
+      type: file.mimetype,
+    });
+  } catch (err: any) {
+    logger.error({ err }, "[COMPOSER] Failed to upload attachment");
+    res.status(500).json({ error: "Failed to upload attachment" });
   }
 });
 
@@ -295,13 +349,19 @@ Return ONLY the inner HTML content, no wrapper tags.`;
 });
 
 // ── POST /api/composer/test ───────────────────────────────────────────────────
-router.post("/composer/test", requireAuth, upload.array("attachments"), async (req, res) => {
+router.post("/composer/test", requireAuth, uploadMem.array("attachments"), async (req, res) => {
   const user  = req.user as User;
   const files = (req.files as Express.Multer.File[]) || [];
   try {
-    const { mailboxId, mailboxType, subject, bodyHtml, testRecipient } = req.body;
+    const { mailboxId, mailboxType, subject, bodyHtml, testRecipient, attachmentIds } = req.body;
     const recipient = testRecipient || user.email;
     if (!recipient) { res.status(400).json({ error: "No test recipient available" }); return; }
+
+    // Resolve stored attachment IDs → buffers
+    const storedIds: string[] = attachmentIds ? JSON.parse(attachmentIds) : [];
+    const storedAttachments = resolveAttachmentIds(storedIds);
+    const uploadedAttachments = files.map(f => ({ filename: f.originalname, content: f.buffer, contentType: f.mimetype }));
+    const allAttachments = [...storedAttachments, ...uploadedAttachments];
 
     const banner = `<div style="background:#fef3c7;border:1px solid #fcd34d;padding:8px 12px;border-radius:4px;font-size:12px;margin-bottom:12px;"><strong>⚠ TEST EMAIL</strong> — This is a preview sent by BrokerMAIL Composer.</div>`;
     const finalHtml = banner + (bodyHtml ?? "");
@@ -313,7 +373,7 @@ router.post("/composer/test", requireAuth, upload.array("attachments"), async (r
         subject: `[TEST] ${subject ?? "Test Email"}`,
         bodyText: textBody,
         bodyHtml: finalHtml,
-        attachments: files.map(f => ({ filename: f.originalname, content: f.buffer, contentType: f.mimetype })),
+        attachments: allAttachments,
       });
     } else {
       const mbId = parseInt(mailboxId);
@@ -327,7 +387,7 @@ router.post("/composer/test", requireAuth, upload.array("attachments"), async (r
         subject:     `[TEST] ${subject ?? "Test Email"}`,
         text:        textBody,
         html:        finalHtml,
-        attachments: files.map(f => ({ filename: f.originalname, content: f.buffer, contentType: f.mimetype })),
+        attachments: allAttachments,
       });
     }
 
@@ -339,16 +399,22 @@ router.post("/composer/test", requireAuth, upload.array("attachments"), async (r
 });
 
 // ── POST /api/composer/send ───────────────────────────────────────────────────
-router.post("/composer/send", requireAuth, upload.array("attachments"), async (req, res) => {
+router.post("/composer/send", requireAuth, uploadMem.array("attachments"), async (req, res) => {
   const user  = req.user as User;
   const files = (req.files as Express.Multer.File[]) || [];
   try {
     const {
       mailboxId, mailboxType, to, cc, bcc, subject, bodyHtml,
-      trackOpen: trackOpenStr, trackClick: trackClickStr,
+      trackOpen: trackOpenStr, trackClick: trackClickStr, attachmentIds,
     } = req.body;
 
     if (!to?.trim()) { res.status(400).json({ error: "To address is required" }); return; }
+
+    // Resolve stored attachment IDs → buffers
+    const storedIds: string[] = attachmentIds ? JSON.parse(attachmentIds) : [];
+    const storedAttachments = resolveAttachmentIds(storedIds);
+    const uploadedAttachments = files.map(f => ({ filename: f.originalname, content: f.buffer, contentType: f.mimetype }));
+    const allAttachments = [...storedAttachments, ...uploadedAttachments];
 
     const shouldTrackOpen  = trackOpenStr  !== "false";
     const shouldTrackClick = trackClickStr !== "false";
@@ -371,7 +437,7 @@ router.post("/composer/send", requireAuth, upload.array("attachments"), async (r
         subject:     subject ?? "",
         bodyText:    textBody,
         bodyHtml:    finalHtml,
-        attachments: files.map(f => ({ filename: f.originalname, content: f.buffer, contentType: f.mimetype })),
+        attachments: allAttachments,
       });
     } else {
       const mbId = parseInt(mailboxId);
@@ -388,7 +454,7 @@ router.post("/composer/send", requireAuth, upload.array("attachments"), async (r
         subject:     subject ?? "",
         text:        textBody,
         html:        finalHtml,
-        attachments: files.map(f => ({ filename: f.originalname, content: f.buffer, contentType: f.mimetype })),
+        attachments: allAttachments,
       });
     }
 
@@ -422,6 +488,11 @@ router.post("/composer/send", requireAuth, upload.array("attachments"), async (r
       });
     } catch (draftErr) {
       logger.warn({ draftErr }, "[COMPOSER] Could not insert tracking draft (non-fatal)");
+    }
+
+    // Clean up uploaded attachment files after successful send
+    for (const id of storedIds) {
+      try { fs.unlinkSync(path.join(UPLOAD_DIR, id)); } catch { /* ignore */ }
     }
 
     logger.info({ userId: user.id, to, mailboxType, trackingId }, "[COMPOSER] Email sent");
