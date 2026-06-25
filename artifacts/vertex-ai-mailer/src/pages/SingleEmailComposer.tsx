@@ -906,7 +906,7 @@ export default function SingleEmailComposer() {
       <aside
         className={cn(
           "flex flex-col bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-slate-800 transition-all duration-200 shrink-0 overflow-hidden",
-          sidebarCollapsed ? "w-0" : "w-52"
+          sidebarCollapsed ? "w-0" : "w-[232px]"
         )}
       >
         <div className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
@@ -1017,10 +1017,10 @@ export default function SingleEmailComposer() {
       </aside>
 
       {/* ════════════ MAIN COMPOSE AREA ════════════ */}
-      <div className="flex-1 min-w-0 flex flex-col bg-slate-50 dark:bg-slate-950 overflow-hidden">
+      <div className="flex-1 min-w-0 flex flex-col bg-slate-50 dark:bg-[#0c0e12] overflow-hidden">
 
         {/* Top bar */}
-        <div className="flex items-center gap-3 px-4 py-2.5 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shrink-0">
+        <div className="flex items-center gap-3 px-6 py-3 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 shrink-0">
           {/* Sidebar toggle */}
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -1080,14 +1080,14 @@ export default function SingleEmailComposer() {
 
         {/* Scrollable compose area */}
         <div className="flex-1 min-h-0 overflow-y-auto">
-          <div className="max-w-2xl mx-auto px-4 py-8">
+          <div className="max-w-[1120px] mx-auto px-6 py-6">
 
             {/* ── Compose card ── */}
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-visible">
+            <div className="bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200/70 dark:border-slate-700/60 overflow-visible">
 
               {/* From row */}
-              <div className="flex items-center px-5 py-3.5 border-b border-slate-50 dark:border-slate-800/60">
-                <span className="text-xs text-slate-400 w-14 shrink-0 font-medium">From</span>
+              <div className="flex items-center px-8 py-4 border-b border-slate-100 dark:border-slate-800/60">
+                <span className="text-xs text-slate-400 w-16 shrink-0 font-medium tracking-wide">From</span>
                 <div className="relative flex-1">
                   <select
                     value={mailboxId}
@@ -1112,8 +1112,8 @@ export default function SingleEmailComposer() {
               </div>
 
               {/* To row */}
-              <div className="flex items-center px-5 py-3.5 border-b border-slate-50 dark:border-slate-800/60">
-                <span className="text-xs text-slate-400 w-14 shrink-0 font-medium">To</span>
+              <div className="flex items-center px-8 py-4 border-b border-slate-100 dark:border-slate-800/60">
+                <span className="text-xs text-slate-400 w-16 shrink-0 font-medium tracking-wide">To</span>
                 <input
                   type="email" value={to} onChange={e => setTo(e.target.value)}
                   placeholder="recipient@example.com"
@@ -1126,8 +1126,8 @@ export default function SingleEmailComposer() {
               </div>
 
               {showCc && (
-                <div className="flex items-center px-5 py-3.5 border-b border-slate-50 dark:border-slate-800/60">
-                  <span className="text-xs text-slate-400 w-14 shrink-0 font-medium">Cc</span>
+                <div className="flex items-center px-8 py-4 border-b border-slate-100 dark:border-slate-800/60">
+                  <span className="text-xs text-slate-400 w-16 shrink-0 font-medium tracking-wide">Cc</span>
                   <input type="text" value={cc} onChange={e => setCc(e.target.value)} placeholder="cc@example.com"
                     className="flex-1 text-sm bg-transparent text-slate-800 dark:text-slate-100 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none" />
                   <button onClick={() => { setShowCc(false); setCc(""); }} className="text-slate-300 hover:text-slate-500 transition-colors shrink-0">
@@ -1137,8 +1137,8 @@ export default function SingleEmailComposer() {
               )}
 
               {showBcc && (
-                <div className="flex items-center px-5 py-3.5 border-b border-slate-50 dark:border-slate-800/60">
-                  <span className="text-xs text-slate-400 w-14 shrink-0 font-medium">Bcc</span>
+                <div className="flex items-center px-8 py-4 border-b border-slate-100 dark:border-slate-800/60">
+                  <span className="text-xs text-slate-400 w-16 shrink-0 font-medium tracking-wide">Bcc</span>
                   <input type="text" value={bcc} onChange={e => setBcc(e.target.value)} placeholder="bcc@example.com"
                     className="flex-1 text-sm bg-transparent text-slate-800 dark:text-slate-100 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none" />
                   <button onClick={() => { setShowBcc(false); setBcc(""); }} className="text-slate-300 hover:text-slate-500 transition-colors shrink-0">
@@ -1148,17 +1148,17 @@ export default function SingleEmailComposer() {
               )}
 
               {/* Subject row */}
-              <div className="flex items-center px-5 py-3.5 border-b border-slate-100 dark:border-slate-800">
-                <span className="text-xs text-slate-400 w-14 shrink-0 font-medium">Subject</span>
+              <div className="flex items-center px-8 py-4 border-b border-slate-100 dark:border-slate-800">
+                <span className="text-xs text-slate-400 w-16 shrink-0 font-medium tracking-wide">Subject</span>
                 <input
                   type="text" value={subject} onChange={e => setSubject(e.target.value)}
                   placeholder="Email subject…"
-                  className="flex-1 text-sm font-medium bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none"
+                  className="flex-1 text-sm font-semibold bg-transparent text-slate-900 dark:text-slate-100 placeholder-slate-300 dark:placeholder-slate-600 focus:outline-none"
                 />
               </div>
 
               {/* Minimal toolbar */}
-              <div className="flex items-center gap-0.5 px-3 py-1.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 flex-wrap">
+              <div className="flex items-center gap-0.5 px-5 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 flex-wrap">
                 <TBtn onClick={() => exec("bold")}      title="Bold"><Bold className="h-3.5 w-3.5" /></TBtn>
                 <TBtn onClick={() => exec("italic")}    title="Italic"><Italic className="h-3.5 w-3.5" /></TBtn>
                 <TBtn onClick={() => exec("underline")} title="Underline"><Underline className="h-3.5 w-3.5" /></TBtn>
@@ -1287,7 +1287,7 @@ export default function SingleEmailComposer() {
                 <textarea
                   value={htmlSource}
                   onChange={e => { setHtmlSource(e.target.value); setTimeout(() => rebuildPreview(), 0); }}
-                  className="w-full px-6 py-5 min-h-72 font-mono text-xs bg-slate-900 text-green-400 focus:outline-none resize-none"
+                  className="w-full px-10 py-8 min-h-[520px] font-mono text-xs bg-slate-900 text-green-400 focus:outline-none resize-none"
                   placeholder="<p>Your HTML here...</p>"
                 />
               ) : (
@@ -1296,14 +1296,14 @@ export default function SingleEmailComposer() {
                   contentEditable
                   suppressContentEditableWarning
                   onInput={onEditorInput}
-                  className="w-full px-6 py-5 min-h-72 text-sm text-slate-800 dark:text-slate-200 focus:outline-none"
-                  style={{ lineHeight: "1.8" }}
+                  className="w-full px-10 py-8 min-h-[520px] text-[15px] text-slate-800 dark:text-slate-200 focus:outline-none"
+                  style={{ lineHeight: "1.85" }}
                 />
               )}
 
               {/* Attachment chips */}
               {attachments.length > 0 && (
-                <div className="px-5 py-3 border-t border-slate-50 dark:border-slate-800/60 flex flex-wrap gap-2">
+                <div className="px-8 py-3.5 border-t border-slate-100 dark:border-slate-800/60 flex flex-wrap gap-2">
                   {attachments.map((f, i) => (
                     <div key={i} className="flex items-center gap-2 pl-3 pr-2 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-xs text-slate-700 dark:text-slate-300 max-w-[200px]">
                       {fileIcon(f.name)}
@@ -1321,7 +1321,7 @@ export default function SingleEmailComposer() {
               )}
 
               {/* Bottom bar */}
-              <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/20 rounded-b-2xl">
+              <div className="flex items-center justify-between px-8 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/20 rounded-b-xl">
                 <div className="flex items-center gap-1">
                   {/* Attachment file picker (non-image files) */}
                   <input
