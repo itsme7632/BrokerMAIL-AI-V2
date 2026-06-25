@@ -410,6 +410,81 @@ function fmtSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// ── Smart Markdown inline formatting ───────────────────────────────────────────
+// Patterns are checked longest-delimiter-first so ** (bold) wins over * (italic).
+// Each rule: `re` matches text-before-cursor ending with the complete pattern,
+// capturing the inner content in group 1.
+const MD_RULES: ReadonlyArray<{ re: RegExp; tag: string; style?: string }> = [
+  { re: /\*\*([^*\n]{1,300})\*\*$/, tag: "strong" },
+  { re: /~~([^~\n]{1,300})~~$/, tag: "s" },
+  { re: /__([^_\n]{1,300})__$/, tag: "u" },
+  // Italic: negative lookbehind ensures we don't match the tail of **bold**
+  { re: /(?<!\*)\*([^*\n]{1,300})\*$/, tag: "em" },
+  {
+    re: /`([^`\n]{1,300})`$/,
+    tag: "code",
+    style: "font-family:monospace;background:#f1f5f9;border-radius:3px;padding:1px 5px;font-size:0.875em;color:#e11d48;",
+  },
+];
+
+/**
+ * Scans the text node at the current cursor position.
+ * If the text before the cursor ends with a complete Markdown pattern,
+ * replaces it with an inline HTML element using execCommand (preserves undo).
+ * Backslash-escaping: \**text** keeps the literal characters.
+ */
+function applyMarkdownInline(editor: HTMLElement): void {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+
+  const range = sel.getRangeAt(0);
+  if (!range.collapsed) return;
+
+  const node = range.startContainer;
+  if (node.nodeType !== Node.TEXT_NODE) return;
+  if (!editor.contains(node)) return;
+
+  const text = (node as Text).textContent ?? "";
+  const cursor = range.startOffset;
+  const before = text.slice(0, cursor);
+
+  for (const rule of MD_RULES) {
+    const m = before.match(rule.re);
+    if (!m) continue;
+
+    const full  = m[0];   // e.g. **bold**
+    const inner = m[1];   // e.g. bold
+    const start = cursor - full.length;
+
+    // Backslash escape: \**text** → literal **text**
+    if (start > 0 && text[start - 1] === "\\") {
+      const escRange = document.createRange();
+      escRange.setStart(node, start - 1);   // include the backslash
+      escRange.setEnd(node, cursor);
+      sel.removeAllRanges();
+      sel.addRange(escRange);
+      document.execCommand("insertText", false, full);
+      return;
+    }
+
+    // Select exactly the pattern and replace with formatted HTML
+    const replaceRange = document.createRange();
+    replaceRange.setStart(node, start);
+    replaceRange.setEnd(node, cursor);
+    sel.removeAllRanges();
+    sel.addRange(replaceRange);
+
+    const styleAttr = rule.style ? ` style="${rule.style}"` : "";
+    // Escape HTML entities in the inner text so injected HTML is safe
+    const safeInner = inner
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    document.execCommand("insertHTML", false, `<${rule.tag}${styleAttr}>${safeInner}</${rule.tag}>`);
+    return;
+  }
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function SingleEmailComposer() {
@@ -853,8 +928,10 @@ export default function SingleEmailComposer() {
     setPreviewHtml(html);
   }, [selectedDesign, branding, includeBranding, htmlSourceMode, htmlSource, userDesignTemplates]);
 
-  // Called on every editor keystroke — update cache then rebuild
+  // Called on every editor keystroke — apply markdown, update cache, rebuild preview
   const onEditorInput = useCallback(() => {
+    const editor = editorRef.current;
+    if (editor) applyMarkdownInline(editor);
     editorContentRef.current = editorRef.current?.innerHTML ?? "";
     rebuildPreview();
   }, [rebuildPreview]);
