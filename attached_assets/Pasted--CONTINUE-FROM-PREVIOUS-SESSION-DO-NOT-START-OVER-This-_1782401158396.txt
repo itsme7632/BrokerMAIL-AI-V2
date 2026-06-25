@@ -1,0 +1,369 @@
+# CONTINUE FROM PREVIOUS SESSION (DO NOT START OVER)
+
+This project was being actively developed when the previous Replit account ran out of credits.
+
+The latest code has already been synced from GitHub.
+
+Continue from the current codebase exactly where the previous session stopped.
+
+## IMPORTANT
+
+DO NOT redesign the project from scratch.
+
+DO NOT recreate files that already exist.
+
+DO NOT remove existing functionality.
+
+FIRST read the existing implementation before making changes.
+
+Continue the unfinished work only.
+
+---
+
+# LAST COMPLETED WORK
+
+Already implemented:
+
+* New Single Email Composer layout
+* Sidebar redesign
+* Local image upload (partially)
+* Save Template backend (partially)
+* Composer Template table
+* Preview API work
+* Backend CRUD routes (partially)
+* CSS cleanup
+* Attachment improvements (partially)
+
+The previous session stopped because of Replit credit limits.
+
+---
+
+# LAST ERROR BEFORE SESSION ENDED
+
+Compilation failed because the JSX structure became invalid.
+
+The modals were inserted outside the root component.
+
+Previous investigation already found the issue:
+
+> The modals are outside the root `<div>`.
+
+The fix was:
+
+Wrap the entire returned JSX inside:
+
+<>
+...
+</>
+
+The opening Fragment has already been inserted.
+
+The closing `</>` still needs to be added correctly.
+
+First fix the JSX tree.
+
+Do NOT rewrite the component.
+
+Only repair the return structure.
+
+After fixing that, ensure the project builds successfully before continuing.
+
+---
+
+# AFTER BUILD SUCCEEDS
+
+Continue implementing the remaining unfinished work.
+
+---
+
+## 1. IMAGE INSERTION
+
+Current state:
+
+Image picker opens.
+
+Selecting an image still does NOT insert anything.
+
+Implement complete image upload.
+
+Requirements:
+
+* local file picker
+* automatic upload
+* progress indicator
+* insert image at cursor
+* resize support
+* preserve in draft
+* preserve in preview
+* preserve after reopening draft
+* preserve in sent email
+
+No URL prompt anywhere.
+
+---
+
+## 2. ATTACHMENTS
+
+Attachments still need completion.
+
+Support:
+
+PDF
+
+DOC
+
+DOCX
+
+XLS
+
+XLSX
+
+CSV
+
+ZIP
+
+PNG
+
+JPEG
+
+GIF
+
+WEBP
+
+After upload:
+
+show filename
+
+show size
+
+show upload progress
+
+allow remove
+
+persist in drafts
+
+persist in sent emails
+
+actually send with SMTP
+
+---
+
+## 3. PREVIEW
+
+Add a proper Preview button.
+
+Current Preview is incomplete.
+
+Requirements:
+
+Open modal.
+
+Render EXACT HTML.
+
+Show:
+
+Subject
+
+From
+
+To
+
+Body
+
+Signature
+
+Branding
+
+Images
+
+Attachments
+
+Use the actual rendered HTML.
+
+Do NOT use placeholders.
+
+---
+
+## 4. SAVE AS TEMPLATE
+
+Finish implementation.
+
+Users should save:
+
+Template Name
+
+Subject
+
+HTML Body
+
+Selected Design
+
+Branding
+
+Signature
+
+Do NOT save:
+
+Recipient
+
+CC
+
+BCC
+
+Attachments
+
+Tracking state
+
+---
+
+## 5. MY TEMPLATES
+
+Finish sidebar.
+
+Each template shows:
+
+Template Name
+
+Subject
+
+Updated date
+
+Buttons:
+
+Use
+
+Rename
+
+Duplicate
+
+Delete
+
+When clicking Use:
+
+Load
+
+Subject
+
+Body
+
+Theme
+
+Branding
+
+into the composer.
+
+---
+
+## 6. QUICK SAVE
+
+Add button:
+
+Save as Template
+
+Small modal:
+
+Template Name
+
+Save
+
+Cancel
+
+---
+
+## 7. REMOVE BLUE FOCUS
+
+Blue browser focus border has returned.
+
+Remove it from:
+
+To
+
+Subject
+
+Toolbar inputs
+
+Dropdowns
+
+Buttons
+
+Use the application's existing dark focus style.
+
+---
+
+## 8. EMAIL PREVIEW STORAGE
+
+Ensure sent emails always store:
+
+Rendered HTML
+
+Rendered Text
+
+Subject
+
+Template used
+
+Attachments metadata
+
+So Sent Emails Preview always renders correctly.
+
+---
+
+## 9. TEST EVERYTHING
+
+After coding:
+
+Actually test.
+
+Do NOT assume.
+
+Verify:
+
+Image upload
+
+Attachments
+
+Draft save
+
+Draft reopen
+
+Preview
+
+Save template
+
+Load template
+
+Send email
+
+Receive email
+
+Sent Emails Preview
+
+No console errors
+
+No TypeScript errors
+
+No build errors
+
+---
+
+# IMPORTANT
+
+Do NOT stop after making code changes.
+
+Fix every compile error.
+
+Run the application.
+
+Test the workflow.
+
+If any issue appears, continue fixing it automatically until the entire feature works end-to-end.
+
+Only stop when:
+
+✓ Project builds successfully
+
+✓ Composer works completely
+
+✓ No runtime errors remain
+
+✓ All tests above pass

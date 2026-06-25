@@ -725,8 +725,26 @@ export default function SingleEmailComposer() {
     reader.onload = (ev) => {
       const dataUrl = ev.target?.result as string;
       if (!dataUrl) return;
+
+      // ── HTML source mode: inject tag at end of source ───────────────────────
+      if (htmlSourceMode) {
+        const tag = `<img src="${dataUrl}" style="max-width:100%;height:auto;display:block;margin:8px 0;" />`;
+        const updated = htmlSource + "\n" + tag;
+        setHtmlSource(updated);
+        editorContentRef.current = updated;
+        setTimeout(() => rebuildPreview(), 0);
+        return;
+      }
+
+      // ── Rich-text editor mode ───────────────────────────────────────────────
       const editor = editorRef.current;
-      if (!editor) return;
+      if (!editor) {
+        // Editor not mounted — append to cached content
+        const tag = `<img src="${dataUrl}" style="max-width:100%;height:auto;display:block;margin:8px 0;" />`;
+        editorContentRef.current = editorContentRef.current + tag;
+        setTimeout(() => rebuildPreview(), 0);
+        return;
+      }
 
       // Build the img element
       const img = document.createElement("img");
@@ -1142,12 +1160,15 @@ export default function SingleEmailComposer() {
                           <span className="text-xs font-medium truncate text-slate-700 dark:text-slate-300">{t.name}</span>
                         </button>
                         {t.subject && <p className="text-[10px] text-slate-400 truncate pl-5 mt-0.5">{t.subject}</p>}
+                        <p className="text-[10px] text-slate-300 dark:text-slate-600 pl-5 mt-0.5">
+                          {new Date(t.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                        </p>
                         <div className="hidden group-hover:flex items-center gap-1 mt-1 pl-5 flex-wrap">
                           <button onClick={() => doUseEmailTemplate(t)} className="text-[10px] text-blue-500 hover:text-blue-700 font-medium transition-colors">Use</button>
                           <span className="text-slate-300 dark:text-slate-600">·</span>
                           <button onClick={() => { setRenamingTemplateId(t.id); setRenameValue(t.name); }} className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Rename</button>
                           <span className="text-slate-300 dark:text-slate-600">·</span>
-                          <button onClick={e => doDuplicateEmailTemplate(t.id, e)} className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Copy</button>
+                          <button onClick={e => doDuplicateEmailTemplate(t.id, e)} className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Duplicate</button>
                           <span className="text-slate-300 dark:text-slate-600">·</span>
                           <button onClick={e => doDeleteEmailTemplate(t.id, e)} className="text-[10px] text-red-400 hover:text-red-600 transition-colors">Delete</button>
                         </div>
@@ -1483,10 +1504,10 @@ export default function SingleEmailComposer() {
               {/* Bottom bar */}
               <div className="flex items-center justify-between px-8 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/20 rounded-b-xl">
                 <div className="flex items-center gap-1">
-                  {/* Attachment file picker (non-image files) */}
+                  {/* Attachment file picker */}
                   <input
                     type="file" multiple ref={fileInputRef} className="hidden"
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.zip"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.zip,.png,.jpg,.jpeg,.gif,.webp"
                     onChange={e => { handleAttachmentFiles(e.target.files); e.target.value = ""; }}
                   />
                   {/* Image file picker (for inline insertion) */}
