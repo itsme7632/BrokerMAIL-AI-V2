@@ -115,6 +115,35 @@ function retryMinutesRemaining(retryAfter: Date | null | undefined): number | nu
   return ms > 0 ? Math.ceil(ms / 60_000) : 0;
 }
 
+/**
+ * Derives a human-readable display name from an email address local part.
+ * john.smith@gmail.com   → "John Smith"
+ * frank_miller@yahoo.com → "Frank Miller"
+ * johndoe123@gmail.com   → "Johndoe" (trailing digits stripped)
+ * Falls back to the raw email string if nothing clean can be derived.
+ */
+function deriveNameFromEmail(email: string): string {
+  const local = (email.split("@")[0] ?? "").toLowerCase();
+  // strip trailing digits
+  const cleaned = local.replace(/\d+$/, "");
+  if (!cleaned) return email;
+  // split on common delimiters
+  const parts = cleaned.split(/[._\-+]+/).filter(p => p.length > 0);
+  if (parts.length === 0) return email;
+  const name = parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
+  return name.length >= 2 ? name : email;
+}
+
+/**
+ * Extracts the first name from a greeting line in the email body HTML.
+ * Matches "Hi John,", "Hello Sarah,", "Dear Michael," etc.
+ */
+function parseBodyGreeting(html: string): string | null {
+  const text = html.replace(/<[^>]+>/g, " ").replace(/&[a-z#0-9]+;/gi, " ");
+  const m = text.match(/(?:^|[\s,.])\s*(?:Hi|Hello|Dear|Hey)\s+([A-Z][a-zA-Z]{1,20})(?:\s*[,!]|\s)/);
+  return m ? m[1] : null;
+}
+
 function formatItem(item: any, tracking: Record<string, any>) {
   let row: Record<string, string> = {};
   try { row = JSON.parse(item.rowDataJson); } catch { }
@@ -122,12 +151,22 @@ function formatItem(item: any, tracking: Record<string, any>) {
   const isDeferred = item.status === "deferred";
   const isFailed   = item.status === "failed";
   const retryMins  = isDeferred ? retryMinutesRemaining(item.retryAfter) : null;
+
+  // Priority: explicit recipientName → campaign row.name → row.companyName
+  //           → body greeting (if body available) → email-derived
+  const customerName =
+    (row.recipientName?.trim()  || null) ??
+    (row.name?.trim()           || null) ??
+    (row.companyName?.trim()    || null) ??
+    (item.bodyText ? parseBodyGreeting(item.bodyText) : null) ??
+    deriveNameFromEmail(item.email);
+
   return {
     id:              item.id,
     campaignId:      item.campaignId,
     leadId:          item.leadId,
     email:           item.email,
-    customerName:    row.name ?? row.companyName ?? null,
+    customerName,
     quoteId:         item.quoteId ?? row.quote_id ?? null,
     subject:         item.subject,
     sentAt:          item.sentAt?.toISOString() ?? null,

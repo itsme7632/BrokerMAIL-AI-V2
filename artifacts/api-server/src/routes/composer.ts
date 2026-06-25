@@ -400,6 +400,21 @@ router.post("/composer/test", requireAuth, uploadMem.array("attachments"), async
 });
 
 // ── POST /api/composer/send ───────────────────────────────────────────────────
+/** Parse "Name <email>", "Name email", or bare "email" into { name, email } */
+function parseToField(raw: string): { name: string | null; bareEmail: string } {
+  const t = raw.trim();
+  // RFC 5322: "Display Name <addr>"
+  const rfc = t.match(/^(.+?)\s*<([^>]+)>\s*$/);
+  if (rfc) return { name: rfc[1].trim() || null, bareEmail: rfc[2].trim().toLowerCase() };
+  // "Display Name addr@dom" — last word contains @
+  const parts = t.split(/\s+/);
+  if (parts.length >= 2 && parts[parts.length - 1].includes("@")) {
+    const name = parts.slice(0, -1).join(" ").trim();
+    return { name: name || null, bareEmail: parts[parts.length - 1].toLowerCase() };
+  }
+  return { name: null, bareEmail: t.toLowerCase() };
+}
+
 router.post("/composer/send", requireAuth, uploadMem.array("attachments"), async (req, res) => {
   const user  = req.user as User;
   const files = (req.files as Express.Multer.File[]) || [];
@@ -410,6 +425,7 @@ router.post("/composer/send", requireAuth, uploadMem.array("attachments"), async
     } = req.body;
 
     if (!to?.trim()) { res.status(400).json({ error: "To address is required" }); return; }
+    const { name: recipientName, bareEmail: recipientEmail } = parseToField(to);
 
     // Resolve stored attachment IDs → buffers
     const storedIds: string[] = attachmentIds ? JSON.parse(attachmentIds) : [];
@@ -459,14 +475,18 @@ router.post("/composer/send", requireAuth, uploadMem.array("attachments"), async
       });
     }
 
+    // Build rowDataJson with recipient info so the Sent Emails page can display names
+    const rowData: Record<string, string> = { recipientEmail };
+    if (recipientName) rowData.recipientName = recipientName;
+
     await db.insert(emailQueueTable).values({
       jobId:              `composer:${trackingId}`,
       userId:             user.id,
       mailboxId:          actualMailboxId,
       templateId:         0,
-      email:              to,
+      email:              recipientEmail,   // always store bare email address
       subject:            subject ?? "",
-      rowDataJson:        "{}",
+      rowDataJson:        JSON.stringify(rowData),
       style:              "clean",
       useSignatureBuilder: false,
       status:             "success",
@@ -480,7 +500,7 @@ router.post("/composer/send", requireAuth, uploadMem.array("attachments"), async
         campaignId:   null,
         leadId:       null,
         gmailDraftId: `${mailboxType === "gmail" ? "gmail" : "smtp"}-composer:${trackingId}`,
-        email:        to,
+        email:        recipientEmail,   // store bare email, not raw "Name <email>" string
         subject:      subject ?? "",
         body:         finalHtml,
         status:       "success",

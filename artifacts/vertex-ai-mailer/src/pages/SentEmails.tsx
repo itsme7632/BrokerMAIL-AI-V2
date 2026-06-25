@@ -700,7 +700,7 @@ export default function SentEmails() {
                   >
                     <TableCell>
                       <div className="font-medium text-slate-900 dark:text-slate-100 text-sm">
-                        {email.customerName || <span className="text-slate-400 italic text-xs">Unknown</span>}
+                        {email.customerName || email.email}
                       </div>
                       <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                         <AtSign className="h-2.5 w-2.5 flex-shrink-0 text-slate-400" />
