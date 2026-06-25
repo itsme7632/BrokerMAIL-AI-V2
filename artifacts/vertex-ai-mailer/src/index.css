@@ -551,3 +551,9 @@
   .dark .hover\:bg-gray-100:hover  { background-color: #1e2c44; }
   .dark .hover\:text-gray-900:hover { color: #f1f5f9; }
 }
+
+/* Composer page: suppress browser focus rings on all interactive elements */
+.composer-no-ring *:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}

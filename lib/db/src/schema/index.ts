@@ -16,3 +16,4 @@ export * from "./processed_bounces";
 export * from "./backup_history";
 export * from "./composer_drafts";
 export * from "./design_templates";
+export * from "./composer_email_templates";

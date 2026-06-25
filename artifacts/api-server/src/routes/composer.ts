@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import {
   db, mailboxesTable, composerDraftsTable, emailQueueTable, draftsTable, designTemplatesTable,
+  composerEmailTemplatesTable,
 } from "@workspace/db";
 import type { User } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
@@ -500,6 +501,102 @@ router.post("/composer/send", requireAuth, uploadMem.array("attachments"), async
   } catch (err: any) {
     logger.error({ err }, "[COMPOSER] Send failed");
     res.status(500).json({ error: err.message || "Failed to send email" });
+  }
+});
+
+// ── GET /api/composer/email-templates ─────────────────────────────────────────
+router.get("/composer/email-templates", requireAuth, async (req, res) => {
+  const user = req.user as User;
+  try {
+    const rows = await db
+      .select()
+      .from(composerEmailTemplatesTable)
+      .where(eq(composerEmailTemplatesTable.userId, user.id))
+      .orderBy(desc(composerEmailTemplatesTable.updatedAt));
+    res.json(rows);
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to load email templates" });
+  }
+});
+
+// ── POST /api/composer/email-templates ────────────────────────────────────────
+router.post("/composer/email-templates", requireAuth, async (req, res) => {
+  const user = req.user as User;
+  try {
+    const { name, subject, body, designId, includeBranding } = req.body;
+    if (!name?.trim()) { res.status(400).json({ error: "Name is required" }); return; }
+    const [row] = await db.insert(composerEmailTemplatesTable).values({
+      userId:          user.id,
+      name:            name.trim(),
+      subject:         subject ?? "",
+      body:            body ?? "",
+      designId:        designId ?? "professional",
+      includeBranding: includeBranding !== undefined ? Boolean(includeBranding) : true,
+    }).returning();
+    res.json(row);
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to save email template" });
+  }
+});
+
+// ── PUT /api/composer/email-templates/:id ─────────────────────────────────────
+router.put("/composer/email-templates/:id", requireAuth, async (req, res) => {
+  const user = req.user as User;
+  const id   = parseInt(req.params.id);
+  try {
+    const { name, subject, body, designId, includeBranding } = req.body;
+    const [row] = await db
+      .update(composerEmailTemplatesTable)
+      .set({
+        ...(name            !== undefined && { name: name.trim() }),
+        ...(subject         !== undefined && { subject }),
+        ...(body            !== undefined && { body }),
+        ...(designId        !== undefined && { designId }),
+        ...(includeBranding !== undefined && { includeBranding: Boolean(includeBranding) }),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(composerEmailTemplatesTable.id, id), eq(composerEmailTemplatesTable.userId, user.id)))
+      .returning();
+    if (!row) { res.status(404).json({ error: "Template not found" }); return; }
+    res.json(row);
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to update email template" });
+  }
+});
+
+// ── DELETE /api/composer/email-templates/:id ──────────────────────────────────
+router.delete("/composer/email-templates/:id", requireAuth, async (req, res) => {
+  const user = req.user as User;
+  const id   = parseInt(req.params.id);
+  try {
+    await db.delete(composerEmailTemplatesTable)
+      .where(and(eq(composerEmailTemplatesTable.id, id), eq(composerEmailTemplatesTable.userId, user.id)));
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to delete email template" });
+  }
+});
+
+// ── POST /api/composer/email-templates/:id/duplicate ──────────────────────────
+router.post("/composer/email-templates/:id/duplicate", requireAuth, async (req, res) => {
+  const user = req.user as User;
+  const id   = parseInt(req.params.id);
+  try {
+    const [original] = await db.select()
+      .from(composerEmailTemplatesTable)
+      .where(and(eq(composerEmailTemplatesTable.id, id), eq(composerEmailTemplatesTable.userId, user.id)));
+    if (!original) { res.status(404).json({ error: "Template not found" }); return; }
+    const [copy] = await db.insert(composerEmailTemplatesTable).values({
+      userId:          user.id,
+      name:            `${original.name} (Copy)`,
+      subject:         original.subject,
+      body:            original.body,
+      designId:        original.designId,
+      includeBranding: original.includeBranding,
+    }).returning();
+    res.json(copy);
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to duplicate email template" });
   }
 });
 

@@ -17,7 +17,8 @@ import { cn } from "@/lib/utils";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-type AttachmentMeta = { id: string; name: string; size: number; type: string };
+type AttachmentMeta  = { id: string; name: string; size: number; type: string };
+type EmailTemplate   = { id: number; name: string; subject: string; body: string; designId: string; includeBranding: boolean; createdAt: string; updatedAt: string; };
 
 // ── API helpers ────────────────────────────────────────────────────────────────
 
@@ -471,6 +472,14 @@ export default function SingleEmailComposer() {
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
+  const [emailTemplates,        setEmailTemplates]        = useState<EmailTemplate[]>([]);
+  const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false);
+  const [templateName,          setTemplateName]          = useState("");
+  const [savingTemplate,        setSavingTemplate]        = useState(false);
+  const [showPreviewModal,      setShowPreviewModal]      = useState(false);
+  const [renamingTemplateId,    setRenamingTemplateId]    = useState<number | null>(null);
+  const [renameValue,           setRenameValue]           = useState("");
+
   const COLORS = [
     "#000000","#374151","#6b7280","#dc2626","#ea580c",
     "#ca8a04","#16a34a","#2563eb","#7c3aed","#db2777","#ffffff",
@@ -485,7 +494,7 @@ export default function SingleEmailComposer() {
   // ── Init ───────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    Promise.all([loadMailboxes(), loadDrafts(), loadBranding(), loadUserDesignTemplates()])
+    Promise.all([loadMailboxes(), loadDrafts(), loadBranding(), loadUserDesignTemplates(), loadEmailTemplates()])
       .finally(() => setLoading(false));
   }, []);
 
@@ -533,6 +542,67 @@ export default function SingleEmailComposer() {
     try {
       const r = await apiFetch("composer/design-templates");
       if (r.ok) setUserDesignTemplates(await r.json());
+    } catch {}
+  };
+
+  const loadEmailTemplates = async () => {
+    try {
+      const r = await apiFetch("composer/email-templates");
+      if (r.ok) setEmailTemplates(await r.json());
+    } catch {}
+  };
+
+  const doSaveAsTemplate = async () => {
+    if (!templateName.trim()) { toast({ title: "Template name required", variant: "destructive" }); return; }
+    setSavingTemplate(true);
+    try {
+      const r = await apiPost("composer/email-templates", {
+        name: templateName.trim(), subject, body: getHtml(), designId: selectedDesign, includeBranding,
+      });
+      if (!r.ok) throw new Error((await r.json()).error || "Failed");
+      await loadEmailTemplates();
+      setShowSaveTemplateModal(false);
+      setTemplateName("");
+      toast({ title: "Template saved!", description: `"${templateName.trim()}" added to your library.` });
+    } catch (e: any) {
+      toast({ title: "Error saving template", description: e.message, variant: "destructive" });
+    } finally { setSavingTemplate(false); }
+  };
+
+  const doUseEmailTemplate = (t: EmailTemplate) => {
+    setSubject(t.subject);
+    setHtml(t.body);
+    setSelectedDesign(t.designId || "professional");
+    setIncludeBranding(t.includeBranding);
+    setTimeout(() => rebuildPreview(), 0);
+    toast({ title: "Template loaded" });
+  };
+
+  const doDeleteEmailTemplate = async (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await apiDel(`composer/email-templates/${id}`);
+      await loadEmailTemplates();
+    } catch {}
+  };
+
+  const doDuplicateEmailTemplate = async (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const r = await apiPost(`composer/email-templates/${id}/duplicate`, {});
+      if (!r.ok) throw new Error("Failed");
+      await loadEmailTemplates();
+      toast({ title: "Template duplicated" });
+    } catch {}
+  };
+
+  const doRenameEmailTemplate = async (id: number) => {
+    if (!renameValue.trim()) return;
+    try {
+      await apiPut(`composer/email-templates/${id}`, { name: renameValue.trim() });
+      await loadEmailTemplates();
+      setRenamingTemplateId(null);
+      setRenameValue("");
     } catch {}
   };
 
@@ -655,16 +725,48 @@ export default function SingleEmailComposer() {
     reader.onload = (ev) => {
       const dataUrl = ev.target?.result as string;
       if (!dataUrl) return;
-      editorRef.current?.focus();
-      if (savedRangeRef.current) {
-        const sel = window.getSelection();
-        if (sel) { sel.removeAllRanges(); sel.addRange(savedRangeRef.current); }
+      const editor = editorRef.current;
+      if (!editor) return;
+
+      // Build the img element
+      const img = document.createElement("img");
+      img.src = dataUrl;
+      img.style.cssText = "max-width:100%;height:auto;display:block;margin:8px 0;";
+      img.setAttribute("data-inline-image", "1");
+
+      // Focus editor and restore saved cursor range (or fall back to end)
+      editor.focus();
+      const sel = window.getSelection();
+      if (sel) {
+        let insertRange: Range | null = null;
+        if (savedRangeRef.current) {
+          try {
+            sel.removeAllRanges();
+            sel.addRange(savedRangeRef.current);
+            insertRange = sel.getRangeAt(0);
+          } catch { /* stale range — fall through */ }
+        }
+        if (!insertRange) {
+          insertRange = document.createRange();
+          insertRange.selectNodeContents(editor);
+          insertRange.collapse(false);
+          sel.removeAllRanges();
+          sel.addRange(insertRange);
+        }
+        insertRange.deleteContents();
+        insertRange.insertNode(img);
+        // Place cursor just after the image
+        const after = document.createRange();
+        after.setStartAfter(img);
+        after.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(after);
+      } else {
+        editor.appendChild(img);
       }
-      document.execCommand("insertHTML", false,
-        `<img src="${dataUrl}" style="max-width:100%;height:auto;display:block;margin:8px 0;cursor:default;" />`
-      );
+
       setTimeout(() => {
-        editorContentRef.current = editorRef.current?.innerHTML ?? editorContentRef.current;
+        editorContentRef.current = editor.innerHTML;
         rebuildPreview();
       }, 0);
     };
@@ -900,7 +1002,8 @@ export default function SingleEmailComposer() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full min-h-0" style={{ height: "calc(100vh - 64px)" }}>
+    <>
+    <div className="composer-no-ring flex h-full min-h-0" style={{ height: "calc(100vh - 64px)" }}>
 
       {/* ════════════ LEFT SIDEBAR ════════════ */}
       <aside
@@ -1013,6 +1116,49 @@ export default function SingleEmailComposer() {
             </section>
           )}
 
+          {/* ── My Templates ──────────────────────── */}
+          {emailTemplates.length > 0 && (
+            <section>
+              <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1 mb-2">My Templates</p>
+              <div className="space-y-0.5">
+                {emailTemplates.map(t => (
+                  <div key={t.id} className="group rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors px-2 py-2">
+                    {renamingTemplateId === t.id ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text" value={renameValue} onChange={e => setRenameValue(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter") doRenameEmailTemplate(t.id); if (e.key === "Escape") setRenamingTemplateId(null); }}
+                          autoFocus
+                          className="flex-1 text-xs px-1.5 py-0.5 rounded border border-blue-300 dark:border-blue-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100"
+                        />
+                        <button onClick={() => doRenameEmailTemplate(t.id)} className="p-0.5 text-blue-500 hover:text-blue-700 shrink-0">
+                          <Save className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <button onClick={() => doUseEmailTemplate(t)} className="flex items-center gap-2 text-left w-full">
+                          <BookMarked className="h-3 w-3 shrink-0 text-blue-400" />
+                          <span className="text-xs font-medium truncate text-slate-700 dark:text-slate-300">{t.name}</span>
+                        </button>
+                        {t.subject && <p className="text-[10px] text-slate-400 truncate pl-5 mt-0.5">{t.subject}</p>}
+                        <div className="hidden group-hover:flex items-center gap-1 mt-1 pl-5 flex-wrap">
+                          <button onClick={() => doUseEmailTemplate(t)} className="text-[10px] text-blue-500 hover:text-blue-700 font-medium transition-colors">Use</button>
+                          <span className="text-slate-300 dark:text-slate-600">·</span>
+                          <button onClick={() => { setRenamingTemplateId(t.id); setRenameValue(t.name); }} className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Rename</button>
+                          <span className="text-slate-300 dark:text-slate-600">·</span>
+                          <button onClick={e => doDuplicateEmailTemplate(t.id, e)} className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Copy</button>
+                          <span className="text-slate-300 dark:text-slate-600">·</span>
+                          <button onClick={e => doDeleteEmailTemplate(t.id, e)} className="text-[10px] text-red-400 hover:text-red-600 transition-colors">Delete</button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
         </div>
       </aside>
 
@@ -1053,11 +1199,18 @@ export default function SingleEmailComposer() {
           <div className="flex-1" />
 
           <button
+            onClick={() => { rebuildPreview(); setShowPreviewModal(true); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+          >
+            <Eye className="h-3 w-3" />
+            Preview
+          </button>
+          <button
             onClick={doSendTest}
             disabled={sendingTest}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors disabled:opacity-40"
           >
-            {sendingTest ? <Loader2 className="h-3 w-3 animate-spin" /> : <Eye className="h-3 w-3" />}
+            {sendingTest ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
             Send Test
           </button>
           <button
@@ -1067,6 +1220,13 @@ export default function SingleEmailComposer() {
           >
             {savingDraft ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
             Save
+          </button>
+          <button
+            onClick={() => { setTemplateName(subject ? `${subject.substring(0, 30)}` : ""); setShowSaveTemplateModal(true); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+          >
+            <BookMarked className="h-3 w-3" />
+            Save as Template
           </button>
           <button
             onClick={doSend}
@@ -1370,6 +1530,95 @@ export default function SingleEmailComposer() {
 
       </div>
     </div>
+
+    {/* ════ PREVIEW MODAL ════ */}
+    {showPreviewModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-6" onClick={() => setShowPreviewModal(false)}>
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 shrink-0">
+            <div className="flex items-center gap-2">
+              <Eye className="h-4 w-4 text-slate-400" />
+              <h3 className="text-sm font-semibold text-slate-800 dark:text-white">Email Preview</h3>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium">Exact rendering</span>
+            </div>
+            <button onClick={() => setShowPreviewModal(false)} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition-colors">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 shrink-0 space-y-1.5">
+            <div className="flex items-baseline gap-3">
+              <span className="text-[11px] font-medium text-slate-400 w-16 shrink-0">Subject</span>
+              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{subject || "(No subject)"}</span>
+            </div>
+            <div className="flex items-baseline gap-3">
+              <span className="text-[11px] font-medium text-slate-400 w-16 shrink-0">To</span>
+              <span className="text-sm text-slate-600 dark:text-slate-300 truncate">{to || "(No recipient)"}</span>
+            </div>
+            {attachments.length > 0 && (
+              <div className="flex items-start gap-3">
+                <span className="text-[11px] font-medium text-slate-400 w-16 shrink-0 pt-0.5">Attached</span>
+                <div className="flex flex-wrap gap-1">
+                  {attachments.map((a, i) => (
+                    <span key={i} className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300">
+                      <Paperclip className="h-2.5 w-2.5" />{a.name} · {fmtSize(a.size)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="flex-1 min-h-0 overflow-hidden bg-slate-100 dark:bg-slate-950">
+            <iframe
+              srcDoc={previewHtml}
+              className="w-full border-0"
+              title="Email Preview"
+              sandbox="allow-same-origin"
+              style={{ minHeight: "420px", height: "100%" }}
+            />
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* ════ SAVE AS TEMPLATE MODAL ════ */}
+    {showSaveTemplateModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-6" onClick={() => setShowSaveTemplateModal(false)}>
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-2">
+              <BookMarked className="h-4 w-4 text-slate-400" />
+              <h3 className="text-sm font-semibold text-slate-800 dark:text-white">Save as Template</h3>
+            </div>
+            <button onClick={() => setShowSaveTemplateModal(false)} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition-colors">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="px-5 py-5 space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Template Name</label>
+              <input
+                type="text" value={templateName} onChange={e => setTemplateName(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") doSaveAsTemplate(); if (e.key === "Escape") setShowSaveTemplateModal(false); }}
+                placeholder="e.g. Vehicle Quote — Standard"
+                autoFocus
+                className="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <p className="text-xs text-slate-400 leading-relaxed">Saves the current <strong>subject, body, design theme,</strong> and <strong>branding setting.</strong> Does not save recipient, CC/BCC, attachments, or tracking.</p>
+          </div>
+          <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/20">
+            <button onClick={() => setShowSaveTemplateModal(false)} className="px-4 py-2 text-xs font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 rounded-xl border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition-all">
+              Cancel
+            </button>
+            <button onClick={doSaveAsTemplate} disabled={savingTemplate || !templateName.trim()} className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-40">
+              {savingTemplate ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+              Save Template
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 

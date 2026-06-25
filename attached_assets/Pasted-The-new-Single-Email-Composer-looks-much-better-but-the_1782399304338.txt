@@ -1,0 +1,151 @@
+The new Single Email Composer looks much better, but there are still several critical issues that need to be completed before this feature is production ready.
+========================
+IMAGE UPLOAD
+========================
+The image button no longer asks for a URL, which is good.
+However after selecting an image from my computer:
+• nothing appears inside the editor
+• no upload progress
+• no image inserted
+• image is not included in preview
+• image is not sent
+Fix the complete image upload flow.
+Requirements:
+✓ Select local image
+✓ Upload automatically
+✓ Show upload progress
+✓ Insert image exactly at cursor position
+✓ Image should be resizable
+✓ Image should remain after Save Draft
+✓ Image should remain after reopening draft
+✓ Image should appear in Preview
+✓ Image should appear in received email
+Supported:
+jpg
+jpeg
+png
+gif
+webp
+No URL prompts anywhere.
+========================
+EMAIL ATTACHMENTS
+========================
+Attachments are still unreliable.
+Implement Gmail-style attachment handling.
+Requirements:
+PDF
+DOC
+DOCX
+XLS
+XLSX
+CSV
+ZIP
+After upload:
+• filename visible
+• size visible
+• remove button
+• upload indicator
+• preserved in drafts
+• preserved in sent emails
+• delivered correctly
+========================
+EMAIL PREVIEW
+========================
+The Preview feature is still missing.
+Add a Preview button beside:
+Send Test
+Save
+Send Email
+Preview should open a modal showing the EXACT email that will be sent.
+Render:
+Subject
+Sender
+Recipient
+HTML body
+Images
+Signature
+Branding
+Attachments
+The preview must use the actual rendered HTML—not placeholder content.
+========================
+BLUE FOCUS BORDER
+========================
+The blue focus outline has returned on:
+To
+Subject
+Some toolbar inputs
+Remove it everywhere.
+The composer should use the existing dark theme focus style.
+No bright blue browser outline.
+Override global focus-visible styles if necessary.
+========================
+SAVE AS TEMPLATE
+========================
+This is a very important feature.
+Many users repeatedly send the same emails.
+Allow users to save the current email as a reusable template.
+The saved template should include:
+✓ Template Name
+✓ Subject
+✓ Email Body
+✓ Selected Design Theme
+✓ Signature
+✓ Branding enabled/disabled
+Do NOT save:
+Recipient
+CC
+BCC
+Attachments
+Tracking state
+========================
+TEMPLATE LIBRARY
+========================
+Add a "My Templates" section.
+Each saved template should display:
+Template Name
+Subject
+Last Updated
+Created Date
+Buttons:
+Use
+Rename
+Duplicate
+Delete
+When clicking "Use":
+Automatically load:
+Subject
+Body
+Design
+Branding
+into the composer.
+The user should only need to enter the recipient and send.
+========================
+QUICK SAVE
+========================
+Add a button:
+Save as Template
+This should open a small modal:
+Template Name
+Save
+Cancel
+Very simple.
+========================
+VERIFY EVERYTHING
+========================
+Before marking this complete, test the entire workflow:
+✓ Upload image
+✓ Image appears
+✓ Save draft
+✓ Reopen draft
+✓ Image still exists
+✓ Preview works
+✓ Save template
+✓ Load template
+✓ Subject restored
+✓ Body restored
+✓ Send email
+✓ Images received correctly
+✓ Attachments received correctly
+✓ No blue focus borders anywhere
+Do not stop after implementing the code.
+Actually test the complete workflow and fix any issues found.
