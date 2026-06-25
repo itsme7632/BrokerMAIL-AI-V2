@@ -1,0 +1,67 @@
+RECIPIENT NAME SHOULD NEVER DISPLAY "Unknown"
+On the Sent Emails page, the Recipient column currently shows:
+Unknown
+even though the recipient information exists.
+This must be fixed.
+==================================================DISPLAY PRIORITY
+Determine the recipient name using this priority:
+recipientName stored in the database
+Recipient display name from the email header
+Parse the greeting from the HTML body
+If still unavailable, derive a readable name from the email address
+Example:
+john.smith@gmail.com
+→ John Smith
+frank_miller@yahoo.com
+→ Frank Miller
+johndoe123@gmail.com
+→ John Doe
+Never display "Unknown" if an email address exists.
+==================================================SAVE RECIPIENT NAME
+When sending a single email:
+Store:
+recipientName
+recipientEmail
+inside the database.
+Do not rely on reconstructing the name later.
+The recipient name should be saved permanently with the sent email record.
+==================================================COMPOSER
+When the user enters:
+John Smith john@gmail.com
+save:
+recipientName = "John Smith"
+recipientEmail = "john@gmail.com"
+If the user enters only:
+john@gmail.com
+save:
+recipientEmail = "john@gmail.com"
+recipientName = null
+==================================================OPTIONAL FALLBACK
+If recipientName is null and HTML contains:
+Hi John,
+Hello Sarah,
+Dear Michael,
+extract:
+John
+Sarah
+Michael
+Only use this as a fallback.
+Do NOT depend on the email body for the primary source.
+==================================================UI
+Recipient column should display:
+John Smith
+@ john@gmail.com
+instead of:
+Unknown
+@ john@gmail.com
+==================================================VERIFY
+Test these cases:
+✓ Single email with "John Smith john@gmail.com"
+→ Shows John Smith
+✓ Single email with only "john@gmail.com"
+→ Shows John (derived from email) or "john@gmail.com" if no clean name can be generated
+✓ Campaign email with recipient name
+→ Shows stored name
+✓ Existing historical emails
+→ Apply fallback logic without modifying the original data
+Never show "Unknown" when an email address is available.

@@ -10,6 +10,27 @@ import {
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
+// ── Logo compression: resize to ≤400 px, output PNG (preserves transparency) ──
+async function compressLogo(dataUrl: string): Promise<string> {
+  if (dataUrl.startsWith("data:image/svg")) return dataUrl;
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const maxW = 400;
+      let { naturalWidth: w, naturalHeight: h } = img;
+      if (w <= maxW && dataUrl.length < 300_000) { resolve(dataUrl); return; }
+      if (w > maxW) { h = Math.round((h * maxW) / w); w = maxW; }
+      const c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      c.getContext("2d")!.drawImage(img, 0, 0, w, h);
+      const out = c.toDataURL("image/png");
+      resolve(out.length < dataUrl.length ? out : dataUrl);
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 interface BrandingData {
   agentName: string; companyName: string; companyTagline: string; companyWebsite: string;
   companyPhone: string; usdot: string; mcNumber: string; accentColor: string;
@@ -161,7 +182,10 @@ export default function Settings() {
       });
       if (!res.ok) throw new Error("Save failed");
       setBrandingSaved(true);
+      toast({ title: "Branding saved ✓", description: "Your settings will appear in all outgoing emails." });
       setTimeout(() => setBrandingSaved(false), 3000);
+    } catch {
+      toast({ variant: "destructive", title: "Save failed", description: "Please try again." });
     } finally { setIsSavingBranding(false); }
   }
 
@@ -173,14 +197,13 @@ export default function Settings() {
       toast({ variant: "destructive", title: "Invalid file", description: "Please select an image file." });
       return;
     }
-    if (file.size > 600 * 1024) {
-      toast({ variant: "destructive", title: "File too large", description: "Logo must be under 600 KB." });
-      return;
-    }
 
     const reader = new FileReader();
     reader.onload = async ev => {
-      const dataUrl = ev.target?.result as string;
+      const raw = ev.target?.result as string;
+      if (!raw) return;
+      // Compress large logos before uploading (preserves transparency via PNG output)
+      const dataUrl = await compressLogo(raw);
       setLogoPreview(dataUrl);
       await uploadLogo(dataUrl);
     };

@@ -410,6 +410,52 @@ function fmtSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// ── Image compression ──────────────────────────────────────────────────────────
+// Resizes inline images to ≤620 px wide and compresses to JPEG.
+// White fill ensures transparent PNGs look clean in email clients.
+async function compressImage(dataUrl: string, maxPx = 620, quality = 0.82): Promise<string> {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      let { naturalWidth: w, naturalHeight: h } = img;
+      const needsResize = w > maxPx;
+      if (!needsResize && dataUrl.length < 150_000) { resolve(dataUrl); return; }
+      if (needsResize) { h = Math.round((h * maxPx) / w); w = maxPx; }
+      const c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      const ctx = c.getContext("2d")!;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      const out = c.toDataURL("image/jpeg", quality);
+      resolve(out.length < dataUrl.length ? out : dataUrl);
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+// ── Logo compression (used by Settings page, defined here for reuse) ───────────
+export async function compressLogo(dataUrl: string): Promise<string> {
+  if (dataUrl.startsWith("data:image/svg")) return dataUrl;
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const maxW = 400;
+      let { naturalWidth: w, naturalHeight: h } = img;
+      if (w <= maxW && dataUrl.length < 300_000) { resolve(dataUrl); return; }
+      if (w > maxW) { h = Math.round((h * maxW) / w); w = maxW; }
+      const c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      c.getContext("2d")!.drawImage(img, 0, 0, w, h);
+      const out = c.toDataURL("image/png");
+      resolve(out.length < dataUrl.length ? out : dataUrl);
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 // ── Smart Markdown inline formatting ───────────────────────────────────────────
 // Patterns are checked longest-delimiter-first so ** (bold) wins over * (italic).
 // Each rule: `re` matches text-before-cursor ending with the complete pattern,
@@ -517,7 +563,10 @@ export default function SingleEmailComposer() {
   const [uploadingAttachment,  setUploadingAttachment]  = useState(false);
   const fileInputRef                  = useRef<HTMLInputElement>(null);
   const imageInputRef                 = useRef<HTMLInputElement>(null);
+  const imgReplaceRef                 = useRef<HTMLInputElement>(null);
   const savedRangeRef                 = useRef<Range | null>(null);
+  const [selectedImg,   setSelectedImg]   = useState<HTMLImageElement | null>(null);
+  const [imgToolbarPos, setImgToolbarPos] = useState<{ top: number; left: number } | null>(null);
   const linkDialogRef                 = useRef<HTMLDivElement>(null);
   const linkInputRef                  = useRef<HTMLInputElement>(null);
 
@@ -797,13 +846,17 @@ export default function SingleEmailComposer() {
     e.target.value = "";
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      const dataUrl = ev.target?.result as string;
-      if (!dataUrl) return;
+    reader.onload = async (ev) => {
+      const raw = ev.target?.result as string;
+      if (!raw) return;
 
-      // ── HTML source mode: inject tag at end of source ───────────────────────
+      // Compress: resize to ≤620 px wide, JPEG 0.82 quality
+      const dataUrl = await compressImage(raw);
+      const IMG_STYLE = "display:block;max-width:100%;width:100%;height:auto;margin:16px auto;border-radius:4px;";
+
+      // ── HTML source mode ────────────────────────────────────────────────────
       if (htmlSourceMode) {
-        const tag = `<img src="${dataUrl}" style="max-width:100%;height:auto;display:block;margin:8px 0;" />`;
+        const tag = `<img src="${dataUrl}" style="${IMG_STYLE}" alt="" />`;
         const updated = htmlSource + "\n" + tag;
         setHtmlSource(updated);
         editorContentRef.current = updated;
@@ -814,20 +867,16 @@ export default function SingleEmailComposer() {
       // ── Rich-text editor mode ───────────────────────────────────────────────
       const editor = editorRef.current;
       if (!editor) {
-        // Editor not mounted — append to cached content
-        const tag = `<img src="${dataUrl}" style="max-width:100%;height:auto;display:block;margin:8px 0;" />`;
-        editorContentRef.current = editorContentRef.current + tag;
+        editorContentRef.current += `<img src="${dataUrl}" style="${IMG_STYLE}" alt="" />`;
         setTimeout(() => rebuildPreview(), 0);
         return;
       }
 
-      // Build the img element
       const img = document.createElement("img");
       img.src = dataUrl;
-      img.style.cssText = "max-width:100%;height:auto;display:block;margin:8px 0;";
-      img.setAttribute("data-inline-image", "1");
+      img.style.cssText = IMG_STYLE;
+      img.alt = "";
 
-      // Focus editor and restore saved cursor range (or fall back to end)
       editor.focus();
       const sel = window.getSelection();
       if (sel) {
@@ -837,7 +886,7 @@ export default function SingleEmailComposer() {
             sel.removeAllRanges();
             sel.addRange(savedRangeRef.current);
             insertRange = sel.getRangeAt(0);
-          } catch { /* stale range — fall through */ }
+          } catch { /* stale */ }
         }
         if (!insertRange) {
           insertRange = document.createRange();
@@ -848,7 +897,6 @@ export default function SingleEmailComposer() {
         }
         insertRange.deleteContents();
         insertRange.insertNode(img);
-        // Place cursor just after the image
         const after = document.createRange();
         after.setStartAfter(img);
         after.collapse(true);
@@ -898,6 +946,77 @@ export default function SingleEmailComposer() {
     if (!url) return;
     const accent = branding?.accentColor || "#2563eb";
     exec("insertHTML", `<a href="${url}" style="display:inline-block;padding:10px 24px;background:${accent};color:#fff;text-decoration:none;border-radius:6px;font-weight:600;font-family:sans-serif;font-size:14px;">${text}</a>&nbsp;`);
+  };
+
+  // ── Image click handling & controls ───────────────────────────────────────
+
+  const handleEditorClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = e.target as HTMLElement;
+    if (el.tagName === "IMG") {
+      const img = el as HTMLImageElement;
+      setSelectedImg(img);
+      const r = img.getBoundingClientRect();
+      setImgToolbarPos({ top: Math.max(8, r.top - 48), left: Math.max(8, r.left) });
+    } else {
+      setSelectedImg(null);
+      setImgToolbarPos(null);
+    }
+  };
+
+  const resizeImg = (pct: number) => {
+    if (!selectedImg || !editorRef.current) return;
+    const natW = selectedImg.naturalWidth || 620;
+    const maxW = Math.min(natW, 620);
+    const newW = Math.round(maxW * (pct / 100));
+    selectedImg.style.width    = `${newW}px`;
+    selectedImg.style.maxWidth = "100%";
+    selectedImg.style.height   = "auto";
+    editorContentRef.current = editorRef.current.innerHTML;
+    rebuildPreview();
+  };
+
+  const alignImg = (align: "left" | "center" | "right") => {
+    if (!selectedImg || !editorRef.current) return;
+    selectedImg.style.display     = "block";
+    selectedImg.style.marginLeft  = align === "left"   ? "0"    : "auto";
+    selectedImg.style.marginRight = align === "right"  ? "0"    : "auto";
+    editorContentRef.current = editorRef.current.innerHTML;
+    rebuildPreview();
+  };
+
+  const removeImg = () => {
+    if (!selectedImg || !editorRef.current) return;
+    selectedImg.remove();
+    setSelectedImg(null);
+    setImgToolbarPos(null);
+    editorContentRef.current = editorRef.current.innerHTML;
+    rebuildPreview();
+  };
+
+  const editImgAlt = () => {
+    if (!selectedImg) return;
+    const alt = window.prompt("Alt text (improves email deliverability):", selectedImg.alt ?? "");
+    if (alt !== null) {
+      selectedImg.alt = alt;
+      if (editorRef.current) editorContentRef.current = editorRef.current.innerHTML;
+      rebuildPreview();
+    }
+  };
+
+  const replaceImgFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !selectedImg) return;
+    const reader = new FileReader();
+    reader.onload = async ev => {
+      const raw = ev.target?.result as string;
+      if (!raw) return;
+      const dataUrl = await compressImage(raw);
+      selectedImg.src = dataUrl;
+      if (editorRef.current) editorContentRef.current = editorRef.current.innerHTML;
+      rebuildPreview();
+    };
+    reader.readAsDataURL(file);
   };
 
   // ── Live preview builder ───────────────────────────────────────────────────
@@ -1545,7 +1664,7 @@ export default function SingleEmailComposer() {
                 <textarea
                   value={htmlSource}
                   onChange={e => { setHtmlSource(e.target.value); setTimeout(() => rebuildPreview(), 0); }}
-                  className="w-full px-10 py-8 min-h-[520px] font-mono text-xs bg-slate-900 text-green-400 focus:outline-none resize-none"
+                  className="w-full px-8 py-6 min-h-[480px] font-mono text-xs bg-slate-900 text-green-400 focus:outline-none resize-none"
                   placeholder="<p>Your HTML here...</p>"
                 />
               ) : (
@@ -1554,7 +1673,8 @@ export default function SingleEmailComposer() {
                   contentEditable
                   suppressContentEditableWarning
                   onInput={onEditorInput}
-                  className="w-full px-10 py-8 min-h-[520px] text-[15px] text-slate-800 dark:text-slate-200 focus:outline-none"
+                  onClick={handleEditorClick}
+                  className="w-full px-8 py-6 min-h-[480px] text-[15px] text-slate-800 dark:text-slate-200 focus:outline-none"
                   style={{ lineHeight: "1.85" }}
                 />
               )}
@@ -1592,6 +1712,12 @@ export default function SingleEmailComposer() {
                     type="file" ref={imageInputRef} className="hidden"
                     accept="image/jpeg,image/png,image/gif,image/webp,image/jpg"
                     onChange={handleImageFile}
+                  />
+                  {/* Image replace picker (for image toolbar Replace action) */}
+                  <input
+                    type="file" ref={imgReplaceRef} className="hidden"
+                    accept="image/jpeg,image/png,image/gif,image/webp,image/jpg"
+                    onChange={replaceImgFile}
                   />
                   <button
                     onClick={() => fileInputRef.current?.click()}
@@ -1714,6 +1840,52 @@ export default function SingleEmailComposer() {
             </button>
           </div>
         </div>
+      </div>
+    )}
+    {/* ════ FLOATING IMAGE TOOLBAR ════ */}
+    {selectedImg && imgToolbarPos && (
+      <div
+        className="fixed z-[9999] flex items-center gap-0.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-2xl px-2 py-1.5"
+        style={{ top: imgToolbarPos.top, left: imgToolbarPos.left }}
+        onMouseDown={e => e.preventDefault()}
+      >
+        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider px-1 hidden sm:inline">Size</span>
+        {([25, 50, 75, 100] as const).map(pct => (
+          <button key={pct} onMouseDown={e => { e.preventDefault(); resizeImg(pct); }}
+            className="px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors">
+            {pct}%
+          </button>
+        ))}
+
+        <div className="w-px h-4 bg-slate-200 dark:bg-slate-600 mx-1" />
+
+        <button onMouseDown={e => { e.preventDefault(); alignImg("left"); }} title="Align left"
+          className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 transition-colors">
+          <AlignLeft className="h-3.5 w-3.5" />
+        </button>
+        <button onMouseDown={e => { e.preventDefault(); alignImg("center"); }} title="Align center"
+          className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 transition-colors">
+          <AlignCenter className="h-3.5 w-3.5" />
+        </button>
+        <button onMouseDown={e => { e.preventDefault(); alignImg("right"); }} title="Align right"
+          className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 transition-colors">
+          <AlignRight className="h-3.5 w-3.5" />
+        </button>
+
+        <div className="w-px h-4 bg-slate-200 dark:bg-slate-600 mx-1" />
+
+        <button onMouseDown={e => { e.preventDefault(); imgReplaceRef.current?.click(); }} title="Replace image"
+          className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 transition-colors">
+          <ImageIcon className="h-3.5 w-3.5" />
+        </button>
+        <button onMouseDown={e => { e.preventDefault(); editImgAlt(); }} title="Edit alt text"
+          className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 transition-colors">
+          <Type className="h-3.5 w-3.5" />
+        </button>
+        <button onMouseDown={e => { e.preventDefault(); removeImg(); }} title="Remove image"
+          className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400 hover:text-red-600 transition-colors">
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
       </div>
     )}
     </>

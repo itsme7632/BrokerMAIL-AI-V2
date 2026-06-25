@@ -5,7 +5,7 @@ import { Logo } from "@/components/Logo";
 import {
   LayoutDashboard, FileText, UploadCloud, Mail, Settings, ShieldAlert,
   Menu, X, Server, CreditCard, SendHorizonal, Megaphone, LayoutGrid,
-  Search, LogOut, Palette, HelpCircle, ChevronDown, Moon, Sun, PenLine,
+  LogOut, Palette, HelpCircle, ChevronDown, Moon, Sun, PenLine,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { NotificationBell } from "@/components/NotificationBell";
 
 const NAV_ITEMS = [
@@ -46,47 +46,6 @@ function NavItem({ href, icon: Icon, label, exact }: {
         {label}
       </span>
     </Link>
-  );
-}
-
-/** Global search bar shown in the top header */
-function GlobalSearch() {
-  const [focused, setFocused] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        inputRef.current?.focus();
-      }
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
-
-  return (
-    <div className={cn(
-      "relative hidden sm:flex items-center gap-2 h-9 px-3 rounded-xl border text-sm transition-all duration-150",
-      focused
-        ? "bg-white dark:bg-slate-700 border-blue-300 dark:border-blue-500 ring-2 ring-blue-100 dark:ring-blue-900 w-64"
-        : "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 w-48 hover:bg-white dark:hover:bg-slate-700 hover:border-slate-300 dark:hover:border-slate-600"
-    )}>
-      <Search className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500 flex-shrink-0" />
-      <input
-        ref={inputRef}
-        type="text"
-        placeholder="Search…"
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        className="flex-1 bg-transparent outline-none text-slate-700 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 min-w-0 text-sm"
-      />
-      {!focused && (
-        <kbd className="flex-shrink-0 hidden md:inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700 rounded border border-slate-200 dark:border-slate-600">
-          ⌘K
-        </kbd>
-      )}
-    </div>
   );
 }
 
@@ -255,10 +214,8 @@ function TopHeader({ onMobileMenuClick }: { onMobileMenuClick: () => void }) {
       {/* Spacer */}
       <div className="flex-1 min-w-0" />
 
-      {/* Right: Search + Theme toggle + Bell + Profile */}
+      {/* Right: Theme toggle + Bell + Profile */}
       <div className="flex items-center gap-1.5">
-        <GlobalSearch />
-        <div className="h-5 w-px bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block" />
         <ThemeToggle />
         <NotificationBell />
         <UserProfileDropdown user={user} logout={logout} />

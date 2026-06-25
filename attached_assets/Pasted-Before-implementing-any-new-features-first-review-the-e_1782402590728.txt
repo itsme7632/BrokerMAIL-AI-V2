@@ -1,0 +1,143 @@
+Before implementing any new features, first review the existing implementation and fix the following items.
+
+========================
+1. EMAIL IMAGE HANDLING
+========================
+
+The image upload now works, but the inserted image is displayed at its original size.
+
+Improve image handling to behave like Gmail and Outlook.
+
+Requirements:
+
+• Automatically resize images to fit the email content width.
+• Maximum width around 600–700px.
+• Maintain aspect ratio.
+• Center images by default.
+• Images must remain responsive:
+  max-width:100%;
+  height:auto;
+
+Add image controls:
+
+• Resize (25%, 50%, 75%, 100%)
+• Align Left
+• Align Center
+• Align Right
+• Replace Image
+• Remove Image
+• Edit Alt Text
+
+Compress large images before embedding to improve deliverability.
+
+Images must continue working in:
+
+✓ Drafts
+✓ Templates
+✓ Preview
+✓ Sent Emails
+✓ Received Emails
+
+========================
+2. BRANDING SETTINGS
+========================
+
+Audit the Branding Settings page.
+
+Verify that:
+
+• Company logo upload works.
+• Logo preview updates immediately.
+• Logo is saved correctly.
+• Logo persists after refresh.
+• Logo appears automatically in:
+
+- Email Templates
+- Single Email Composer
+- Preview
+- Sent Emails
+- Received Emails
+
+Also verify:
+
+Company Name
+
+Phone
+
+Website
+
+Address
+
+Social links
+
+Accent color
+
+Signature
+
+All branding settings should save and load correctly.
+
+Fix any issues found.
+
+========================
+3. REMOVE HEADER SEARCH
+========================
+
+The global search bar in the header is currently non-functional.
+
+Instead of leaving a broken feature visible:
+
+Remove the search bar completely for now.
+
+Keep the header clean.
+
+Do NOT leave disabled controls visible.
+
+The search feature can be reintroduced later when it supports searching:
+
+• Emails
+• Templates
+• Campaigns
+• Contacts
+• Drafts
+
+========================
+4. COMPOSER POLISH
+========================
+
+Improve the overall appearance.
+
+The compose page should feel like a premium email client.
+
+Refine:
+
+• spacing
+• typography
+• toolbar spacing
+• image spacing
+• attachment section
+• button alignment
+
+Reduce visual clutter.
+
+The email editor should remain the primary focus.
+
+========================
+5. VERIFY
+========================
+
+After implementation verify:
+
+✓ Branding logo uploads successfully
+✓ Logo persists after refresh
+✓ Logo appears inside sent emails
+✓ Logo appears inside previews
+✓ Images resize correctly
+✓ Images remain responsive
+✓ Search bar removed
+✓ No console errors
+✓ No TypeScript errors
+✓ No runtime errors
+
+Do not stop after coding.
+
+Test the complete workflow and fix any issues before considering this task complete.
