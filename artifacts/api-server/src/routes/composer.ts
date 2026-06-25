@@ -555,6 +555,7 @@ router.post("/composer/email-templates", requireAuth, async (req, res) => {
     }).returning();
     res.json(row);
   } catch (err: any) {
+    logger.error({ err }, "[COMPOSER] Failed to save email template");
     res.status(500).json({ error: "Failed to save email template" });
   }
 });

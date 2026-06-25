@@ -1,0 +1,323 @@
+The current email tracking system needs to be upgraded from simple status tracking to a reliable event-based tracking system.
+
+This is NOT just a UI change.
+
+Audit the entire tracking flow from email send → tracking pixel → tracking events → Sent Emails page.
+
+====================================
+1. REMOVE FALSE OPENS
+====================================
+
+Current bug:
+
+• Emails are sometimes marked Opened immediately after sending.
+• Opening the email Preview inside BrokerMAIL counts as an open.
+• Internal requests trigger tracking.
+
+This must never happen.
+
+Only real recipient opens should count.
+
+Ignore requests originating from:
+
+• BrokerMAIL Preview
+• Localhost
+• Development server
+• Internal iframe
+• Admin preview
+• Automated browser prefetch
+• Health checks
+
+====================================
+2. SEPARATE EVENTS
+====================================
+
+Stop using one status field for everything.
+
+Instead create independent tracking events.
+
+Supported events:
+
+SENT
+
+SMTP_ACCEPTED
+
+DELIVERED (only if actually supported)
+
+OPEN
+
+CLICK
+
+ATTACHMENT_DOWNLOAD
+
+REPLY (future)
+
+BOUNCE
+
+FAILED
+
+SUPPRESSED
+
+Every event should have:
+
+eventType
+
+timestamp
+
+ip (when available)
+
+userAgent
+
+country (future)
+
+device (future)
+
+trackingId
+
+====================================
+3. NEW TIMELINE
+====================================
+
+Replace the current timeline with:
+
+✓ Email queued
+
+✓ Sent via SMTP
+
+✓ Accepted by mail server
+
+✓ Delivered (only if actual confirmation exists)
+
+👁 Open #1
+
+👁 Open #2
+
+👁 Open #3
+
+🖱 Link clicked
+
+📎 Attachment downloaded
+
+⚠ Bounce detected
+
+❌ Failed
+
+Do NOT fake Delivered.
+
+SMTP 250 means Accepted.
+
+It does NOT mean Delivered.
+
+====================================
+4. OPEN COUNT
+====================================
+
+Every genuine open increments:
+
+Open #1
+
+Open #2
+
+Open #3
+
+Display:
+
+First Open
+
+Latest Open
+
+Total Opens
+
+====================================
+5. CLICK TRACKING
+====================================
+
+Every tracked link click should appear as:
+
+Clicked:
+
+URL
+
+Time
+
+User Agent
+
+IP (if available)
+
+Count total clicks separately from opens.
+
+====================================
+6. PREVIEW MODE
+====================================
+
+Preview inside BrokerMAIL must NEVER load the tracking pixel.
+
+Preview should render the HTML without any tracking.
+
+No tracking endpoint should be requested.
+
+====================================
+7. TEST EMAIL
+====================================
+
+Send Test emails should not affect analytics.
+
+Either:
+
+Disable tracking
+
+OR
+
+Tag as:
+
+TEST_EMAIL
+
+and exclude from dashboard statistics.
+
+====================================
+8. BOUNCE PROTECTION
+====================================
+
+Never change an email to Bounced if:
+
+Open events exist
+
+Click events exist
+
+Attachment download exists
+
+Opened emails cannot become bounced.
+
+====================================
+9. SENT EMAIL DETAILS
+====================================
+
+The email details modal should display:
+
+Subject
+
+Recipient
+
+Mailbox
+
+Tracking ID
+
+Sent Time
+
+Accepted Time
+
+Open Count
+
+Click Count
+
+Bounce Status
+
+Attachments
+
+Activity Timeline
+
+====================================
+10. DASHBOARD
+====================================
+
+Dashboard statistics should use events instead of status.
+
+Show:
+
+Emails Sent
+
+Accepted
+
+Open Rate
+
+Click Rate
+
+Bounce Rate
+
+Failed
+
+Suppressed
+
+Average Opens
+
+Average Clicks
+
+====================================
+11. VERIFY
+====================================
+
+Test the following:
+
+Send email
+
+↓
+
+SMTP Accepted
+
+↓
+
+Status = Accepted
+
+↓
+
+Open BrokerMAIL Preview
+
+↓
+
+NO open event
+
+↓
+
+Receive email
+
+↓
+
+NO open event
+
+↓
+
+Open email in Gmail
+
+↓
+
+Open #1 recorded
+
+↓
+
+Refresh
+
+↓
+
+Open count = 1
+
+↓
+
+Open again
+
+↓
+
+Open count = 2
+
+↓
+
+Click tracked link
+
+↓
+
+Click event added
+
+↓
+
+Analytics updated
+
+↓
+
+Bounce test
+
+↓
+
+Opened email never becomes bounced
+
+Do not stop after code changes.
+
+Actually run the application and verify every workflow above.
