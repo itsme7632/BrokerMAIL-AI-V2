@@ -49,8 +49,9 @@ args = "PORT=24622 BASE_PATH=/ pnpm --filter @workspace/vertex-ai-mailer run dev
 waitForPort = 24622
 
 [agent]
-stack = "PNPM_WORKSPACE"
+stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
+integrations = ["javascript_openai_ai_integrations:2.0.0"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
