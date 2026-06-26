@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import {
   db, usersTable, plansTable, subscriptionsTable, planRequestsTable,
-  systemLogsTable, draftsTable, mailboxesTable, campaignsTable,
+  systemLogsTable, emailQueueTable, mailboxesTable, campaignsTable,
 } from "@workspace/db";
 import { eq, and, count, desc, sql, ne } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../lib/auth";
@@ -49,9 +49,9 @@ async function getCurrentUsage(userId: number) {
   monthStart.setHours(0, 0, 0, 0);
 
   const [[emailsSent], [smtpUsed], [campaigns]] = await Promise.all([
-    db.select({ count: count() }).from(draftsTable)
-      .where(and(eq(draftsTable.userId, userId), eq(draftsTable.status, "success"),
-        sql`${draftsTable.createdAt} >= ${monthStart}`)),
+    db.select({ count: count() }).from(emailQueueTable)
+      .where(and(eq(emailQueueTable.userId, userId), eq(emailQueueTable.status, "sent"),
+        sql`${emailQueueTable.sentAt} >= ${monthStart}`)),
     db.select({ count: count() }).from(mailboxesTable)
       .where(and(eq(mailboxesTable.userId, userId), eq(mailboxesTable.isActive, true))),
     db.select({ count: count() }).from(campaignsTable)
@@ -288,10 +288,10 @@ router.get("/admin/subscriptions", requireAdmin, async (_req, res): Promise<void
     stripeCustomerId: subscriptionsTable.stripeCustomerId,
     stripeSubscriptionId: subscriptionsTable.stripeSubscriptionId,
     emailsSentThisMonth: sql<number>`(
-      SELECT COUNT(*)::int FROM drafts
-      WHERE drafts.user_id = ${usersTable.id}
-        AND drafts.status = 'success'
-        AND drafts.created_at >= date_trunc('month', CURRENT_DATE)
+      SELECT COUNT(*)::int FROM email_queue
+      WHERE email_queue.user_id = ${usersTable.id}
+        AND email_queue.status = 'sent'
+        AND email_queue.sent_at >= date_trunc('month', CURRENT_DATE)
     )`,
     smtpAccountsUsed: sql<number>`(
       SELECT COUNT(*)::int FROM mailboxes

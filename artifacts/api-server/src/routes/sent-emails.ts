@@ -431,6 +431,19 @@ router.get("/sent-emails/:id/preview", requireAuth, async (req, res): Promise<vo
     }
     // Strip tracking pixel so admin preview never fires a real open event
     html = html.replace(/<img[^>]+src="[^"]*\/api\/track\/open\/[^"]*"[^>]*\/?>/gi, "");
+
+    // Fallback when draft body is missing (e.g., tracking not enabled or draft deleted)
+    if (!html) {
+      html = `<div style="font-family:sans-serif;padding:24px;color:#374151;">
+        <p style="color:#6b7280;font-size:14px;border:1px dashed #d1d5db;padding:16px;border-radius:8px;text-align:center;">
+          📧 This email was sent via the composer.<br>
+          <span style="font-size:12px;color:#9ca3af;">HTML preview is not available — the email body was not retained after sending.</span>
+        </p>
+        <p style="font-size:13px;color:#374151;margin-top:12px;"><strong>To:</strong> ${item.email}</p>
+        <p style="font-size:13px;color:#374151;"><strong>Subject:</strong> ${item.subject ?? "(no subject)"}</p>
+      </div>`;
+    }
+
     res.json({
       html,
       subject:      item.subject ?? "",

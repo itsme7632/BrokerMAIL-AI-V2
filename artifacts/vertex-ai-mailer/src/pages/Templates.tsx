@@ -6,16 +6,59 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, FileText, Loader2, ArrowRight, Pencil } from "lucide-react";
+import { Plus, FileText, Loader2, ArrowRight, Copy, Trash2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+
+function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem("auth_token");
+  return token ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
+}
 
 export default function Templates() {
   const { data: templates, isLoading } = useGetTemplates();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState("");
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<number | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const createTemplate = useCreateTemplate();
+
+  const handleDelete = async (id: number, name: string) => {
+    if (!confirm(`Delete template "${name}"? This cannot be undone.`)) return;
+    setDeletingId(id);
+    try {
+      const res = await fetch("/api/templates/remove", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error((d as any).error ?? "Delete failed"); }
+      toast({ title: "Template deleted" });
+      queryClient.invalidateQueries({ queryKey: getGetTemplatesQueryKey() });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Error", description: err.message });
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleDuplicate = async (id: number, name: string) => {
+    setDuplicatingId(id);
+    try {
+      const res = await fetch(`/api/templates/${id}/duplicate`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error((d as any).error ?? "Duplicate failed"); }
+      toast({ title: `"${name}" duplicated` });
+      queryClient.invalidateQueries({ queryKey: getGetTemplatesQueryKey() });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Error", description: err.message });
+    } finally {
+      setDuplicatingId(null);
+    }
+  };
 
   const handleCreate = () => {
     if (!newTemplateName.trim()) return;
@@ -146,16 +189,38 @@ export default function Templates() {
                 <span className="text-xs text-slate-400 dark:text-slate-500">
                   Updated {new Date(template.updatedAt).toLocaleDateString()}
                 </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  asChild
-                  className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg h-7 px-2 gap-1"
-                >
-                  <Link href={`/templates/${template.id}`}>
-                    Edit <ArrowRight className="h-3 w-3" />
-                  </Link>
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDuplicate(template.id, template.name)}
+                    disabled={duplicatingId === template.id}
+                    className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg h-7 px-2 gap-1"
+                    title="Duplicate"
+                  >
+                    {duplicatingId === template.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Copy className="h-3 w-3" />}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDelete(template.id, template.name)}
+                    disabled={deletingId === template.id}
+                    className="text-xs text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg h-7 px-2 gap-1"
+                    title="Delete"
+                  >
+                    {deletingId === template.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    asChild
+                    className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg h-7 px-2 gap-1"
+                  >
+                    <Link href={`/templates/${template.id}`}>
+                      Edit <ArrowRight className="h-3 w-3" />
+                    </Link>
+                  </Button>
+                </div>
               </div>
             </div>
           ))

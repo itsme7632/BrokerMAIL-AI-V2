@@ -35,7 +35,7 @@ function NavItem({ href, icon: Icon, label, exact }: {
   const [location] = useLocation();
   const isActive = exact ? location === href : location.startsWith(href);
   return (
-    <Link href={href}>
+    <Link href={href} className="block">
       <span className={cn(
         "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer select-none",
         isActive

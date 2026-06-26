@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useRoute, Link } from "wouter";
 import {
   useGetTemplate,
-  useUpdateTemplate,
   getGetTemplateQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -102,7 +101,7 @@ export default function TemplateEditor() {
     }
   }, [template, templateId]);
 
-  const updateTemplate = useUpdateTemplate();
+  const [isSaving, setIsSaving] = useState(false);
 
   const previewSubject = useMemo(() => replaceVariables(subject, SAMPLE_ROW), [subject]);
   const previewBody    = useMemo(() => replaceVariables(body, SAMPLE_ROW),    [body]);
@@ -162,19 +161,33 @@ export default function TemplateEditor() {
     setCtaButtons(prev => prev.filter(b => b.id !== id));
   }
 
-  const handleSave = () => {
-    updateTemplate.mutate(
-      { id: templateId, data: { name, subject, body, ctaButtonsJson: ctaButtons.length > 0 ? JSON.stringify(ctaButtons) : null } as any },
-      {
-        onSuccess: (data) => {
-          toast({ title: "Template saved" });
-          queryClient.setQueryData(getGetTemplateQueryKey(templateId), data);
-        },
-        onError: (err: any) => {
-          toast({ variant: "destructive", title: "Save failed", description: err.message });
-        },
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch("/api/templates/save", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: templateId,
+          name,
+          subject,
+          body,
+          ctaButtonsJson: ctaButtons.length > 0 ? JSON.stringify(ctaButtons) : null,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error ?? `Save failed (${res.status})`);
       }
-    );
+      const data = await res.json();
+      toast({ title: "Template saved" });
+      queryClient.setQueryData(getGetTemplateQueryKey(templateId), data);
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Save failed", description: err.message });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const insertChip = (chip: string) => setBody(prev => prev + chip);
@@ -199,8 +212,8 @@ export default function TemplateEditor() {
 
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h2 className="text-3xl font-bold tracking-tight">Edit Template</h2>
-        <Button onClick={handleSave} disabled={updateTemplate.isPending} className="rounded-xl gap-2">
-          {updateTemplate.isPending
+        <Button onClick={handleSave} disabled={isSaving} className="rounded-xl gap-2">
+          {isSaving
             ? <Loader2 className="h-4 w-4 animate-spin" />
             : <Save className="h-4 w-4" />}
           Save Changes
