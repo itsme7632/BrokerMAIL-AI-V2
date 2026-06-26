@@ -1,0 +1,442 @@
+PHASE: LEGAL PAGES + PUBLIC WEBSITE + DYNAMIC PRICING
+
+Before making any changes, audit the existing project.
+
+STEP 1 — AUDIT
+
+Check if these pages already exist:
+
+• Pricing
+• Terms & Conditions
+• Privacy Policy
+• Refund Policy
+• Contact Us
+• About
+• Help / Support
+
+If any page already exists:
+
+• verify routing
+• verify it renders correctly
+• verify styling
+• verify mobile responsiveness
+• verify links
+• remove placeholder/mock content
+• replace with production-ready content
+
+------------------------------------------
+
+STEP 2 — LOGIN / SIGNUP LINKS
+
+On Login and Signup pages there are links for:
+
+• Terms & Conditions
+• Privacy Policy
+
+Currently they appear to be mock links.
+
+Fix them.
+
+Requirements:
+
+✓ open real pages
+✓ no broken routes
+✓ no placeholder pages
+✓ mobile responsive
+✓ consistent BrokerMAIL AI branding
+
+------------------------------------------
+
+STEP 3 — CREATE LEGAL PAGES
+
+Create professional SaaS legal pages.
+
+Pages:
+
+/terms
+
+/privacy
+
+/refund-policy
+
+/contact
+
+/about
+
+/help
+
+Use modern layout.
+
+Dark theme.
+
+Readable typography.
+
+Sections.
+
+Sticky TOC on desktop.
+
+Professional footer.
+
+Each page should look like a real SaaS product (Notion, Linear, Resend, Stripe style).
+
+------------------------------------------
+
+STEP 4 — TERMS & CONDITIONS
+
+Include sections such as:
+
+• Account Responsibilities
+• Acceptable Use
+• Subscription Billing
+• Email Sending Policy
+• SMTP Responsibility
+• Anti-Spam Policy
+• Cancellation
+• Suspension
+• Intellectual Property
+• Limitation of Liability
+• Contact Information
+
+Write for BrokerMAIL AI.
+
+------------------------------------------
+
+STEP 5 — PRIVACY POLICY
+
+Include:
+
+Information Collected
+
+Cookies
+
+Tracking Pixels
+
+SMTP Credentials
+
+OAuth Data
+
+Analytics
+
+How data is protected
+
+User Rights
+
+Deletion Requests
+
+Data Retention
+
+Contact
+
+------------------------------------------
+
+STEP 6 — REFUND POLICY
+
+Include:
+
+Digital SaaS subscription
+
+Monthly Plans
+
+Annual Plans
+
+Refund eligibility
+
+Abuse
+
+Chargebacks
+
+Trial plans
+
+Manual review
+
+------------------------------------------
+
+STEP 7 — CONTACT PAGE
+
+Professional layout.
+
+Support Email
+
+Sales Email
+
+Business Hours
+
+Response Time
+
+Contact Form
+
+FAQ link
+
+------------------------------------------
+
+STEP 8 — ABOUT PAGE
+
+Explain:
+
+What BrokerMAIL AI is
+
+Mission
+
+Vision
+
+Why it exists
+
+Who it's built for
+
+Auto Transport Industry focus
+
+------------------------------------------
+
+STEP 9 — HELP CENTER
+
+Create searchable Help page.
+
+Categories:
+
+Getting Started
+
+SMTP Setup
+
+Campaigns
+
+Templates
+
+Tracking
+
+Billing
+
+Troubleshooting
+
+------------------------------------------
+
+STEP 10 — PUBLIC PRICING PAGE
+
+Current pricing cards already exist inside dashboard.
+
+Create a public pricing page.
+
+Requirements:
+
+Beautiful SaaS landing page.
+
+Monthly plans.
+
+Comparison table.
+
+Feature comparison.
+
+FAQ.
+
+CTA.
+
+Testimonials placeholder.
+
+------------------------------------------
+
+STEP 11 — ADMIN MANAGED PRICING
+
+This is important.
+
+Pricing must NOT be hardcoded.
+
+Create database tables for:
+
+Plans
+
+Features
+
+Limits
+
+Pricing
+
+Popular Badge
+
+Button Text
+
+Visibility
+
+Everything editable.
+
+------------------------------------------
+
+Admin Panel should allow:
+
+Create plan
+
+Edit plan
+
+Delete plan
+
+Hide plan
+
+Reorder plans
+
+Mark Most Popular
+
+Change:
+
+Price
+
+Emails/month
+
+Mailbox count
+
+Campaign limits
+
+Batch size
+
+Support level
+
+Button text
+
+Description
+
+Features
+
+Everything should update instantly on:
+
+Public Pricing page
+
+Dashboard Pricing page
+
+Upgrade modal
+
+No hardcoded pricing anywhere.
+
+------------------------------------------
+
+STEP 12 — MANUAL UPGRADE FLOW
+
+Users CANNOT self-upgrade.
+
+Flow:
+
+User clicks Upgrade
+
+↓
+
+Select Plan
+
+↓
+
+Enter optional note
+
+↓
+
+Submit Request
+
+↓
+
+Admin receives request
+
+↓
+
+Admin approves
+
+↓
+
+Plan activates
+
+↓
+
+User receives notification
+
+↓
+
+Email confirmation sent
+
+Exactly like current approval flow.
+
+Do NOT integrate Stripe.
+
+Do NOT integrate PayPal.
+
+Manual approval only.
+
+------------------------------------------
+
+STEP 13 — ADMIN SETTINGS
+
+Add:
+
+Business Name
+
+Support Email
+
+Sales Email
+
+Business Address
+
+Phone
+
+Website
+
+Legal Company Name
+
+These values should automatically populate:
+
+Footer
+
+Contact Page
+
+Legal Pages
+
+Pricing
+
+Emails
+
+------------------------------------------
+
+STEP 14 — FOOTER
+
+Every public page should include:
+
+Pricing
+
+Terms
+
+Privacy
+
+Refund
+
+Contact
+
+About
+
+Help
+
+Copyright
+
+Version
+
+------------------------------------------
+
+STEP 15 — FINAL QA
+
+Before finishing verify:
+
+✓ Login links work
+
+✓ Signup links work
+
+✓ Footer links work
+
+✓ No mock pages
+
+✓ Mobile responsive
+
+✓ Public pricing works
+
+✓ Dashboard pricing works
+
+✓ Admin changes price instantly
+
+✓ Upgrade request flow still works
+
+✓ No hardcoded plan values remain
+
+✓ No broken routes
+
+Do not stop after coding.
+
+Run the application and manually test every page and every route before marking the task complete.

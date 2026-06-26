@@ -1,15 +1,38 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/context/ThemeContext";
-import { Moon, Sun } from "lucide-react";
+import { Moon, Sun, Truck } from "lucide-react";
 import { Logo } from "@/components/Logo";
 
 const navLinks = [
   { href: "/pricing", label: "Pricing" },
+  { href: "/about",   label: "About" },
   { href: "/faq",     label: "FAQ" },
   { href: "/contact", label: "Contact" },
-  { href: "/trust",   label: "Security" },
+  { href: "/help",    label: "Help" },
 ];
+
+const footerLinks = {
+  Product: [
+    { href: "/pricing", label: "Pricing" },
+    { href: "/about",   label: "About" },
+    { href: "/faq",     label: "FAQ" },
+    { href: "/help",    label: "Help Center" },
+    { href: "/trust",   label: "Security" },
+    { href: "/contact", label: "Contact Us" },
+  ],
+  Legal: [
+    { href: "/terms",         label: "Terms & Conditions" },
+    { href: "/privacy",       label: "Privacy Policy" },
+    { href: "/refund-policy", label: "Refund Policy" },
+  ],
+  Account: [
+    { href: "/login",    label: "Sign In" },
+    { href: "/register", label: "Create Account" },
+  ],
+};
+
+const CURRENT_YEAR = new Date().getFullYear();
 
 export function PublicLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -64,26 +87,59 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
       </main>
 
       {/* Footer */}
-      <footer className="py-10 border-t border-slate-100 dark:border-slate-700/60 bg-white dark:bg-slate-900">
-        <div className="container mx-auto px-5 max-w-6xl">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="flex items-center">
-              <Logo className="h-8 w-auto object-contain max-w-[160px]" />
+      <footer className="border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
+        <div className="container mx-auto px-5 max-w-6xl py-12">
+          {/* Top: Brand + links */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10">
+            {/* Brand */}
+            <div className="col-span-2 md:col-span-1">
+              <Link href="/">
+                <div className="mb-3 cursor-pointer">
+                  <Logo className="h-8 w-auto object-contain max-w-[140px]" />
+                </div>
+              </Link>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-[180px]">
+                AI-powered email outreach for auto transport brokers.
+              </p>
+              <div className="flex items-center gap-1.5 mt-3 text-xs text-slate-400 dark:text-slate-600">
+                <Truck className="h-3 w-3" />
+                <span>Built for auto transport</span>
+              </div>
             </div>
-            <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
-              {navLinks.map(({ href, label }) => (
-                <Link key={href} href={href}>
-                  <span className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer">{label}</span>
-                </Link>
-              ))}
-              <Link href="/login">
-                <span className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer">Sign In</span>
+
+            {/* Link columns */}
+            {Object.entries(footerLinks).map(([group, links]) => (
+              <div key={group}>
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">{group}</p>
+                <ul className="space-y-2">
+                  {links.map(({ href, label }) => (
+                    <li key={href}>
+                      <Link href={href}>
+                        <span className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer">{label}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+
+          {/* Bottom bar */}
+          <div className="pt-6 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p className="text-xs text-slate-400 dark:text-slate-600">
+              © {CURRENT_YEAR} BrokerMAIL AI. All rights reserved.
+            </p>
+            <div className="flex items-center gap-4">
+              <Link href="/privacy">
+                <span className="text-xs text-slate-400 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-400 cursor-pointer transition-colors">Privacy</span>
               </Link>
-              <Link href="/register">
-                <span className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer">Register</span>
+              <Link href="/terms">
+                <span className="text-xs text-slate-400 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-400 cursor-pointer transition-colors">Terms</span>
               </Link>
-            </nav>
-            <p className="text-xs text-slate-400 dark:text-slate-500">Built for the auto transport industry.</p>
+              <Link href="/refund-policy">
+                <span className="text-xs text-slate-400 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-400 cursor-pointer transition-colors">Refunds</span>
+              </Link>
+            </div>
           </div>
         </div>
       </footer>

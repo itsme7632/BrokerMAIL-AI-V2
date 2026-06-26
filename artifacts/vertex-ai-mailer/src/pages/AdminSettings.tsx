@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { AdminPlanManager } from "@/components/admin/AdminPlanManager";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -45,7 +46,7 @@ type SubTab =
   | "users" | "billing" | "security" | "cms" | "analytics"
   | "providers" | "emailControls" | "planPerms" | "credits"
   | "notifications" | "legal" | "support" | "features"
-  | "backup" | "superadmin" | "tracking";
+  | "backup" | "superadmin" | "tracking" | "planManager";
 
 interface BackupRecord {
   id: number;
@@ -469,6 +470,7 @@ const SUB_TABS: { id: SubTab; label: string; icon: React.ElementType; group?: st
   { id: "tracking",     label: "Tracking",      icon: Target,        group: "Email" },
   { id: "ai",           label: "AI",            icon: Bot,           group: "Email" },
   { id: "users",        label: "Users",         icon: Users,         group: "Users & Plans" },
+  { id: "planManager",  label: "Plan Manager",  icon: Zap,           group: "Users & Plans" },
   { id: "planPerms",    label: "Plan Perms",    icon: UserCheck,     group: "Users & Plans" },
   { id: "billing",      label: "Billing",       icon: CreditCard,    group: "Users & Plans" },
   { id: "credits",      label: "Credits",       icon: Coins,         group: "Users & Plans" },
@@ -1147,22 +1149,39 @@ export function AdminSettings() {
               <SectionHeader icon={Globe} title="General Platform Settings" color="bg-blue-50 text-blue-600"
                 desc="Platform identity, contact info, and operational status." />
 
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div className="sm:col-span-2">
-                  <Field label="Platform Name" settingsKey="platformName" settings={settings} onChange={set}
-                    placeholder="BrokerMail AI" />
+              <div className="space-y-4">
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Platform Identity</p>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <Field label="Platform Name" settingsKey="platformName" settings={settings} onChange={set}
+                      placeholder="BrokerMail AI" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Field label="Legal Company Name" settingsKey="legalCompanyName" settings={settings} onChange={set}
+                      placeholder="BrokerMAIL AI LLC" hint="Used in legal pages, footer, and billing." />
+                  </div>
+                  <Field label="Website URL" settingsKey="websiteUrl" settings={settings} onChange={set}
+                    placeholder="https://brokermail.ai" />
+                  <div className="sm:col-span-2">
+                    <Field label="Footer Text" settingsKey="footerText" settings={settings} onChange={set}
+                      placeholder="Built for the auto transport industry." />
+                  </div>
                 </div>
-                <Field label="Support Email" settingsKey="supportEmail" settings={settings} onChange={set}
-                  type="email" placeholder="support@brokermail.ai" />
-                <Field label="Contact Phone" settingsKey="contactPhone" settings={settings} onChange={set}
-                  type="tel" placeholder="+1 (555) 000-0000" />
-                <div className="sm:col-span-2">
-                  <Field label="Company Address" settingsKey="companyAddress" settings={settings} onChange={set}
-                    placeholder="123 Main St, Orlando, FL 32801" />
-                </div>
-                <div className="sm:col-span-2">
-                  <Field label="Footer Text" settingsKey="footerText" settings={settings} onChange={set}
-                    placeholder="Built for the auto transport industry." />
+              </div>
+
+              <div className="space-y-4">
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Contact Information</p>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <Field label="Support Email" settingsKey="supportEmail" settings={settings} onChange={set}
+                    type="email" placeholder="support@brokermail.ai" />
+                  <Field label="Sales Email" settingsKey="salesEmail" settings={settings} onChange={set}
+                    type="email" placeholder="sales@brokermail.ai" />
+                  <Field label="Contact Phone" settingsKey="contactPhone" settings={settings} onChange={set}
+                    type="tel" placeholder="+1 (555) 000-0000" />
+                  <div className="sm:col-span-2">
+                    <Field label="Business Address" settingsKey="companyAddress" settings={settings} onChange={set}
+                      placeholder="123 Main St, Orlando, FL 32801" />
+                  </div>
                 </div>
               </div>
 
@@ -1204,7 +1223,8 @@ export function AdminSettings() {
               </div>
 
               <SaveBar saving={saving} onSave={() => saveSection([
-                "platformName", "supportEmail", "contactPhone",
+                "platformName", "legalCompanyName", "websiteUrl",
+                "supportEmail", "salesEmail", "contactPhone",
                 "companyAddress", "footerText", "maintenanceMode",
                 "maintenanceMessage", "maintenanceReturnTime",
               ])} label="Save General Settings" />
@@ -1466,6 +1486,14 @@ export function AdminSettings() {
           )}
 
           {/* ── 6. BILLING SETTINGS ──────────────────────────────────────── */}
+          {activeTab === "planManager" && (
+            <div className="space-y-5">
+              <SectionHeader icon={Zap} title="Plan Manager" color="bg-blue-50 text-blue-600"
+                desc="Create, edit, delete, and reorder plans. Changes instantly update the public pricing page and upgrade flow." />
+              <AdminPlanManager />
+            </div>
+          )}
+
           {activeTab === "billing" && (
             <div className="space-y-5">
               <SectionHeader icon={CreditCard} title="Billing Settings" color="bg-amber-50 text-amber-600"

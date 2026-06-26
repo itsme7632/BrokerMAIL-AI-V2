@@ -1,7 +1,8 @@
+import { useEffect, useState } from "react";
 import { PublicLayout } from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { CheckCircle2, Sparkles, Zap } from "lucide-react";
+import { CheckCircle2, Sparkles, Zap, Loader2, AlertCircle, HelpCircle } from "lucide-react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 
@@ -19,85 +20,53 @@ function FadeUp({ children, delay = 0, className = "" }: { children: React.React
   );
 }
 
-const plans = [
-  {
-    name: "Starter",
-    desc: "Perfect for independent brokers getting started.",
-    highlight: false,
-    badge: null,
-    items: [
-      "500 emails / month",
-      "1 mailbox",
-      "CSV / XLSX upload",
-      "Basic personalization",
-    ],
-  },
-  {
-    name: "Growth",
-    desc: "Built for scaling teams with heavy lead flow.",
-    highlight: true,
-    badge: "Most Popular",
-    items: [
-      "10,000 emails / month",
-      "SMTP + IMAP support",
-      "White-label branding",
-      "Bulk outreach sending",
-    ],
-  },
-  {
-    name: "Agency",
-    desc: "For multi-user shops and enterprise dispatch.",
-    highlight: false,
-    badge: null,
-    items: [
-      "Unlimited campaigns",
-      "Multi-user support",
-      "Admin dashboard",
-      "Priority support",
-    ],
-  },
-  {
-    name: "Enterprise",
-    desc: "Custom solutions for large-scale operations.",
-    highlight: false,
-    badge: "Enterprise",
-    items: [
-      "Custom sending limits",
-      "Dedicated onboarding",
-      "Team management",
-      "Future API access",
-    ],
-  },
-];
+interface Plan {
+  id: number;
+  name: string;
+  slug: string;
+  description: string;
+  price: number;
+  priceLabel: string;
+  isPopular: boolean;
+  buttonText: string;
+  supportLevel: string;
+  monthlyEmailLimit: number;
+  smtpAccountsLimit: number;
+  campaignsLimit: number;
+  batchSendLimit: number;
+  features: string[];
+  sortOrder: number;
+  isActive: boolean;
+}
 
 const faqs = [
   {
-    q: "When will pricing be available?",
-    a: "We're currently in active development. Pricing plans will launch soon — sign up to be notified when they go live.",
+    q: "How does the upgrade process work?",
+    a: "Click 'Request Access' on any plan. Submit a short request from your dashboard. An admin reviews it within 1–2 business days and activates your new plan. You'll receive an email confirmation.",
   },
   {
-    q: "Is there a free trial?",
-    a: "Yes — when we launch, all plans will include a free trial period so you can test before committing.",
+    q: "Is there a free plan?",
+    a: "Yes — BrokerMAIL AI includes a free plan so you can explore the platform before committing. No credit card required.",
   },
   {
     q: "Can I switch plans later?",
-    a: "Absolutely. You can upgrade or downgrade your plan at any time. Changes take effect on your next billing cycle.",
+    a: "Absolutely. Submit a new upgrade request from the Plans page inside your dashboard at any time. Changes take effect upon admin approval.",
   },
   {
     q: "What email providers are supported?",
-    a: "BrokerMail AI works with Gmail, Outlook, Hostinger, GoDaddy, Zoho, Namecheap, and any private mail server that supports SMTP/IMAP.",
+    a: "BrokerMAIL AI works with Gmail, Outlook, Hostinger, GoDaddy, Zoho, Namecheap, and any private server that supports SMTP/IMAP.",
   },
   {
     q: "Is my mailbox password safe?",
-    a: "Yes. All credentials are stored encrypted at rest. We never read your inbox — IMAP is used only to save sent copies.",
+    a: "Yes. All credentials are encrypted at rest using AES-256. We never read your inbox — IMAP is only used to save sent copies.",
   },
   {
-    q: "Do emails show BrokerMail AI branding?",
-    a: "No. Emails are sent entirely from your own mailbox with your own branding. There are no forced signatures or watermarks.",
+    q: "Do emails show BrokerMAIL AI branding?",
+    a: "No. Emails go out entirely from your own mailbox with your own branding. No forced signatures or watermarks.",
   },
   {
     q: "What counts as one email send?",
-    a: "Each individual email delivered to a recipient counts as one send. Previews and drafts do not count toward your limit.",
+    a: "Each email delivered to one recipient counts as one send. Previews, test emails, and Gmail drafts don't count toward your limit.",
   },
   {
     q: "Is bulk sending included?",
@@ -105,22 +74,43 @@ const faqs = [
   },
 ];
 
+const COMPARE_FEATURES = [
+  { label: "Monthly emails", key: (p: Plan) => p.monthlyEmailLimit < 0 || p.monthlyEmailLimit === 999999 ? "Unlimited" : p.monthlyEmailLimit.toLocaleString() },
+  { label: "Mailboxes", key: (p: Plan) => p.smtpAccountsLimit < 0 || p.smtpAccountsLimit === 999 ? "Unlimited" : String(p.smtpAccountsLimit) },
+  { label: "Campaigns", key: (p: Plan) => p.campaignsLimit < 0 || p.campaignsLimit === 999 ? "Unlimited" : String(p.campaignsLimit) },
+  { label: "Batch send limit", key: (p: Plan) => p.batchSendLimit < 0 || p.batchSendLimit === 999999 ? "Unlimited" : String(p.batchSendLimit) },
+  { label: "Support level", key: (p: Plan) => p.supportLevel },
+];
+
 export default function Pricing() {
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const base = import.meta.env.BASE_URL ?? "/";
+    fetch(`${base}api/billing/plans`)
+      .then(r => r.ok ? r.json() : Promise.reject("Failed to load plans"))
+      .then(setPlans)
+      .catch(e => setError(String(e)))
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
     <PublicLayout>
       {/* Hero */}
       <section className="py-20 px-5 relative overflow-hidden">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px] bg-gradient-to-b from-blue-50 to-transparent rounded-full blur-3xl -z-10 pointer-events-none opacity-70" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px] bg-gradient-to-b from-blue-50 dark:from-blue-950/30 to-transparent rounded-full blur-3xl -z-10 pointer-events-none opacity-70" />
         <div className="container mx-auto max-w-3xl text-center">
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 border border-blue-100 text-blue-700 text-xs font-medium mb-6">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs font-medium mb-6">
               <Zap className="h-3.5 w-3.5" />
               Plans &amp; Pricing
             </div>
-            <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4 text-slate-900">
+            <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4 text-slate-900 dark:text-slate-100">
               Simple, transparent pricing
             </h1>
-            <p className="text-slate-500 text-base sm:text-lg max-w-xl mx-auto leading-relaxed">
+            <p className="text-slate-500 dark:text-slate-400 text-base sm:text-lg max-w-xl mx-auto leading-relaxed">
               Plans built for every stage of your brokerage — from solo brokers to full dispatch teams.
             </p>
           </motion.div>
@@ -130,56 +120,146 @@ export default function Pricing() {
       {/* Pricing cards */}
       <section className="pb-24 px-5">
         <div className="container mx-auto max-w-6xl">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {plans.map((plan, i) => (
-              <FadeUp key={plan.name} delay={i * 0.08}>
-                <div className={`rounded-2xl border p-7 flex flex-col h-full transition-all duration-200 ${
-                  plan.highlight
-                    ? "bg-blue-600 border-blue-500 shadow-2xl shadow-blue-200"
-                    : "bg-white border-slate-200 shadow-sm hover:shadow-lg hover:-translate-y-0.5"
-                }`}>
-                  {plan.badge && (
-                    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold mb-4 self-start ${
-                      plan.highlight ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"
-                    }`}>
-                      <Sparkles className="h-3 w-3" />
-                      {plan.badge}
-                    </div>
-                  )}
-                  <h3 className={`text-xl font-bold mb-1.5 ${plan.highlight ? "text-white" : "text-slate-900"}`}>{plan.name}</h3>
-                  <p className={`text-sm mb-6 leading-relaxed ${plan.highlight ? "text-blue-100" : "text-slate-500"}`}>{plan.desc}</p>
-                  <ul className="space-y-3 mb-8 flex-1">
-                    {plan.items.map((item) => (
-                      <li key={item} className="flex items-start gap-2.5">
-                        <CheckCircle2 className={`h-4 w-4 flex-shrink-0 mt-0.5 ${plan.highlight ? "text-blue-200" : "text-emerald-500"}`} />
-                        <span className={`text-sm ${plan.highlight ? "text-blue-50" : "text-slate-700"}`}>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <button
-                    disabled
-                    className={`w-full h-11 rounded-xl text-sm font-semibold cursor-not-allowed select-none ${
-                      plan.highlight
-                        ? "bg-white/20 text-white border border-white/30"
-                        : "bg-slate-100 text-slate-400 border border-slate-200"
-                    }`}
-                  >
-                    Coming Soon
-                  </button>
-                </div>
-              </FadeUp>
-            ))}
-          </div>
+          {loading && (
+            <div className="flex items-center justify-center py-20 text-slate-400">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              Loading plans…
+            </div>
+          )}
 
-          {/* Note */}
+          {error && !loading && (
+            <div className="flex items-center justify-center gap-2 py-10 text-red-500">
+              <AlertCircle className="h-4 w-4" />
+              <span className="text-sm">{error}</span>
+            </div>
+          )}
+
+          {!loading && !error && plans.length === 0 && (
+            <div className="text-center py-16 text-slate-400">
+              <HelpCircle className="h-8 w-8 mx-auto mb-3 opacity-40" />
+              <p className="text-sm">Pricing plans coming soon. <Link href="/contact"><span className="text-blue-600 hover:underline cursor-pointer">Contact us</span></Link> for details.</p>
+            </div>
+          )}
+
+          {!loading && !error && plans.length > 0 && (
+            <>
+              <div className={`grid gap-5 ${
+                plans.length === 1 ? "sm:grid-cols-1 max-w-sm mx-auto"
+                : plans.length === 2 ? "sm:grid-cols-2 max-w-2xl mx-auto"
+                : plans.length === 3 ? "sm:grid-cols-3"
+                : "sm:grid-cols-2 lg:grid-cols-4"
+              }`}>
+                {plans.map((plan, i) => (
+                  <FadeUp key={plan.id} delay={i * 0.08}>
+                    <div className={`relative rounded-2xl border p-7 flex flex-col h-full transition-all duration-200 ${
+                      plan.isPopular
+                        ? "bg-blue-600 border-blue-500 shadow-2xl shadow-blue-200 dark:shadow-blue-900/40"
+                        : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-lg hover:-translate-y-0.5"
+                    }`}>
+                      {plan.isPopular && (
+                        <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                          <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-amber-400 text-amber-900 text-xs font-bold shadow">
+                            <Sparkles className="h-2.5 w-2.5" />
+                            Most Popular
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mb-5">
+                        <h3 className={`text-xl font-bold mb-1 ${plan.isPopular ? "text-white" : "text-slate-900 dark:text-slate-100"}`}>{plan.name}</h3>
+                        <p className={`text-sm leading-relaxed ${plan.isPopular ? "text-blue-100" : "text-slate-500 dark:text-slate-400"}`}>{plan.description}</p>
+                      </div>
+
+                      <div className={`text-3xl font-extrabold mb-6 ${plan.isPopular ? "text-white" : "text-slate-900 dark:text-slate-100"}`}>
+                        {plan.priceLabel}
+                        {plan.price === 0 && (
+                          <span className={`text-sm font-normal ml-1 ${plan.isPopular ? "text-blue-200" : "text-slate-400 dark:text-slate-500"}`}>free forever</span>
+                        )}
+                      </div>
+
+                      <ul className="space-y-2.5 mb-8 flex-1">
+                        <li className="flex items-start gap-2.5">
+                          <CheckCircle2 className={`h-4 w-4 flex-shrink-0 mt-0.5 ${plan.isPopular ? "text-blue-200" : "text-emerald-500"}`} />
+                          <span className={`text-sm ${plan.isPopular ? "text-blue-50" : "text-slate-700 dark:text-slate-300"}`}>
+                            {plan.monthlyEmailLimit < 0 || plan.monthlyEmailLimit === 999999 ? "Unlimited" : plan.monthlyEmailLimit.toLocaleString()} emails / month
+                          </span>
+                        </li>
+                        <li className="flex items-start gap-2.5">
+                          <CheckCircle2 className={`h-4 w-4 flex-shrink-0 mt-0.5 ${plan.isPopular ? "text-blue-200" : "text-emerald-500"}`} />
+                          <span className={`text-sm ${plan.isPopular ? "text-blue-50" : "text-slate-700 dark:text-slate-300"}`}>
+                            {plan.smtpAccountsLimit < 0 || plan.smtpAccountsLimit === 999 ? "Unlimited" : plan.smtpAccountsLimit} mailbox{plan.smtpAccountsLimit === 1 ? "" : "es"}
+                          </span>
+                        </li>
+                        {(plan.features || []).map(f => (
+                          <li key={f} className="flex items-start gap-2.5">
+                            <CheckCircle2 className={`h-4 w-4 flex-shrink-0 mt-0.5 ${plan.isPopular ? "text-blue-200" : "text-emerald-500"}`} />
+                            <span className={`text-sm ${plan.isPopular ? "text-blue-50" : "text-slate-700 dark:text-slate-300"}`}>{f}</span>
+                          </li>
+                        ))}
+                        <li className="flex items-start gap-2.5">
+                          <CheckCircle2 className={`h-4 w-4 flex-shrink-0 mt-0.5 ${plan.isPopular ? "text-blue-200" : "text-emerald-500"}`} />
+                          <span className={`text-sm ${plan.isPopular ? "text-blue-50" : "text-slate-700 dark:text-slate-300"}`}>
+                            {plan.supportLevel} support
+                          </span>
+                        </li>
+                      </ul>
+
+                      <Link href="/register">
+                        <button className={`w-full h-11 rounded-xl text-sm font-semibold transition-all duration-150 cursor-pointer ${
+                          plan.isPopular
+                            ? "bg-white text-blue-700 hover:bg-blue-50 shadow"
+                            : "bg-blue-600 hover:bg-blue-700 text-white border border-blue-600 shadow-sm"
+                        }`}>
+                          {plan.buttonText}
+                        </button>
+                      </Link>
+                    </div>
+                  </FadeUp>
+                ))}
+              </div>
+
+              {/* Comparison table */}
+              {plans.length >= 2 && (
+                <FadeUp delay={0.3} className="mt-16">
+                  <div className="overflow-x-auto rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-100 dark:border-slate-800">
+                          <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider w-48">Feature</th>
+                          {plans.map(plan => (
+                            <th key={plan.id} className="px-5 py-4 text-center text-xs font-bold text-slate-800 dark:text-slate-200">
+                              <span className={plan.isPopular ? "text-blue-600 dark:text-blue-400" : ""}>{plan.name}</span>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {COMPARE_FEATURES.map((row, ri) => (
+                          <tr key={row.label} className={`border-b border-slate-50 dark:border-slate-800/50 ${ri % 2 === 0 ? "bg-slate-50/50 dark:bg-slate-800/20" : "bg-white dark:bg-transparent"}`}>
+                            <td className="px-5 py-3.5 text-slate-600 dark:text-slate-400 text-sm font-medium">{row.label}</td>
+                            {plans.map(plan => (
+                              <td key={plan.id} className="px-5 py-3.5 text-center text-slate-800 dark:text-slate-200 font-medium text-sm">
+                                {row.key(plan)}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </FadeUp>
+              )}
+            </>
+          )}
+
           <FadeUp delay={0.35}>
             <div className="mt-10 text-center">
-              <p className="text-sm text-slate-500">
-                All plans will include a free trial.{" "}
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                All plans include a free trial.{" "}
                 <Link href="/contact">
                   <span className="text-blue-600 hover:underline cursor-pointer font-medium">Contact us</span>
                 </Link>{" "}
-                for Enterprise inquiries.
+                for Enterprise or custom volume inquiries.
               </p>
             </div>
           </FadeUp>
@@ -187,20 +267,20 @@ export default function Pricing() {
       </section>
 
       {/* FAQ */}
-      <section className="py-24 px-5 border-t border-slate-100 bg-slate-50">
+      <section className="py-24 px-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
         <div className="container mx-auto max-w-3xl">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-slate-900 mb-3">Pricing FAQ</h2>
-            <p className="text-slate-500 text-sm sm:text-base">Common questions about plans and billing.</p>
+            <h2 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-3">Pricing FAQ</h2>
+            <p className="text-slate-500 dark:text-slate-400 text-sm sm:text-base">Common questions about plans and billing.</p>
           </div>
           <Accordion type="single" collapsible className="space-y-3">
             {faqs.map((faq, i) => (
-              <FadeUp key={i} delay={i * 0.05}>
-                <AccordionItem value={`faq-${i}`} className="bg-white border border-slate-200 rounded-2xl px-5 shadow-sm data-[state=open]:shadow-md transition-shadow">
-                  <AccordionTrigger className="text-left text-sm font-semibold text-slate-900 hover:no-underline py-4">
+              <FadeUp key={i} delay={i * 0.04}>
+                <AccordionItem value={`faq-${i}`} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-5 shadow-sm data-[state=open]:shadow-md transition-shadow">
+                  <AccordionTrigger className="text-left text-sm font-semibold text-slate-900 dark:text-slate-100 hover:no-underline py-4">
                     {faq.q}
                   </AccordionTrigger>
-                  <AccordionContent className="text-sm text-slate-500 leading-relaxed pb-4">
+                  <AccordionContent className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed pb-4">
                     {faq.a}
                   </AccordionContent>
                 </AccordionItem>
@@ -213,11 +293,13 @@ export default function Pricing() {
       {/* CTA */}
       <section className="py-20 px-5">
         <div className="container mx-auto max-w-xl text-center">
-          <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 mx-auto mb-5 flex items-center justify-center shadow-lg shadow-blue-200">
+          <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 mx-auto mb-5 flex items-center justify-center shadow-lg shadow-blue-200 dark:shadow-blue-900/40">
             <Zap className="h-6 w-6 text-white" />
           </div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-4">Ready to get started?</h2>
-          <p className="text-slate-500 mb-7 text-sm leading-relaxed">Sign up now and be the first to access paid plans when they launch.</p>
+          <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 mb-4">Ready to get started?</h2>
+          <p className="text-slate-500 dark:text-slate-400 mb-7 text-sm leading-relaxed">
+            Create a free account and start sending smarter outreach to your auto transport leads.
+          </p>
           <Button size="lg" className="h-11 px-8 rounded-xl shadow-md font-medium" asChild>
             <Link href="/register">Create Free Account</Link>
           </Button>

@@ -167,9 +167,9 @@ export default function Register() {
 
         <p className="text-center text-xs text-slate-400 leading-relaxed">
           By creating an account you agree to our{" "}
-          <span className="text-slate-500 underline cursor-pointer">Terms of Service</span>
+          <Link href="/terms" className="text-blue-600 hover:underline font-medium">Terms of Service</Link>
           {" "}and{" "}
-          <span className="text-slate-500 underline cursor-pointer">Privacy Policy</span>.
+          <Link href="/privacy" className="text-blue-600 hover:underline font-medium">Privacy Policy</Link>.
         </p>
       </div>
     </AuthLayout>
