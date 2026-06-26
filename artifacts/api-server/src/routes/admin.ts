@@ -576,17 +576,67 @@ router.get("/admin/plans", requireAdmin, async (_req, res): Promise<void> => {
   res.json(plans);
 });
 
+router.post("/admin/plans", requireAdmin, async (req, res): Promise<void> => {
+  const admin = req.user!;
+  const {
+    name, slug, description = "", price = 0, priceLabel = "Free",
+    isPopular = false, buttonText = "Request Access", supportLevel = "Email",
+    monthlyEmailLimit = 500, smtpAccountsLimit = 1, campaignsLimit = 5,
+    batchSendLimit = 50, features = [], sortOrder = 0, isActive = true,
+  } = req.body;
+
+  if (!name || !slug) { res.status(400).json({ error: "name and slug are required." }); return; }
+
+  const [plan] = await db.insert(plansTable).values({
+    name, slug, description,
+    price: parseInt(String(price), 10) || 0,
+    priceLabel,
+    isPopular: !!isPopular,
+    buttonText,
+    supportLevel,
+    monthlyEmailLimit: parseInt(String(monthlyEmailLimit), 10) || 0,
+    smtpAccountsLimit: parseInt(String(smtpAccountsLimit), 10) || 0,
+    campaignsLimit:    parseInt(String(campaignsLimit),    10) || 0,
+    batchSendLimit:    parseInt(String(batchSendLimit),    10) || 0,
+    features: Array.isArray(features) ? features : [],
+    sortOrder: parseInt(String(sortOrder), 10) || 0,
+    isActive: !!isActive,
+  }).returning();
+
+  await db.insert(systemLogsTable).values({
+    userId: admin.id,
+    type: "admin_plan_create",
+    severity: "info",
+    description: `Admin created plan "${name}" (${slug}) — price: ${price} cents`,
+  });
+
+  res.json(plan);
+});
+
 router.put("/admin/plans/:id", requireAdmin, async (req, res): Promise<void> => {
   const id    = parseInt(req.params.id, 10);
   const admin = req.user!;
-  const { monthlyEmailLimit, smtpAccountsLimit, campaignsLimit, batchSendLimit } =
-    req.body as Record<string, number>;
+  const {
+    name, description, price, priceLabel, isPopular, buttonText, supportLevel,
+    monthlyEmailLimit, smtpAccountsLimit, campaignsLimit, batchSendLimit,
+    features, sortOrder, isActive,
+  } = req.body;
 
   await db.update(plansTable).set({
-    ...(monthlyEmailLimit  !== undefined && { monthlyEmailLimit:  Number(monthlyEmailLimit) }),
-    ...(smtpAccountsLimit  !== undefined && { smtpAccountsLimit:  Number(smtpAccountsLimit) }),
-    ...(campaignsLimit     !== undefined && { campaignsLimit:     Number(campaignsLimit) }),
-    ...(batchSendLimit     !== undefined && { batchSendLimit:     Number(batchSendLimit) }),
+    ...(name              !== undefined && { name }),
+    ...(description       !== undefined && { description }),
+    ...(price             !== undefined && { price: parseInt(String(price), 10) || 0 }),
+    ...(priceLabel        !== undefined && { priceLabel }),
+    ...(isPopular         !== undefined && { isPopular: !!isPopular }),
+    ...(buttonText        !== undefined && { buttonText }),
+    ...(supportLevel      !== undefined && { supportLevel }),
+    ...(monthlyEmailLimit !== undefined && { monthlyEmailLimit: parseInt(String(monthlyEmailLimit), 10) || 0 }),
+    ...(smtpAccountsLimit !== undefined && { smtpAccountsLimit: parseInt(String(smtpAccountsLimit), 10) || 0 }),
+    ...(campaignsLimit    !== undefined && { campaignsLimit:    parseInt(String(campaignsLimit),    10) || 0 }),
+    ...(batchSendLimit    !== undefined && { batchSendLimit:    parseInt(String(batchSendLimit),    10) || 0 }),
+    ...(features          !== undefined && { features: Array.isArray(features) ? features : [] }),
+    ...(sortOrder         !== undefined && { sortOrder: parseInt(String(sortOrder), 10) || 0 }),
+    ...(isActive          !== undefined && { isActive: !!isActive }),
     updatedAt: new Date(),
   }).where(eq(plansTable.id, id));
 
@@ -594,35 +644,33 @@ router.put("/admin/plans/:id", requireAdmin, async (req, res): Promise<void> => 
     userId:      admin.id,
     type:        "admin_plan_update",
     severity:    "info",
-    description: `Admin updated plan #${id}`,
+    description: `Admin updated plan #${id} — price: ${price} cents`,
   });
 
   res.json({ ok: true });
 });
 
-// Proxy-safe alias: POST /admin/plans/save (id in body)
-router.post("/admin/plans/save", requireAdmin, async (req, res): Promise<void> => {
-  const id    = parseInt(req.body.id, 10);
-  const admin = req.user!;
-  if (!id) { res.status(400).json({ error: "id is required" }); return; }
-  const { monthlyEmailLimit, smtpAccountsLimit, campaignsLimit, batchSendLimit, name, description } =
-    req.body as Record<string, string | number>;
+router.delete("/admin/plans/:id", requireAdmin, async (req, res): Promise<void> => {
+  const admin  = req.user!;
+  const planId = parseInt(req.params.id, 10);
 
-  await db.update(plansTable).set({
-    ...(name               !== undefined && { name:               String(name) }),
-    ...(description        !== undefined && { description:        String(description) }),
-    ...(monthlyEmailLimit  !== undefined && { monthlyEmailLimit:  Number(monthlyEmailLimit) }),
-    ...(smtpAccountsLimit  !== undefined && { smtpAccountsLimit:  Number(smtpAccountsLimit) }),
-    ...(campaignsLimit     !== undefined && { campaignsLimit:     Number(campaignsLimit) }),
-    ...(batchSendLimit     !== undefined && { batchSendLimit:     Number(batchSendLimit) }),
-    updatedAt: new Date(),
-  }).where(eq(plansTable.id, id));
+  const [plan] = await db.select().from(plansTable).where(eq(plansTable.id, planId));
+  if (!plan) { res.status(404).json({ error: "Plan not found." }); return; }
+
+  const subCount = await db.select({ c: count() }).from(subscriptionsTable)
+    .where(eq(subscriptionsTable.planId, planId));
+  if (subCount[0].c > 0) {
+    res.status(400).json({ error: `Cannot delete: ${subCount[0].c} active subscription(s) use this plan. Hide it instead.` });
+    return;
+  }
+
+  await db.delete(plansTable).where(eq(plansTable.id, planId));
 
   await db.insert(systemLogsTable).values({
-    userId:      admin.id,
-    type:        "admin_plan_update",
-    severity:    "info",
-    description: `Admin updated plan #${id}`,
+    userId: admin.id,
+    type: "admin_plan_delete",
+    severity: "warn",
+    description: `Admin deleted plan "${plan.name}" (${plan.slug})`,
   });
 
   res.json({ ok: true });

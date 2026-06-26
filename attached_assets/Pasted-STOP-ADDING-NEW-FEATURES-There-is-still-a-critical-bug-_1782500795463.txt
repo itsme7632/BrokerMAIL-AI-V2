@@ -1,0 +1,304 @@
+STOP ADDING NEW FEATURES.
+
+There is still a critical bug in the Plans system.
+
+The problem is NOT the billing page.
+
+The problem is that the Plan price itself is not being saved correctly.
+
+Current behavior:
+
+1. Open Admin → Plans.
+2. Create or edit a plan.
+3. Enter a price.
+   Example:
+   2900
+   (which should represent $29.00)
+4. Save successfully.
+5. Reopen the same plan.
+
+Result:
+
+Price is back to:
+
+0
+
+Because of this:
+
+* Billing page shows Free
+* Upgrade modal shows Free
+* Price Snapshot becomes 0
+* Payment instructions are incorrect
+* Everything downstream is wrong.
+
+---
+
+DO NOT PATCH THE UI.
+
+Find the ROOT CAUSE.
+
+---
+
+Trace the entire save flow.
+
+Admin Form
+
+↓
+
+React State
+
+↓
+
+Mutation
+
+↓
+
+API
+
+↓
+
+Validation
+
+↓
+
+Database Insert/Update
+
+↓
+
+Database Read
+
+↓
+
+Frontend Display
+
+---
+
+Verify each step.
+
+1. Frontend
+
+Confirm the value typed into the price field is actually:
+
+2900
+
+before submitting.
+
+Log it.
+
+---
+
+2. Network Request
+
+Inspect the POST/PUT payload.
+
+Verify it actually contains:
+
+price: 2900
+
+If not,
+
+the frontend is broken.
+
+---
+
+3. Backend Route
+
+Log req.body.
+
+Confirm backend receives:
+
+price: 2900
+
+If backend receives:
+
+0
+
+null
+
+undefined
+
+or empty string
+
+the frontend serialization is broken.
+
+---
+
+4. Validation
+
+Check whether:
+
+zod
+
+drizzle-zod
+
+express-validator
+
+manual parser
+
+is replacing the value with 0.
+
+Do not silently default to zero.
+
+---
+
+5. Database Query
+
+Check the INSERT and UPDATE queries.
+
+Confirm they actually write:
+
+price = 2900
+
+NOT:
+
+0
+
+---
+
+6. Database
+
+Immediately after saving:
+
+SELECT id,name,price
+FROM plans
+WHERE id=?
+
+Verify the stored value.
+
+If the database contains 0,
+
+the backend save logic is broken.
+
+---
+
+7. API Read
+
+After saving,
+
+call:
+
+GET /plans
+
+Confirm API returns:
+
+price: 2900
+
+If DB has 2900 but API returns 0,
+
+the SELECT mapping is broken.
+
+---
+
+8. Frontend Read
+
+Confirm React receives:
+
+price:2900
+
+and doesn't overwrite it.
+
+---
+
+COMMON BUGS TO CHECK
+
+Number input returns string.
+
+parseInt(undefined)
+
+Number("")
+
+NaN || 0
+
+defaultValues resetting state
+
+React Hook Form resetting
+
+Drizzle schema default(0)
+
+Update query excluding price column
+
+Insert query excluding price column
+
+Edit modal not populating state
+
+Mutation invalidating cache incorrectly
+
+---
+
+ALSO VERIFY
+
+Creating a plan
+
+Editing a plan
+
+Deleting a plan
+
+Reopening a plan
+
+Reloading browser
+
+Restarting server
+
+Price must persist.
+
+---
+
+EXPECTED TEST
+
+Create:
+
+Starter
+
+Price:
+
+2900
+
+Save
+
+Reopen
+
+Shows:
+
+2900
+
+Database:
+
+2900
+
+API:
+
+2900
+
+Billing:
+
+$29/month
+
+Upgrade modal:
+
+$29/month
+
+Request snapshot:
+
+2900
+
+Everything must derive from the same stored value.
+
+---
+
+DO NOT MARK COMPLETE
+
+until you verify with:
+
+✓ Browser
+
+✓ API response
+
+✓ SQL database
+
+✓ Network request
+
+✓ Refresh
+
+✓ Server restart
+
+and confirm the price never resets back to 0.
