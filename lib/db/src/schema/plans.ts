@@ -42,7 +42,23 @@ export const planRequestsTable = pgTable("plan_requests", {
   fromPlanId: integer("from_plan_id").references(() => plansTable.id),
   toPlanId: integer("to_plan_id").notNull().references(() => plansTable.id),
   status: text("status").notNull().default("pending"),
+  paymentStatus: text("payment_status").notNull().default("pending_payment"),
+  priceSnapshot: integer("price_snapshot").notNull().default(0),
   adminNote: text("admin_note"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const paymentMethodsTable = pgTable("payment_methods", {
+  id: serial("id").primaryKey(),
+  displayName: text("display_name").notNull(),
+  type: text("type").notNull(),
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  instructions: text("instructions"),
+  accountDetails: text("account_details"),
+  walletAddress: text("wallet_address"),
+  qrCodeUrl: text("qr_code_url"),
+  sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -50,3 +66,4 @@ export const planRequestsTable = pgTable("plan_requests", {
 export type Plan = typeof plansTable.$inferSelect;
 export type Subscription = typeof subscriptionsTable.$inferSelect;
 export type PlanRequest = typeof planRequestsTable.$inferSelect;
+export type PaymentMethod = typeof paymentMethodsTable.$inferSelect;

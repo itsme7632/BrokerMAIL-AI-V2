@@ -2,8 +2,9 @@ import { Router, type IRouter } from "express";
 import {
   db, usersTable, plansTable, subscriptionsTable, planRequestsTable,
   systemLogsTable, emailQueueTable, mailboxesTable, campaignsTable,
+  paymentMethodsTable,
 } from "@workspace/db";
-import { eq, and, count, desc, sql, ne } from "drizzle-orm";
+import { eq, and, count, desc, sql } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -20,7 +21,6 @@ async function getOrCreateSubscription(userId: number) {
 
   if (rows.length > 0) return rows[0];
 
-  // Auto-create free subscription
   const [freePlan] = await db.select().from(plansTable).where(eq(plansTable.slug, "free"));
   if (!freePlan) return null;
 
@@ -74,6 +74,15 @@ router.get("/billing/plans", async (_req, res): Promise<void> => {
   res.json(plans);
 });
 
+// ─── Public: list payment methods ─────────────────────────────────────────────
+
+router.get("/billing/payment-methods", async (_req, res): Promise<void> => {
+  const methods = await db.select().from(paymentMethodsTable)
+    .where(eq(paymentMethodsTable.isEnabled, true))
+    .orderBy(paymentMethodsTable.sortOrder);
+  res.json(methods);
+});
+
 // ─── User: my subscription + usage ───────────────────────────────────────────
 
 router.get("/billing/subscription", requireAuth, async (req, res): Promise<void> => {
@@ -83,16 +92,34 @@ router.get("/billing/subscription", requireAuth, async (req, res): Promise<void>
 
   const usage = await getCurrentUsage(user.id);
 
-  // Pending request
   const [pending] = await db.select({
     id: planRequestsTable.id,
     toPlanId: planRequestsTable.toPlanId,
     toPlanName: plansTable.name,
+    toPlanPrice: plansTable.price,
+    toPlanPriceLabel: plansTable.priceLabel,
     status: planRequestsTable.status,
+    paymentStatus: planRequestsTable.paymentStatus,
+    priceSnapshot: planRequestsTable.priceSnapshot,
     createdAt: planRequestsTable.createdAt,
   }).from(planRequestsTable)
     .innerJoin(plansTable, eq(planRequestsTable.toPlanId, plansTable.id))
     .where(and(eq(planRequestsTable.userId, user.id), eq(planRequestsTable.status, "pending")));
+
+  const requestHistory = await db.select({
+    id: planRequestsTable.id,
+    toPlanId: planRequestsTable.toPlanId,
+    toPlanName: plansTable.name,
+    status: planRequestsTable.status,
+    paymentStatus: planRequestsTable.paymentStatus,
+    priceSnapshot: planRequestsTable.priceSnapshot,
+    adminNote: planRequestsTable.adminNote,
+    createdAt: planRequestsTable.createdAt,
+  }).from(planRequestsTable)
+    .innerJoin(plansTable, eq(planRequestsTable.toPlanId, plansTable.id))
+    .where(eq(planRequestsTable.userId, user.id))
+    .orderBy(desc(planRequestsTable.createdAt))
+    .limit(10);
 
   res.json({
     subscription: {
@@ -107,6 +134,7 @@ router.get("/billing/subscription", requireAuth, async (req, res): Promise<void>
     pendingRequest: pending
       ? { ...pending, createdAt: pending.createdAt.toISOString() }
       : null,
+    requestHistory: requestHistory.map(r => ({ ...r, createdAt: r.createdAt.toISOString() })),
   });
 });
 
@@ -118,37 +146,42 @@ router.post("/billing/request-upgrade", requireAuth, async (req, res): Promise<v
 
   if (!toPlanId) { res.status(400).json({ error: "toPlanId is required." }); return; }
 
-  // Check plan exists
   const [targetPlan] = await db.select().from(plansTable).where(eq(plansTable.id, toPlanId));
   if (!targetPlan) { res.status(404).json({ error: "Plan not found." }); return; }
 
-  // Cancel any existing pending requests
   await db.update(planRequestsTable)
     .set({ status: "cancelled", updatedAt: new Date() })
     .where(and(eq(planRequestsTable.userId, user.id), eq(planRequestsTable.status, "pending")));
 
-  // Get current plan
   const row = await getOrCreateSubscription(user.id);
   const fromPlanId = row?.sub.planId ?? null;
 
-  // Can't request current plan
   if (fromPlanId === toPlanId) { res.status(400).json({ error: "You are already on this plan." }); return; }
 
-  await db.insert(planRequestsTable).values({
+  const [newRequest] = await db.insert(planRequestsTable).values({
     userId: user.id,
     fromPlanId,
     toPlanId,
     status: "pending",
-  });
+    paymentStatus: targetPlan.price > 0 ? "pending_payment" : "not_required",
+    priceSnapshot: targetPlan.price,
+  }).returning();
 
   await db.insert(systemLogsTable).values({
     userId: user.id,
     type: "plan_upgrade_request",
     severity: "info",
-    description: `User ${user.email} requested upgrade to plan "${targetPlan.name}" (#${toPlanId})`,
+    description: `User ${user.email} requested upgrade to plan "${targetPlan.name}" (#${toPlanId}) — price: ${targetPlan.price} cents`,
   });
 
-  res.json({ ok: true, message: "Upgrade request submitted. An admin will review it shortly." });
+  res.json({
+    ok: true,
+    requestId: newRequest.id,
+    planName: targetPlan.name,
+    price: targetPlan.price,
+    priceLabel: targetPlan.priceLabel,
+    message: "Upgrade request submitted. Follow the payment instructions to complete your upgrade.",
+  });
 });
 
 // ─── Admin: list plan requests ────────────────────────────────────────────────
@@ -164,7 +197,10 @@ router.get("/admin/plan-requests", requireAdmin, async (req, res): Promise<void>
     fromPlanId: planRequestsTable.fromPlanId,
     toPlanId: planRequestsTable.toPlanId,
     toPlanName: plansTable.name,
+    toPlanPrice: plansTable.price,
     status: planRequestsTable.status,
+    paymentStatus: planRequestsTable.paymentStatus,
+    priceSnapshot: planRequestsTable.priceSnapshot,
     adminNote: planRequestsTable.adminNote,
     createdAt: planRequestsTable.createdAt,
     updatedAt: planRequestsTable.updatedAt,
@@ -174,7 +210,6 @@ router.get("/admin/plan-requests", requireAdmin, async (req, res): Promise<void>
     .where(status !== "all" ? eq(planRequestsTable.status, status) : undefined)
     .orderBy(desc(planRequestsTable.createdAt));
 
-  // Enrich with fromPlanName
   const planIds = [...new Set(rows.map(r => r.fromPlanId).filter(Boolean) as number[])];
   const fromPlans = planIds.length > 0
     ? await db.select({ id: plansTable.id, name: plansTable.name }).from(plansTable)
@@ -203,7 +238,6 @@ router.post("/admin/plan-requests/:id/approve", requireAdmin, async (req, res): 
   const [targetPlan] = await db.select().from(plansTable).where(eq(plansTable.id, request.toPlanId));
   if (!targetPlan) { res.status(404).json({ error: "Target plan not found." }); return; }
 
-  // Upsert subscription
   const existing = await db.select().from(subscriptionsTable)
     .where(eq(subscriptionsTable.userId, request.userId));
 
@@ -223,10 +257,8 @@ router.post("/admin/plan-requests/:id/approve", requireAdmin, async (req, res): 
     });
   }
 
-  // Update user.plan field
   await db.update(usersTable).set({ plan: targetPlan.slug }).where(eq(usersTable.id, request.userId));
 
-  // Approve the request
   await db.update(planRequestsTable).set({
     status: "approved",
     updatedAt: new Date(),
@@ -264,6 +296,33 @@ router.post("/admin/plan-requests/:id/reject", requireAdmin, async (req, res): P
     type: "plan_request_rejected",
     severity: "warn",
     description: `Admin rejected plan upgrade request #${requestId}${note ? `: ${note}` : ""}`,
+  });
+
+  res.json({ ok: true });
+});
+
+// ─── Admin: mark plan request payment status ──────────────────────────────────
+
+router.post("/admin/plan-requests/:id/mark-paid", requireAdmin, async (req, res): Promise<void> => {
+  const admin = req.user!;
+  const requestId = parseInt(req.params.id, 10);
+  const { note } = req.body as { note?: string };
+
+  const [request] = await db.select().from(planRequestsTable)
+    .where(eq(planRequestsTable.id, requestId));
+  if (!request) { res.status(404).json({ error: "Request not found." }); return; }
+
+  await db.update(planRequestsTable).set({
+    paymentStatus: "paid",
+    adminNote: note ?? request.adminNote,
+    updatedAt: new Date(),
+  }).where(eq(planRequestsTable.id, requestId));
+
+  await db.insert(systemLogsTable).values({
+    userId: admin.id,
+    type: "plan_payment_marked",
+    severity: "info",
+    description: `Admin marked payment received for request #${requestId}${note ? ` — ${note}` : ""}`,
   });
 
   res.json({ ok: true });
@@ -310,7 +369,7 @@ router.get("/admin/subscriptions", requireAdmin, async (_req, res): Promise<void
   })));
 });
 
-// ─── Admin: edit plan ─────────────────────────────────────────────────────────
+// ─── Admin: plan CRUD ─────────────────────────────────────────────────────────
 
 router.get("/admin/plans", requireAdmin, async (_req, res): Promise<void> => {
   const plans = await db.select().from(plansTable).orderBy(plansTable.sortOrder);
@@ -455,6 +514,52 @@ router.post("/admin/users/:id/assign-plan", requireAdmin, async (req, res): Prom
     description: `Admin assigned plan "${plan.name}" to user #${targetUserId}`,
   });
 
+  res.json({ ok: true });
+});
+
+// ─── Admin: payment methods CRUD ─────────────────────────────────────────────
+
+router.get("/admin/payment-methods", requireAdmin, async (_req, res): Promise<void> => {
+  const methods = await db.select().from(paymentMethodsTable).orderBy(paymentMethodsTable.sortOrder);
+  res.json(methods);
+});
+
+router.post("/admin/payment-methods", requireAdmin, async (req, res): Promise<void> => {
+  const {
+    displayName, type, isEnabled = true, instructions, accountDetails,
+    walletAddress, qrCodeUrl, sortOrder = 0,
+  } = req.body;
+  if (!displayName || !type) { res.status(400).json({ error: "displayName and type are required." }); return; }
+
+  const [method] = await db.insert(paymentMethodsTable).values({
+    displayName, type, isEnabled: !!isEnabled, instructions, accountDetails,
+    walletAddress, qrCodeUrl, sortOrder: parseInt(String(sortOrder), 10),
+  }).returning();
+  res.json(method);
+});
+
+router.put("/admin/payment-methods/:id", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  const { displayName, type, isEnabled, instructions, accountDetails, walletAddress, qrCodeUrl, sortOrder } = req.body;
+
+  await db.update(paymentMethodsTable).set({
+    ...(displayName    !== undefined && { displayName }),
+    ...(type           !== undefined && { type }),
+    ...(isEnabled      !== undefined && { isEnabled: !!isEnabled }),
+    ...(instructions   !== undefined && { instructions }),
+    ...(accountDetails !== undefined && { accountDetails }),
+    ...(walletAddress  !== undefined && { walletAddress }),
+    ...(qrCodeUrl      !== undefined && { qrCodeUrl }),
+    ...(sortOrder      !== undefined && { sortOrder: parseInt(String(sortOrder), 10) }),
+    updatedAt: new Date(),
+  }).where(eq(paymentMethodsTable.id, id));
+
+  res.json({ ok: true });
+});
+
+router.delete("/admin/payment-methods/:id", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  await db.delete(paymentMethodsTable).where(eq(paymentMethodsTable.id, id));
   res.json({ ok: true });
 });
 

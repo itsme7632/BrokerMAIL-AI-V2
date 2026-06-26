@@ -30,6 +30,7 @@ import Drafts from "@/pages/Drafts";
 import Settings from "@/pages/Settings";
 import MailboxSettings from "@/pages/MailboxSettings";
 import Plans from "@/pages/Plans";
+import UpgradeConfirmation from "@/pages/UpgradeConfirmation";
 import Admin from "@/pages/Admin";
 import AdminLogin from "@/pages/AdminLogin";
 import NotFound from "@/pages/not-found";
@@ -169,6 +170,12 @@ function Router() {
       <Route path="/plans">
         <ProtectedRoute>
           <AppLayout><Plans /></AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/upgrade-confirmation">
+        <ProtectedRoute>
+          <AppLayout><UpgradeConfirmation /></AppLayout>
         </ProtectedRoute>
       </Route>
 
