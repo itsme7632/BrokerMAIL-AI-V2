@@ -1,0 +1,361 @@
+BROKERMAIL AI — MANUAL BILLING & PRICING FIX
+
+The current manual upgrade flow has multiple logic problems.
+
+Do NOT build new features until these are fixed.
+
+---
+
+1. PRICE IS NOT SAVING
+
+---
+
+Current issue:
+
+Admin enters a price.
+
+Clicks Save.
+
+Reloads page.
+
+Price becomes 0 again.
+
+Investigate:
+
+• database schema
+• drizzle schema
+• API
+• validation
+• insert
+• update
+
+Price must persist.
+
+Verify by:
+
+Create plan
+
+Price = 29
+
+Save
+
+Refresh
+
+Still shows 29.
+
+---
+
+2. PRICE NOT SHOWING TO USERS
+
+---
+
+Currently users only see:
+
+Starter
+
+1000 emails
+
+etc.
+
+The price is missing.
+
+Show:
+
+$29/month
+
+or
+
+$99/month
+
+or
+
+Free
+
+depending on the plan.
+
+Everywhere:
+
+Pricing Page
+
+Plans & Billing
+
+Upgrade Modal
+
+Request Upgrade dialog
+
+Dashboard cards
+
+No hardcoded values.
+
+Always use database values.
+
+---
+
+3. MANUAL PAYMENT FLOW
+
+---
+
+BrokerMAIL AI currently accepts payments manually.
+
+The UI should clearly explain this.
+
+Replace
+
+"No payment required yet."
+
+with
+
+"Payments are currently processed manually.
+
+After submitting your upgrade request, please contact the BrokerMAIL AI team to complete your payment.
+
+Once payment is verified, an administrator will activate your subscription."
+
+---
+
+4. PAYMENT NOTICE
+
+---
+
+Inside the upgrade modal add a premium information card.
+
+Example:
+
+Manual Payment Process
+
+1. Submit your upgrade request.
+
+2. Contact BrokerMAIL AI Support.
+
+3. Complete payment using one of the available methods.
+
+4. Admin verifies payment.
+
+5. Subscription activated.
+
+Estimated activation:
+Within 24 hours.
+
+---
+
+5. PAYMENT METHODS
+
+---
+
+Create Admin Settings.
+
+Admin can manage payment methods.
+
+Example:
+
+PayPal
+
+Bank Transfer
+
+Wise
+
+Crypto
+
+Stripe (future)
+
+Each payment method should have:
+
+Enabled
+
+Display Name
+
+Instructions
+
+Account Details
+
+Wallet Address
+
+QR Code
+
+Sort Order
+
+---
+
+6. USER PAYMENT PAGE
+
+---
+
+After user submits request
+
+redirect to:
+
+Upgrade Request Submitted
+
+This page should display:
+
+Requested Plan
+
+Price
+
+Billing Cycle
+
+Current Status
+
+Payment Methods
+
+Instructions
+
+Support Email
+
+Copy buttons
+
+Payment Reference
+
+The user should always know what to do next.
+
+---
+
+7. ADMIN PANEL
+
+---
+
+Add Payment Settings.
+
+Admin should be able to:
+
+Enable / Disable payment methods
+
+Edit instructions
+
+Edit PayPal email
+
+Edit Wise account
+
+Edit Bank details
+
+Edit Crypto wallets
+
+Upload QR codes
+
+Everything editable.
+
+---
+
+8. UPGRADE REQUEST
+
+---
+
+When admin receives request
+
+Show:
+
+Requested Plan
+
+Price
+
+Payment Status
+
+Pending Payment
+
+Paid
+
+Verified
+
+Rejected
+
+Admin Notes
+
+Approve
+
+Reject
+
+Mark as Paid
+
+Activate Subscription
+
+---
+
+9. USER BILLING PAGE
+
+---
+
+Plans & Billing should display:
+
+Current Plan
+
+Monthly Price
+
+Next Renewal
+
+Manual Billing
+
+Upgrade Requests
+
+Payment History
+
+Pending Requests
+
+Status
+
+No empty cards.
+
+No placeholder text.
+
+---
+
+10. DATABASE
+
+---
+
+Verify:
+
+plans.price
+
+is stored correctly.
+
+No conversion bug.
+
+No cents bug.
+
+No string/int mismatch.
+
+If storing cents:
+
+Display
+
+2900
+
+→
+
+$29.00
+
+Automatically everywhere.
+
+---
+
+11. FINAL QA
+
+---
+
+Verify:
+
+✓ Price saves
+
+✓ Price loads
+
+✓ Price updates
+
+✓ Price shows on pricing page
+
+✓ Price shows in billing
+
+✓ Price shows in upgrade modal
+
+✓ Manual payment notice visible
+
+✓ Admin payment settings work
+
+✓ Upgrade request stores price snapshot
+
+✓ No SQL errors
+
+✓ No console errors
+
+Run the application.
+
+Test the complete flow from Admin and User accounts before marking complete.
