@@ -592,6 +592,13 @@ router.get("/admin/plans", requireAdmin, async (_req, res): Promise<void> => {
   res.json(plans);
 });
 
+// Parse an integer from an unknown value. Unlike `parseInt(...) || 0`, this
+// correctly preserves -1 (Unlimited) and 0 as distinct valid values.
+function safeInt(v: unknown, def = 0): number {
+  const n = parseInt(String(v), 10);
+  return isNaN(n) ? def : n;
+}
+
 router.post("/admin/plans", requireAdmin, async (req, res): Promise<void> => {
   const admin = req.user!;
   const {
@@ -605,17 +612,17 @@ router.post("/admin/plans", requireAdmin, async (req, res): Promise<void> => {
 
   const [plan] = await db.insert(plansTable).values({
     name, slug, description,
-    price: parseInt(String(price), 10) || 0,
+    price: safeInt(price),
     priceLabel,
     isPopular: !!isPopular,
     buttonText,
     supportLevel,
-    monthlyEmailLimit: parseInt(String(monthlyEmailLimit), 10) || 0,
-    smtpAccountsLimit: parseInt(String(smtpAccountsLimit), 10) || 0,
-    campaignsLimit:    parseInt(String(campaignsLimit),    10) || 0,
-    batchSendLimit:    parseInt(String(batchSendLimit),    10) || 0,
+    monthlyEmailLimit: safeInt(monthlyEmailLimit, 500),
+    smtpAccountsLimit: safeInt(smtpAccountsLimit, 1),
+    campaignsLimit:    safeInt(campaignsLimit, 5),
+    batchSendLimit:    safeInt(batchSendLimit, 50),
     features: Array.isArray(features) ? features : [],
-    sortOrder: parseInt(String(sortOrder), 10) || 0,
+    sortOrder: safeInt(sortOrder),
     isActive: !!isActive,
   }).returning();
 
@@ -641,17 +648,17 @@ router.put("/admin/plans/:id", requireAdmin, async (req, res): Promise<void> => 
   await db.update(plansTable).set({
     ...(name              !== undefined && { name }),
     ...(description       !== undefined && { description }),
-    ...(price             !== undefined && { price: parseInt(String(price), 10) || 0 }),
+    ...(price             !== undefined && { price: safeInt(price) }),
     ...(priceLabel        !== undefined && { priceLabel }),
     ...(isPopular         !== undefined && { isPopular: !!isPopular }),
     ...(buttonText        !== undefined && { buttonText }),
     ...(supportLevel      !== undefined && { supportLevel }),
-    ...(monthlyEmailLimit !== undefined && { monthlyEmailLimit: parseInt(String(monthlyEmailLimit), 10) || 0 }),
-    ...(smtpAccountsLimit !== undefined && { smtpAccountsLimit: parseInt(String(smtpAccountsLimit), 10) || 0 }),
-    ...(campaignsLimit    !== undefined && { campaignsLimit:    parseInt(String(campaignsLimit),    10) || 0 }),
-    ...(batchSendLimit    !== undefined && { batchSendLimit:    parseInt(String(batchSendLimit),    10) || 0 }),
+    ...(monthlyEmailLimit !== undefined && { monthlyEmailLimit: safeInt(monthlyEmailLimit) }),
+    ...(smtpAccountsLimit !== undefined && { smtpAccountsLimit: safeInt(smtpAccountsLimit) }),
+    ...(campaignsLimit    !== undefined && { campaignsLimit:    safeInt(campaignsLimit) }),
+    ...(batchSendLimit    !== undefined && { batchSendLimit:    safeInt(batchSendLimit) }),
     ...(features          !== undefined && { features: Array.isArray(features) ? features : [] }),
-    ...(sortOrder         !== undefined && { sortOrder: parseInt(String(sortOrder), 10) || 0 }),
+    ...(sortOrder         !== undefined && { sortOrder: safeInt(sortOrder) }),
     ...(isActive          !== undefined && { isActive: !!isActive }),
     updatedAt: new Date(),
   }).where(eq(plansTable.id, id));

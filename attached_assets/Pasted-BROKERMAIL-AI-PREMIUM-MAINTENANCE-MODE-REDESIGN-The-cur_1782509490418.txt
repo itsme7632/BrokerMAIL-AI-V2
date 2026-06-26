@@ -1,0 +1,337 @@
+BROKERMAIL AI — PREMIUM MAINTENANCE MODE REDESIGN
+
+The current maintenance page looks unfinished and generic.
+
+Redesign it completely.
+
+Do NOT use the current layout.
+
+Create a premium SaaS maintenance experience.
+
+---
+
+DESIGN
+
+Dark theme matching BrokerMAIL AI.
+
+Centered content.
+
+Beautiful background gradient.
+
+Subtle animated glow.
+
+Soft floating shapes.
+
+Glassmorphism card.
+
+Modern typography.
+
+Professional spacing.
+
+Responsive on desktop, tablet and mobile.
+
+No large empty white/gray background.
+
+---
+
+HEADER
+
+Show:
+
+BrokerMAIL AI Logo
+
+Platform Maintenance
+
+Small status badge:
+
+🟡 Scheduled Maintenance
+
+or
+
+🔴 Emergency Maintenance
+
+(admin selectable)
+
+---
+
+MAIN MESSAGE
+
+Title:
+
+Platform Under Maintenance
+
+Subtitle:
+
+We're improving BrokerMAIL AI to provide a faster, more reliable experience.
+
+Thank you for your patience.
+
+---
+
+ESTIMATED RETURN TIME
+
+Add a large card:
+
+Estimated Back Online
+
+Display:
+
+Date
+
+Time
+
+Timezone
+
+Example:
+
+Expected Return
+
+June 28, 2026
+
+08:00 PM UTC
+
+This information should come from the Admin Panel.
+
+---
+
+LIVE COUNTDOWN
+
+Display:
+
+12h
+
+24m
+
+18s
+
+remaining
+
+Automatically updates every second.
+
+When countdown reaches zero:
+
+Automatically refresh.
+
+If maintenance disabled:
+
+Redirect user to login/dashboard.
+
+---
+
+ADMIN PANEL
+
+Current maintenance mode only has ON/OFF.
+
+Replace with:
+
+Enable Maintenance
+
+Maintenance Type
+
+Scheduled
+
+Emergency
+
+Title
+
+Subtitle
+
+Estimated Return Date
+
+Date Picker
+
+Estimated Return Time
+
+Time Picker
+
+Timezone
+
+Maintenance Notes
+
+Button Text
+
+Show Countdown
+
+ON/OFF
+
+Allow Admin Login During Maintenance
+
+ON/OFF
+
+Allow Staff Login
+
+ON/OFF
+
+Show Contact Email
+
+ON/OFF
+
+Save Settings
+
+---
+
+EXTRA INFORMATION
+
+Below countdown show:
+
+What's changing?
+
+• Performance improvements
+
+• Email delivery enhancements
+
+• Security updates
+
+• Bug fixes
+
+(Admin editable)
+
+---
+
+STATUS SECTION
+
+Show:
+
+System Status
+
+SMTP Servers
+
+Database
+
+Tracking Service
+
+API
+
+Each item:
+
+Green
+
+Yellow
+
+Red
+
+(Admin editable)
+
+---
+
+CONTACT
+
+If maintenance lasts longer than expected:
+
+Support Email
+
+Support Button
+
+Status Page Link
+
+---
+
+BUTTONS
+
+Primary:
+
+Refresh Now
+
+Secondary:
+
+System Status
+
+---
+
+AUTO REFRESH
+
+Automatically check every 30 seconds.
+
+If maintenance disabled:
+
+Immediately redirect to app.
+
+---
+
+VISUAL QUALITY
+
+The page should feel like:
+
+Stripe
+
+Linear
+
+Vercel
+
+Resend
+
+Notion
+
+Clerk
+
+Supabase
+
+Absolutely no template-looking design.
+
+---
+
+BACKEND
+
+Store maintenance settings in database.
+
+Fields:
+
+enabled
+
+type
+
+title
+
+subtitle
+
+estimated_return
+
+timezone
+
+notes
+
+button_text
+
+show_countdown
+
+allow_admin
+
+allow_staff
+
+status_services
+
+last_updated
+
+---
+
+FINAL QA
+
+Verify:
+
+✓ Countdown accurate
+
+✓ Admin can change date/time
+
+✓ Date picker works
+
+✓ Time picker works
+
+✓ Auto refresh works
+
+✓ Redirect works
+
+✓ Admin bypass works
+
+✓ Mobile responsive
+
+✓ Premium UI
+
+Do not stop after coding.
+
+Run the application.
+
+Enable maintenance mode.
+
+Verify the countdown.
+
+Verify automatic redirect when maintenance ends.

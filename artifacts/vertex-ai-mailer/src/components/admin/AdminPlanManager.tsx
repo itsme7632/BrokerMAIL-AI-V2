@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Pencil, Trash2, Star, EyeOff, Eye, ChevronUp, ChevronDown,
   Save, X, Loader2, DollarSign, Mail, Server, Layers, Zap, HelpCircle,
+  Infinity,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -38,6 +39,54 @@ function afetch(path: string, opts?: RequestInit) {
       ...opts?.headers,
     },
   });
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmtLimit(n: number): string {
+  return n === -1 ? "∞ Unlimited" : n.toLocaleString();
+}
+
+// Parse a limit field — preserves -1 (Unlimited), treats empty/invalid as 0
+function parseLimit(raw: string): number {
+  const n = parseInt(raw, 10);
+  return isNaN(n) ? 0 : n;
+}
+
+// ─── Unlimited-aware limit input ──────────────────────────────────────────────
+
+function LimitInput({
+  label, icon: Icon, value, onChange,
+}: {
+  label: string;
+  icon: React.ElementType;
+  value: number;
+  onChange: (n: number) => void;
+}) {
+  const isUnlimited = value === -1;
+
+  return (
+    <label className="block">
+      <span className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1.5">
+        <Icon className="h-3 w-3" />
+        {label}
+      </span>
+      <Input
+        type="number"
+        min="-1"
+        value={value}
+        onChange={e => onChange(parseLimit(e.target.value))}
+        className={`h-9 text-sm font-mono ${isUnlimited ? "border-emerald-400 dark:border-emerald-600 text-emerald-700 dark:text-emerald-400 font-bold" : ""}`}
+      />
+      {isUnlimited ? (
+        <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold mt-1 flex items-center gap-1">
+          <Infinity className="h-3 w-3" /> Unlimited — stored as -1
+        </p>
+      ) : (
+        <p className="text-[10px] text-slate-400 dark:text-slate-600 mt-1">Enter -1 for Unlimited</p>
+      )}
+    </label>
+  );
 }
 
 // ─── Blank plan template ──────────────────────────────────────────────────────
@@ -166,7 +215,7 @@ function PlanForm({
       <div className="grid sm:grid-cols-3 gap-3">
         <label className="block">
           <span className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1.5"><DollarSign className="h-3 w-3" />Price (cents)</span>
-          <Input type="number" min="0" value={form.price} onChange={e => set("price", parseInt(e.target.value, 10) || 0)} className="h-9 text-sm font-mono" />
+          <Input type="number" min="0" value={form.price} onChange={e => set("price", parseLimit(e.target.value))} className="h-9 text-sm font-mono" />
           <p className="text-[10px] text-slate-400 dark:text-slate-600 mt-1">e.g. 2900 = $29.00/mo</p>
         </label>
         <label className="block">
@@ -179,23 +228,32 @@ function PlanForm({
         </label>
       </div>
 
-      <div className="grid sm:grid-cols-4 gap-3">
-        <label className="block">
-          <span className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1.5"><Mail className="h-3 w-3" />Emails/month</span>
-          <Input type="number" min="0" value={form.monthlyEmailLimit} onChange={e => set("monthlyEmailLimit", parseInt(e.target.value, 10) || 0)} className="h-9 text-sm font-mono" />
-        </label>
-        <label className="block">
-          <span className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1.5"><Server className="h-3 w-3" />Mailboxes</span>
-          <Input type="number" min="0" value={form.smtpAccountsLimit} onChange={e => set("smtpAccountsLimit", parseInt(e.target.value, 10) || 0)} className="h-9 text-sm font-mono" />
-        </label>
-        <label className="block">
-          <span className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1.5"><Layers className="h-3 w-3" />Campaigns</span>
-          <Input type="number" min="0" value={form.campaignsLimit} onChange={e => set("campaignsLimit", parseInt(e.target.value, 10) || 0)} className="h-9 text-sm font-mono" />
-        </label>
-        <label className="block">
-          <span className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1.5"><Zap className="h-3 w-3" />Batch size</span>
-          <Input type="number" min="0" value={form.batchSendLimit} onChange={e => set("batchSendLimit", parseInt(e.target.value, 10) || 0)} className="h-9 text-sm font-mono" />
-        </label>
+      {/* Limit fields — all support -1 = Unlimited */}
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <LimitInput
+          label="Emails/month"
+          icon={Mail}
+          value={form.monthlyEmailLimit}
+          onChange={v => set("monthlyEmailLimit", v)}
+        />
+        <LimitInput
+          label="Mailboxes"
+          icon={Server}
+          value={form.smtpAccountsLimit}
+          onChange={v => set("smtpAccountsLimit", v)}
+        />
+        <LimitInput
+          label="Campaigns"
+          icon={Layers}
+          value={form.campaignsLimit}
+          onChange={v => set("campaignsLimit", v)}
+        />
+        <LimitInput
+          label="Batch size"
+          icon={Zap}
+          value={form.batchSendLimit}
+          onChange={v => set("batchSendLimit", v)}
+        />
       </div>
 
       <div className="grid sm:grid-cols-2 gap-3">
@@ -214,7 +272,7 @@ function PlanForm({
         </label>
         <label className="block">
           <span className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">Sort Order</span>
-          <Input type="number" min="0" value={form.sortOrder} onChange={e => set("sortOrder", parseInt(e.target.value, 10) || 0)} className="h-9 text-sm font-mono" />
+          <Input type="number" min="0" value={form.sortOrder} onChange={e => set("sortOrder", parseLimit(e.target.value))} className="h-9 text-sm font-mono" />
         </label>
       </div>
 
@@ -332,7 +390,7 @@ export function AdminPlanManager() {
         <div>
           <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">Plan Management</p>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            All changes reflect instantly on the public pricing page and upgrade modal.
+            All changes reflect instantly on the public pricing page and upgrade modal. Enter <code className="px-1 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px] font-mono">-1</code> in any limit field to set <strong>Unlimited</strong>.
           </p>
         </div>
         {editingId !== "new" && (
@@ -390,11 +448,20 @@ export function AdminPlanManager() {
                     <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 text-[10px] font-medium">Hidden</span>
                   )}
                 </div>
-                <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-400 dark:text-slate-500 flex-wrap">
                   <span className="font-semibold text-blue-600 dark:text-blue-400">{plan.priceLabel}</span>
-                  <span>{plan.monthlyEmailLimit.toLocaleString()} emails/mo</span>
-                  <span>{plan.smtpAccountsLimit} mailbox{plan.smtpAccountsLimit !== 1 ? "es" : ""}</span>
-                  <span>{plan.campaignsLimit} campaigns</span>
+                  <span className={plan.monthlyEmailLimit === -1 ? "text-emerald-600 dark:text-emerald-400 font-semibold" : ""}>
+                    {fmtLimit(plan.monthlyEmailLimit)} emails/mo
+                  </span>
+                  <span className={plan.smtpAccountsLimit === -1 ? "text-emerald-600 dark:text-emerald-400 font-semibold" : ""}>
+                    {fmtLimit(plan.smtpAccountsLimit)} mailbox{plan.smtpAccountsLimit !== 1 && plan.smtpAccountsLimit !== -1 ? "es" : plan.smtpAccountsLimit === -1 ? "es" : ""}
+                  </span>
+                  <span className={plan.campaignsLimit === -1 ? "text-emerald-600 dark:text-emerald-400 font-semibold" : ""}>
+                    {fmtLimit(plan.campaignsLimit)} campaigns
+                  </span>
+                  <span className={plan.batchSendLimit === -1 ? "text-emerald-600 dark:text-emerald-400 font-semibold" : ""}>
+                    batch {fmtLimit(plan.batchSendLimit)}
+                  </span>
                 </div>
               </div>
 

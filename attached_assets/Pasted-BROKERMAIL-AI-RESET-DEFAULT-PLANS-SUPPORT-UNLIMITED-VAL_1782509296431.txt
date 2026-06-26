@@ -1,0 +1,305 @@
+BROKERMAIL AI — RESET DEFAULT PLANS & SUPPORT UNLIMITED VALUES
+
+Stop working on any new features.
+
+I want to clean up the Plans system before moving forward.
+
+---
+
+1. DELETE CURRENT DEFAULT PLANS
+
+---
+
+Delete all existing default plans from the database.
+
+This includes any old Starter, Growth, Enterprise, Free, or test plans that were created during development.
+
+Keep only user subscriptions and upgrade history intact if possible.
+
+---
+
+2. CREATE 4 CLEAN DEFAULT PLANS
+
+---
+
+Create these plans with sensible defaults.
+
+I will edit the prices later from the Admin Panel.
+
+## Plan 1
+
+Name: Free
+Slug: free
+
+Emails/month: 100
+Mailboxes: 1
+Campaigns: 5
+Batch Size: 50
+
+Price:
+0
+
+Button:
+Get Started
+
+---
+
+## Plan 2
+
+Name: Starter
+Slug: starter
+
+Emails/month: 1000
+Mailboxes: 3
+Campaigns: 25
+Batch Size: 100
+
+Price:
+1000 (placeholder)
+
+Button:
+Request Upgrade
+
+---
+
+## Plan 3
+
+Name: Growth
+Slug: growth
+
+Emails/month: 5000
+Mailboxes: 10
+Campaigns: 100
+Batch Size: 500
+
+Price:
+2000 (placeholder)
+
+Popular:
+Yes
+
+Button:
+Request Upgrade
+
+---
+
+## Plan 4
+
+Name: Enterprise
+Slug: enterprise
+
+Price:
+3000 (placeholder)
+
+Button:
+Request Upgrade
+
+---
+
+3. SUPPORT UNLIMITED VALUES
+
+---
+
+The old platform supported unlimited values using:
+
+-1
+
+After the billing rewrite this no longer works.
+
+Restore proper unlimited support.
+
+The following fields must accept:
+
+-1
+
+meaning:
+
+Unlimited
+
+Fields:
+
+Monthly Emails
+
+SMTP Mailboxes
+
+Campaigns
+
+Batch Size
+
+---
+
+4. ADMIN PANEL
+
+---
+
+When Admin enters:
+
+-1
+
+the UI should immediately display:
+
+Unlimited
+
+instead of:
+
+-1
+
+The admin should still be able to edit the value.
+
+Example:
+
+Stored:
+
+-1
+
+Displayed:
+
+Unlimited
+
+---
+
+5. USER BILLING PAGE
+
+---
+
+If a plan contains:
+
+-1
+
+display:
+
+Unlimited Emails
+
+Unlimited Mailboxes
+
+Unlimited Campaigns
+
+Unlimited Batch Size
+
+Never display:
+
+-1
+
+to users.
+
+---
+
+6. UPGRADE MODAL
+
+---
+
+Enterprise should display:
+
+Unlimited Emails
+
+Unlimited Mailboxes
+
+Unlimited Campaigns
+
+Unlimited Batch Size
+
+---
+
+7. REQUEST SNAPSHOT
+
+---
+
+When requesting Enterprise,
+
+store:
+
+-1
+
+internally,
+
+but render:
+
+Unlimited
+
+everywhere in the UI.
+
+---
+
+8. API
+
+---
+
+The API should preserve:
+
+-1
+
+Do NOT convert it to:
+
+0
+
+null
+
+or empty string.
+
+Unlimited is a valid business value.
+
+---
+
+9. PRICE EDITING
+
+---
+
+After these plans are created,
+
+I should be able to change:
+
+Price
+
+Price Label
+
+Description
+
+Features
+
+Support Level
+
+Everything
+
+from the Admin Panel.
+
+Prices must persist after saving.
+
+---
+
+10. TEST EVERYTHING
+
+---
+
+Verify:
+
+✓ Delete old plans
+
+✓ Four new plans created
+
+✓ Free works
+
+✓ Starter works
+
+✓ Growth works
+
+✓ Enterprise works
+
+✓ Unlimited values display correctly
+
+✓ Admin sees "Unlimited"
+
+✓ Users see "Unlimited"
+
+✓ Database stores -1
+
+✓ APIs return -1
+
+✓ Billing page renders Unlimited correctly
+
+✓ Upgrade modal renders Unlimited correctly
+
+✓ No SQL errors
+
+✓ No regressions
+
+Do not mark complete until all of the above has been tested in the browser and database.

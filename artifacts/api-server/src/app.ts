@@ -101,7 +101,9 @@ async function seedAdmin(): Promise<void> {
 seedAdmin().catch(() => {});
 
 // ---------------------------------------------------------------------------
-// Idempotent plan seed — creates default plans on first boot
+// Canonical plan seed — upserts default plans on every boot so slug values
+// always stay in sync with the codebase defaults. Admins can edit price /
+// priceLabel / description / features freely; those fields are NOT reset here.
 // ---------------------------------------------------------------------------
 async function seedPlans(): Promise<void> {
   const defaults = [
@@ -110,13 +112,17 @@ async function seedPlans(): Promise<void> {
       description: "Get started with the basics",
       monthlyEmailLimit: 100, smtpAccountsLimit: 1,
       campaignsLimit: 5, batchSendLimit: 50,
+      price: 0, priceLabel: "Free",
+      buttonText: "Get Started", supportLevel: "Community",
       features: ["100 emails/month", "1 SMTP mailbox", "5 campaigns", "Batch size up to 50", "Community support"],
     },
     {
       slug: "starter", name: "Starter", sortOrder: 1,
-      description: "Growing businesses & solo brokers",
+      description: "For growing solo brokers",
       monthlyEmailLimit: 1000, smtpAccountsLimit: 3,
       campaignsLimit: 25, batchSendLimit: 100,
+      price: 1000, priceLabel: "$10/mo",
+      buttonText: "Request Upgrade", supportLevel: "Email",
       features: ["1,000 emails/month", "3 SMTP mailboxes", "25 campaigns", "Batch size up to 100", "Email support"],
     },
     {
@@ -124,6 +130,9 @@ async function seedPlans(): Promise<void> {
       description: "Scale your outreach operation",
       monthlyEmailLimit: 5000, smtpAccountsLimit: 10,
       campaignsLimit: -1, batchSendLimit: 500,
+      price: 2000, priceLabel: "$20/mo",
+      isPopular: true,
+      buttonText: "Request Upgrade", supportLevel: "Priority Email",
       features: ["5,000 emails/month", "10 SMTP mailboxes", "Unlimited campaigns", "Batch size up to 500", "Priority support"],
     },
     {
@@ -131,11 +140,26 @@ async function seedPlans(): Promise<void> {
       description: "Full power for large teams",
       monthlyEmailLimit: -1, smtpAccountsLimit: -1,
       campaignsLimit: -1, batchSendLimit: -1,
+      price: 3000, priceLabel: "$30/mo",
+      buttonText: "Request Upgrade", supportLevel: "Dedicated",
       features: ["Unlimited emails", "Unlimited mailboxes", "Unlimited campaigns", "Unlimited batch size", "Dedicated support"],
     },
   ];
   for (const plan of defaults) {
-    await db.insert(plansTable).values(plan).onConflictDoNothing({ target: plansTable.slug });
+    await db.insert(plansTable).values(plan).onConflictDoUpdate({
+      target: plansTable.slug,
+      set: {
+        name: plan.name,
+        sortOrder: plan.sortOrder,
+        monthlyEmailLimit: plan.monthlyEmailLimit,
+        smtpAccountsLimit: plan.smtpAccountsLimit,
+        campaignsLimit: plan.campaignsLimit,
+        batchSendLimit: plan.batchSendLimit,
+        buttonText: plan.buttonText,
+        supportLevel: plan.supportLevel,
+        isPopular: plan.isPopular ?? false,
+      },
+    });
   }
   logger.info("Plans seeded");
 }
