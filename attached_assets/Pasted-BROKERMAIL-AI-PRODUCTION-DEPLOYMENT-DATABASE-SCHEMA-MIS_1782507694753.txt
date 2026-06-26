@@ -1,0 +1,311 @@
+BROKERMAIL AI — PRODUCTION DEPLOYMENT DATABASE SCHEMA MISMATCH
+
+Development works perfectly.
+
+Production fails immediately after deployment.
+
+This is NOT a frontend issue.
+
+GitHub sync only copies source code.
+
+It does NOT update PostgreSQL schema or database migrations.
+
+I need you to stop adding features and diagnose the production environment.
+
+---
+
+## CURRENT ISSUES
+
+Development:
+
+✅ Plans create successfully
+
+✅ Billing page loads
+
+✅ Prices save correctly
+
+✅ Payment methods work
+
+Production:
+
+❌ Creating a plan throws SQL errors
+
+❌ Billing page fails to load
+
+❌ Prices disappear after saving
+
+❌ Plan pricing becomes 0
+
+❌ Upgrade requests cannot retrieve pricing
+
+The codebase is identical.
+
+The only difference is Development vs Production.
+
+---
+
+STEP 1
+VERIFY ENVIRONMENTS
+-------------------
+
+Print the following for BOTH environments:
+
+NODE_ENV
+
+DATABASE_URL (mask passwords)
+
+Database name
+
+Database host
+
+Database schema
+
+Confirm Production is connected to the correct PostgreSQL database.
+
+---
+
+STEP 2
+COMPARE DATABASE SCHEMA
+-----------------------
+
+Compare Development and Production.
+
+Run:
+
+SELECT column_name
+FROM information_schema.columns
+WHERE table_name='plans';
+
+Repeat for:
+
+plans
+
+subscriptions
+
+plan_requests
+
+payment_methods
+
+composer_email_templates
+
+branding
+
+platform_settings
+
+Compare every column.
+
+List anything missing.
+
+---
+
+STEP 3
+VERIFY MIGRATIONS
+-----------------
+
+Compare migration history.
+
+Confirm every migration executed in Development also exists in Production.
+
+If migrations are missing:
+
+Execute them.
+
+Verify they complete successfully.
+
+Do NOT assume they ran.
+
+---
+
+STEP 4
+VERIFY TABLE STRUCTURE
+----------------------
+
+Production MUST contain the same schema as Development.
+
+plans should include fields like:
+
+price
+
+price_label
+
+button_text
+
+support_level
+
+features
+
+sort_order
+
+is_active
+
+monthly_email_limit
+
+smtp_accounts_limit
+
+campaigns_limit
+
+batch_send_limit
+
+subscriptions must match Development.
+
+plan_requests must include:
+
+priceSnapshot
+
+paymentStatus
+
+payment_methods table must exist.
+
+composer_email_templates table must exist.
+
+---
+
+STEP 5
+VERIFY CRUD
+-----------
+
+Test:
+
+Create Plan
+
+↓
+
+Save
+
+↓
+
+Refresh
+
+↓
+
+Edit
+
+↓
+
+Price still exists
+
+Immediately after saving run:
+
+SELECT *
+FROM plans
+WHERE slug='growth';
+
+Verify:
+
+price
+
+is stored correctly.
+
+---
+
+STEP 6
+VERIFY API
+----------
+
+Inspect:
+
+POST /admin/plans
+
+PUT /admin/plans/:id
+
+GET /plans
+
+GET /billing/subscription
+
+GET /billing/payment-methods
+
+Confirm every endpoint returns Production data correctly.
+
+---
+
+STEP 7
+CHECK SQL ERRORS
+----------------
+
+Do NOT hide SQL exceptions.
+
+Print the full stack trace.
+
+Identify exactly which column or table causes the failure.
+
+If a query references a column that does not exist in Production,
+
+fix the migration instead of patching the code.
+
+---
+
+STEP 8
+VERIFY DEPLOYMENT
+-----------------
+
+Publishing should automatically execute database migrations before starting the server.
+
+If deployment currently skips migrations,
+
+configure deployment to automatically run:
+
+npm run migrate
+
+(or the appropriate Drizzle migration command)
+
+before the production server starts.
+
+GitHub sync alone is NOT sufficient.
+
+---
+
+STEP 9
+END-TO-END TEST
+---------------
+
+Production must successfully complete:
+
+✓ Create Plan
+
+✓ Edit Plan
+
+✓ Delete Plan
+
+✓ Save price
+
+✓ Refresh browser
+
+✓ Restart server
+
+✓ Plans & Billing page loads
+
+✓ User sees correct pricing
+
+✓ Upgrade request saves correct price snapshot
+
+✓ Payment methods load
+
+✓ Admin Panel loads
+
+✓ No SQL errors
+
+---
+
+## IMPORTANT
+
+Do NOT implement new features.
+
+Do NOT patch the frontend.
+
+Find the ROOT CAUSE.
+
+Compare Development and Production databases until they are identical.
+
+Only mark this task complete after proving:
+
+Browser ✓
+
+API ✓
+
+Database ✓
+
+SQL ✓
+
+Production Deployment ✓
+
+All working exactly the same as Development.
