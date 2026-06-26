@@ -1,0 +1,439 @@
+BROKERMAIL AI — CENTRALIZE COMPANY SETTINGS & ADD SUPPORT TICKET SYSTEM
+
+The platform currently has hardcoded contact information scattered across multiple pages.
+
+This is not scalable.
+
+Implement the following improvements.
+
+---
+
+1. SINGLE SOURCE OF TRUTH
+
+---
+
+Create (or extend) Platform Settings.
+
+Store:
+
+Company Name
+
+Support Email
+
+Sales Email
+
+Billing Email
+
+Support Phone
+
+Website
+
+Company Address
+
+Business Hours
+
+Timezone
+
+Facebook
+
+LinkedIn
+
+Twitter/X
+
+WhatsApp
+
+Telegram
+
+Support Response Time
+
+These settings should be editable only by Admin.
+
+---
+
+2. REMOVE HARDCODED EMAILS
+
+---
+
+Search the entire project.
+
+Replace ALL hardcoded emails.
+
+Examples:
+
+[admin@example.com](mailto:admin@example.com)
+
+[support@example.com](mailto:support@example.com)
+
+help@
+
+contact@
+
+[brokermailaiofficial@gmail.com](mailto:brokermailaiofficial@gmail.com)
+
+etc.
+
+Every page must read from Platform Settings.
+
+Nothing should be hardcoded anymore.
+
+---
+
+3. LEGAL PAGES
+
+---
+
+Privacy Policy
+
+Terms & Conditions
+
+Refund Policy
+
+Cookie Policy
+
+Acceptable Use Policy
+
+Contact Us
+
+Every "Contact Us" section should automatically display:
+
+Support Email
+
+Support Phone
+
+Company Name
+
+Website
+
+Business Hours
+
+Address
+
+All pulled dynamically from Platform Settings.
+
+---
+
+4. AUTH PAGES
+
+---
+
+Login
+
+Register
+
+Forgot Password
+
+Reset Password
+
+Verify Email
+
+Footer
+
+Need Help?
+
+Contact Support
+
+Privacy Policy
+
+Terms
+
+All should use the same dynamic Support Email.
+
+---
+
+5. BILLING PAGES
+
+---
+
+Upgrade Requests
+
+Invoices
+
+Billing
+
+Payment Instructions
+
+Support Cards
+
+Manual Payment Instructions
+
+All contact information should come from Platform Settings.
+
+---
+
+6. SUPPORT TICKET SYSTEM
+
+---
+
+Create a full Help Center.
+
+Sidebar:
+
+Support
+
+Inside:
+
+My Tickets
+
+New Ticket
+
+Knowledge Base (future placeholder)
+
+---
+
+7. CREATE TICKET
+
+---
+
+User can create a ticket.
+
+Fields:
+
+Subject
+
+Category
+
+Priority
+
+Description
+
+Attachments
+
+Categories:
+
+General
+
+Technical Issue
+
+SMTP
+
+Billing
+
+Subscription
+
+Bug Report
+
+Feature Request
+
+Other
+
+Priority:
+
+Low
+
+Medium
+
+High
+
+Urgent
+
+---
+
+8. TICKET STATUS
+
+---
+
+Open
+
+Pending
+
+Waiting for User
+
+Resolved
+
+Closed
+
+---
+
+9. USER TICKET PAGE
+
+---
+
+Users can:
+
+Create Ticket
+
+View Tickets
+
+Reply
+
+Upload Attachments
+
+See Status
+
+See Admin Replies
+
+Search Tickets
+
+Newest First
+
+---
+
+10. ADMIN PANEL
+
+---
+
+New menu:
+
+Support
+
+Admin can:
+
+View All Tickets
+
+Assign Ticket
+
+Reply
+
+Internal Notes
+
+Change Status
+
+Close Ticket
+
+Reopen Ticket
+
+Filter:
+
+Open
+
+Pending
+
+Closed
+
+High Priority
+
+Unread
+
+Newest
+
+---
+
+11. NOTIFICATIONS
+
+---
+
+User receives notification when:
+
+Ticket Created
+
+Admin Replied
+
+Ticket Closed
+
+Admin receives notification when:
+
+New Ticket
+
+New Reply
+
+Urgent Ticket
+
+---
+
+12. EMAIL NOTIFICATIONS
+
+---
+
+Automatically send emails when:
+
+Ticket Created
+
+Ticket Updated
+
+Ticket Closed
+
+Ticket Replied
+
+Use Platform Settings Support Email as sender.
+
+---
+
+13. ATTACHMENTS
+
+---
+
+Support:
+
+PNG
+
+JPG
+
+PDF
+
+DOCX
+
+TXT
+
+Limit:
+
+10MB
+
+Store securely.
+
+---
+
+14. CONTACT PAGE
+
+---
+
+Create a proper Contact Support page.
+
+Display:
+
+Support Email
+
+Phone
+
+Business Hours
+
+Address
+
+Quick links
+
+"Open Support Ticket" button
+
+Everything dynamic from Platform Settings.
+
+---
+
+15. FUTURE READY
+
+---
+
+Structure the system so live chat can be added later without changing the ticket database.
+
+---
+
+16. FINAL QA
+
+---
+
+Verify:
+
+✓ No hardcoded emails anywhere
+
+✓ Updating Support Email in Admin Settings instantly updates every page
+
+✓ Legal pages use dynamic company info
+
+✓ Login/Register pages use dynamic support info
+
+✓ Billing pages use dynamic support info
+
+✓ Contact page uses dynamic support info
+
+✓ Ticket system fully works
+
+✓ Admin can reply
+
+✓ User receives notifications
+
+✓ Email notifications work
+
+✓ Attachments upload correctly
+
+✓ No console errors
+
+✓ No SQL errors
+
+Run the complete flow and test both Admin and User accounts before marking complete.
