@@ -1,0 +1,402 @@
+BrokerMAIL AI — STABILIZATION PHASE (Templates + Tracking + Billing)
+
+DO NOT BUILD NEW FEATURES.
+
+This task is ONLY to stabilize everything that broke during the recent tracking/template/pricing refactor.
+
+Before changing code:
+
+• Read the current implementation.
+• Identify root causes.
+• Fix the backend first.
+• Then fix the frontend.
+• Finally test the entire flow manually.
+
+Do NOT stop after writing code.
+Actually verify every feature works.
+
+---
+
+1. EMAIL PREVIEW BROKEN
+
+---
+
+Current issue:
+
+Sent Emails → Preview
+
+shows
+
+"Preview not available"
+
+even though the email was successfully sent.
+
+This previously worked.
+
+Find the regression.
+
+Requirements:
+
+• Preview endpoint must always return the stored HTML.
+• Never depend on template lookup only.
+• Composer emails.
+• Campaign emails.
+• Saved template emails.
+• Draft emails.
+
+All should render correctly.
+
+If HTML exists in database,
+render it inside iframe.
+
+Do not return "Preview not available"
+unless HTML truly does not exist.
+
+---
+
+2. TEMPLATE SAVE BROKEN
+
+---
+
+Current error:
+
+Error saving template.
+
+Investigate:
+
+• API route
+• DB insert
+• Validation
+• Schema
+• Migration
+
+Fix completely.
+
+After fix:
+
+Save Template
+
+must save
+
+✔ name
+✔ subject
+✔ html body
+✔ plain text
+✔ design
+✔ branding enabled
+✔ created by user
+✔ timestamps
+
+---
+
+3. TEMPLATE MANAGEMENT
+
+---
+
+Saved templates currently cannot be managed.
+
+Add full CRUD.
+
+User should be able to:
+
+✔ Create
+✔ Rename
+✔ Edit
+✔ Duplicate
+✔ Delete
+
+When clicking a saved template:
+
+Subject loads
+
+Body loads
+
+Editor loads
+
+Branding restored
+
+Theme restored
+
+No page refresh.
+
+---
+
+4. SIDEBAR TEXT BUG
+
+---
+
+The left sidebar has a rendering bug.
+
+The selected item background overlaps the label.
+
+Example:
+
+"Opened"
+
+text behind it is clipped.
+
+Audit:
+
+padding
+
+overflow
+
+z-index
+
+selected styles
+
+hover styles
+
+Fix all sidebar alignment issues.
+
+---
+
+5. BILLING PAGE BROKEN
+
+---
+
+Plans & Billing page throws SQL errors.
+
+Investigate the backend.
+
+Current query references columns that no longer exist.
+
+Find schema mismatch.
+
+Update:
+
+queries
+
+Drizzle schema
+
+migration
+
+frontend
+
+Everything must match.
+
+Billing page should load.
+
+---
+
+6. ADMIN PLAN CREATION BROKEN
+
+---
+
+Creating plans fails.
+
+Current INSERT does not match database schema.
+
+Audit:
+
+plans table
+
+drizzle schema
+
+migration
+
+insert route
+
+update route
+
+delete route
+
+Fix all.
+
+Admin must be able to:
+
+Create plan
+
+Edit plan
+
+Delete plan
+
+Hide plan
+
+Change pricing
+
+Reorder plans
+
+Mark popular
+
+Without SQL errors.
+
+---
+
+7. VERIFY DATABASE MIGRATIONS
+
+---
+
+Recent migrations introduced mismatches.
+
+Audit:
+
+plans
+
+email_templates
+
+tracking
+
+branding
+
+mailboxes
+
+Ensure:
+
+Drizzle schema
+
+SQL migrations
+
+database
+
+all match exactly.
+
+No missing columns.
+
+No stale columns.
+
+No invalid inserts.
+
+---
+
+8. TRACKING SYSTEM REGRESSION TEST
+
+---
+
+Verify tracking still works.
+
+Flow:
+
+Send email
+
+↓
+
+SMTP Accepted
+
+↓
+
+Open email
+
+↓
+
+Timeline updates
+
+↓
+
+Preview loads
+
+↓
+
+Statistics update
+
+Ensure preview fix does NOT break tracking.
+
+---
+
+9. TEMPLATE LOADING TEST
+
+---
+
+Create template
+
+↓
+
+Save
+
+↓
+
+Refresh
+
+↓
+
+Template exists
+
+↓
+
+Click template
+
+↓
+
+Subject restored
+
+↓
+
+Body restored
+
+↓
+
+Formatting preserved
+
+↓
+
+Images preserved
+
+---
+
+10. BILLING TEST
+
+---
+
+Admin creates plan
+
+↓
+
+Plan saved
+
+↓
+
+Dashboard loads
+
+↓
+
+Public pricing loads
+
+↓
+
+Upgrade request works
+
+↓
+
+Approval works
+
+↓
+
+User receives plan
+
+---
+
+11. FINAL QA
+
+---
+
+Before marking complete verify:
+
+✓ Email Preview works
+
+✓ Template Save works
+
+✓ Template Edit works
+
+✓ Template Delete works
+
+✓ Template Rename works
+
+✓ Sidebar text rendering fixed
+
+✓ Billing page loads
+
+✓ Admin plan creation works
+
+✓ Admin plan editing works
+
+✓ No SQL errors
+
+✓ No console errors
+
+✓ No broken API routes
+
+✓ No "Preview not available"
+
+✓ No "Error saving template"
+
+Do not mark complete until every item above has been manually tested inside the running application.
