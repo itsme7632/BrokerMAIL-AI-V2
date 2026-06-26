@@ -495,6 +495,7 @@ export const GetTemplatesResponseItem = zod.object({
   "subject": zod.string(),
   "body": zod.string(),
   "isDefault": zod.boolean(),
+  "ctaButtonsJson": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -514,7 +515,7 @@ export const CreateTemplateBody = zod.object({
   "subject": zod.string().min(1),
   "body": zod.string().min(1),
   "isDefault": zod.boolean().optional(),
-  "ctaButtonsJson": zod.string().nullable().optional()
+  "ctaButtonsJson": zod.string().nullish()
 })
 
 
@@ -532,7 +533,7 @@ export const GetTemplateResponse = zod.object({
   "subject": zod.string(),
   "body": zod.string(),
   "isDefault": zod.boolean(),
-  "ctaButtonsJson": zod.string().nullable().optional(),
+  "ctaButtonsJson": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -550,7 +551,7 @@ export const UpdateTemplateBody = zod.object({
   "subject": zod.string().optional(),
   "body": zod.string().optional(),
   "isDefault": zod.boolean().optional(),
-  "ctaButtonsJson": zod.string().nullable().optional()
+  "ctaButtonsJson": zod.string().nullish()
 })
 
 export const UpdateTemplateResponse = zod.object({
@@ -560,7 +561,7 @@ export const UpdateTemplateResponse = zod.object({
   "subject": zod.string(),
   "body": zod.string(),
   "isDefault": zod.boolean(),
-  "ctaButtonsJson": zod.string().nullable().optional(),
+  "ctaButtonsJson": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -763,6 +764,50 @@ export const AdminGetUsersResponse = zod.object({
   "total": zod.number(),
   "page": zod.number(),
   "limit": zod.number()
+})
+
+
+/**
+ * @summary Global stats for sent emails in a date range
+ */
+export const GetSentEmailStatsQueryParams = zod.object({
+  "dateFrom": zod.coerce.string().optional(),
+  "dateTo": zod.coerce.string().optional()
+})
+
+export const GetSentEmailStatsResponse = zod.object({
+  "total": zod.number(),
+  "opened": zod.number(),
+  "bounced": zod.number(),
+  "failed": zod.number(),
+  "openRate": zod.number(),
+  "tracked": zod.number(),
+  "bounceRate": zod.number(),
+  "clickCount": zod.number(),
+  "clickRate": zod.number()
+})
+
+
+/**
+ * @summary Activity timeline for a sent email
+ */
+export const GetSentEmailTimelineParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetSentEmailTimelineResponse = zod.object({
+  "events": zod.array(zod.object({
+  "type": zod.string(),
+  "timestamp": zod.string(),
+  "detail": zod.string().nullish(),
+  "openNumber": zod.number().nullish()
+})),
+  "email": zod.string(),
+  "subject": zod.string(),
+  "openCount": zod.number(),
+  "clickCount": zod.number(),
+  "firstOpenedAt": zod.string().nullish(),
+  "lastOpenedAt": zod.string().nullish()
 })
 
 

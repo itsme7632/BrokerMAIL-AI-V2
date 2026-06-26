@@ -297,19 +297,20 @@ router.get("/sent-emails/stats", requireAuth, async (req, res): Promise<void> =>
   const dateFrom = typeof req.query.dateFrom === "string" && req.query.dateFrom ? new Date(req.query.dateFrom) : null;
   const dateTo   = typeof req.query.dateTo   === "string" && req.query.dateTo   ? new Date(req.query.dateTo)   : null;
 
-  const dateCond = (alias?: string) => {
-    const col = alias ? `"${alias}"` : `email_queue`;
+  const dateCond = () => {
     if (dateFrom && dateTo) return sql`COALESCE(${emailQueueTable.sentAt}, ${emailQueueTable.createdAt}) BETWEEN ${dateFrom} AND ${dateTo}`;
     if (dateFrom)           return sql`COALESCE(${emailQueueTable.sentAt}, ${emailQueueTable.createdAt}) >= ${dateFrom}`;
     if (dateTo)             return sql`COALESCE(${emailQueueTable.sentAt}, ${emailQueueTable.createdAt}) <= ${dateTo}`;
     return null;
   };
 
+  const dc = dateCond();
+
   const baseConds: any[] = [
     eq(emailQueueTable.userId, user.id),
     inArray(emailQueueTable.status, ["success", "failed", "bounced"]),
+    eq(emailQueueTable.isTest, false),
   ];
-  const dc = dateCond();
   if (dc) baseConds.push(dc);
 
   // Count by status
@@ -323,11 +324,12 @@ router.get("/sent-emails/stats", requireAuth, async (req, res): Promise<void> =>
   const bounced = counts.find(r => r.status === "bounced")?.cnt ?? 0;
   const failed  = counts.find(r => r.status === "failed")?.cnt ?? 0;
 
-  // Tracked emails (success + trackingId)
+  // Tracked emails (success + trackingId, not test)
   const trackedConds: any[] = [
     eq(emailQueueTable.userId, user.id),
     eq(emailQueueTable.status, "success"),
     isNotNull(emailQueueTable.trackingId),
+    eq(emailQueueTable.isTest, false),
   ];
   if (dc) trackedConds.push(dc);
 
@@ -336,13 +338,73 @@ router.get("/sent-emails/stats", requireAuth, async (req, res): Promise<void> =>
     .from(emailQueueTable)
     .where(and(...trackedConds));
 
-  const tracked    = trackedRows.length;
+  const tracked     = trackedRows.length;
   const trackingIds = trackedRows.map(r => r.trackingId!);
-  const tracking   = await getTrackingStatsForIds(trackingIds);
-  const opened     = Object.values(tracking).filter(t => t.openCount > 0).length;
-  const openRate   = tracked > 0 ? Math.round((opened / tracked) * 100) : 0;
 
-  res.json({ total, opened, bounced, failed, openRate, tracked });
+  // Get drafts for tracked emails so we can count events
+  let openedCount  = 0;
+  let clickedCount = 0;
+  let totalClicks  = 0;
+
+  if (trackingIds.length > 0) {
+    const drafts = await db
+      .select({ id: draftsTable.id, trackingId: draftsTable.trackingId })
+      .from(draftsTable)
+      .where(inArray(draftsTable.trackingId, trackingIds));
+
+    if (drafts.length > 0) {
+      const draftIds = drafts.map(d => d.id);
+      const draftIdToTrackingId: Record<number, string> = {};
+      for (const d of drafts) {
+        if (d.trackingId) draftIdToTrackingId[d.id] = d.trackingId;
+      }
+
+      // Open stats
+      const openAgg = await db
+        .select({
+          draftId: emailTrackingEventsTable.draftId,
+          cnt: sql<number>`count(*)::int`,
+        })
+        .from(emailTrackingEventsTable)
+        .where(and(
+          inArray(emailTrackingEventsTable.draftId, draftIds),
+          eq(emailTrackingEventsTable.eventType, "open"),
+        ))
+        .groupBy(emailTrackingEventsTable.draftId);
+
+      for (const r of openAgg) {
+        if (r.cnt > 0) openedCount++;
+      }
+
+      // Click stats
+      const clickAgg = await db
+        .select({
+          draftId: emailTrackingEventsTable.draftId,
+          cnt: sql<number>`count(*)::int`,
+        })
+        .from(emailTrackingEventsTable)
+        .where(and(
+          inArray(emailTrackingEventsTable.draftId, draftIds),
+          eq(emailTrackingEventsTable.eventType, "click"),
+        ))
+        .groupBy(emailTrackingEventsTable.draftId);
+
+      for (const r of clickAgg) {
+        if (r.cnt > 0) clickedCount++;
+        totalClicks += r.cnt;
+      }
+    }
+  }
+
+  const openRate   = tracked > 0 ? Math.round((openedCount  / tracked) * 100) : 0;
+  const clickRate  = tracked > 0 ? Math.round((clickedCount / tracked) * 100) : 0;
+  const bounceRate = total   > 0 ? Math.round((bounced      / total)   * 100) : 0;
+
+  res.json({
+    total, opened: openedCount, bounced, failed,
+    openRate, tracked, bounceRate,
+    clickCount: totalClicks, clickRate,
+  });
 });
 
 // ─── Preview a sent email ─────────────────────────────────────────────────────
@@ -367,6 +429,8 @@ router.get("/sent-emails/:id/preview", requireAuth, async (req, res): Promise<vo
         .where(eq(draftsTable.trackingId, item.trackingId));
       if (draft?.body) html = draft.body;
     }
+    // Strip tracking pixel so admin preview never fires a real open event
+    html = html.replace(/<img[^>]+src="[^"]*\/api\/track\/open\/[^"]*"[^>]*\/?>/gi, "");
     res.json({
       html,
       subject:      item.subject ?? "",
@@ -396,11 +460,13 @@ router.get("/sent-emails/:id/preview", requireAuth, async (req, res): Promise<vo
     catch { return []; }
   })();
   logger.info({ id, templateId: template.id, ctaCount: ctaButtons.length }, "[CTA LOAD] Sent email preview — loading CTA buttons from template");
-  const html = buildHtmlEmail(template.body, row, branding, {
+  let html = buildHtmlEmail(template.body, row, branding, {
     style: validStyle(item.style),
     useSignatureBuilder: item.useSignatureBuilder,
     ctaButtons,
   });
+  // Strip tracking pixel so admin preview never fires a real open event
+  html = html.replace(/<img[^>]+src="[^"]*\/api\/track\/open\/[^"]*"[^>]*\/?>/gi, "");
   logger.info({ id, ctaCount: ctaButtons.length, style: item.style }, "[EMAIL RENDER] Sent email preview rendered");
   const subject = replaceVarsText(template.subject, row);
 
@@ -422,37 +488,96 @@ router.get("/sent-emails/:id/timeline", requireAuth, async (req, res): Promise<v
   const [item] = await db.select({
     id: emailQueueTable.id, email: emailQueueTable.email,
     trackingId: emailQueueTable.trackingId, sentAt: emailQueueTable.sentAt,
+    bounceAt: emailQueueTable.bounceAt,
     status: emailQueueTable.status, subject: emailQueueTable.subject,
     lastError: emailQueueTable.lastError,
+    createdAt: emailQueueTable.createdAt,
   }).from(emailQueueTable)
     .where(and(eq(emailQueueTable.id, id), eq(emailQueueTable.userId, user.id)));
   if (!item) { res.status(404).json({ error: "Email not found" }); return; }
 
-  const events: { type: string; timestamp: string; detail?: string }[] = [];
+  type TimelineEvent = {
+    type: string;
+    timestamp: string;
+    detail?: string;
+    openNumber?: number;
+  };
 
-  if (item.status === "failed" && item.lastError) {
-    events.push({ type: "failed", timestamp: new Date().toISOString(), detail: parseSMTPError(item.lastError) });
-  } else if (item.sentAt) {
-    events.push({ type: "sent",     timestamp: item.sentAt.toISOString() });
-    events.push({ type: "accepted", timestamp: item.sentAt.toISOString() });
+  const events: TimelineEvent[] = [];
+
+  // 1. Queued event (always first)
+  events.push({
+    type: "queued",
+    timestamp: (item.createdAt ?? new Date()).toISOString(),
+  });
+
+  // 2. SMTP accepted or failed
+  if (item.sentAt) {
+    events.push({ type: "smtp_accepted", timestamp: item.sentAt.toISOString() });
   }
+  if (item.status === "failed" && item.lastError) {
+    events.push({ type: "failed", timestamp: (item.sentAt ?? new Date()).toISOString(), detail: parseSMTPError(item.lastError) });
+  }
+
+  let openCount  = 0;
+  let clickCount = 0;
+  let firstOpenedAt: string | null = null;
+  let lastOpenedAt:  string | null = null;
 
   if (item.trackingId) {
     const [draft] = await db.select({ id: draftsTable.id }).from(draftsTable)
       .where(eq(draftsTable.trackingId, item.trackingId));
 
     if (draft) {
-      const openEvts = await db.select().from(emailTrackingEventsTable)
-        .where(and(eq(emailTrackingEventsTable.draftId, draft.id), eq(emailTrackingEventsTable.eventType, "open")))
+      const trackingEvts = await db.select().from(emailTrackingEventsTable)
+        .where(eq(emailTrackingEventsTable.draftId, draft.id))
         .orderBy(emailTrackingEventsTable.createdAt);
 
-      for (const e of openEvts) {
-        events.push({ type: "opened", timestamp: e.createdAt.toISOString(), detail: e.userAgent ?? undefined });
+      let openSeq = 0;
+      for (const e of trackingEvts) {
+        const ts = e.createdAt.toISOString();
+        if (e.eventType === "open") {
+          openSeq++;
+          openCount++;
+          if (!firstOpenedAt) firstOpenedAt = ts;
+          lastOpenedAt = ts;
+          events.push({
+            type: "open",
+            timestamp: ts,
+            detail: e.userAgent ?? undefined,
+            openNumber: openSeq,
+          });
+        } else if (e.eventType === "click") {
+          clickCount++;
+          const dest = e.linkUrl ?? "";
+          const lbl  = e.buttonLabel ? `${e.buttonLabel} — ${dest}` : dest;
+          events.push({
+            type: "click",
+            timestamp: ts,
+            detail: lbl || undefined,
+          });
+        }
       }
     }
   }
 
-  res.json({ events, email: item.email, subject: item.subject });
+  // Bounce event
+  if (item.bounceAt) {
+    events.push({ type: "bounce", timestamp: item.bounceAt.toISOString() });
+  }
+
+  // Sort by timestamp (keeps queued first, orders opens/clicks/bounces correctly)
+  events.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+  res.json({
+    events,
+    email: item.email,
+    subject: item.subject,
+    openCount,
+    clickCount,
+    firstOpenedAt,
+    lastOpenedAt,
+  });
 });
 
 // ─── Retry a failed email ─────────────────────────────────────────────────────

@@ -289,7 +289,6 @@ export interface EmailTemplate {
   subject: string;
   body: string;
   isDefault: boolean;
-  /** @nullable */
   ctaButtonsJson?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -303,7 +302,6 @@ export interface EmailTemplateInput {
   /** @minLength 1 */
   body: string;
   isDefault?: boolean;
-  /** @nullable */
   ctaButtonsJson?: string | null;
 }
 
@@ -312,7 +310,6 @@ export interface EmailTemplateUpdate {
   subject?: string;
   body?: string;
   isDefault?: boolean;
-  /** @nullable */
   ctaButtonsJson?: string | null;
 }
 
@@ -474,6 +471,39 @@ export interface CreateDraftsFromTemplateResult {
   results: DraftRowResult[];
 }
 
+export interface SentEmailStats {
+  total: number;
+  opened: number;
+  bounced: number;
+  failed: number;
+  openRate: number;
+  tracked: number;
+  bounceRate: number;
+  clickCount: number;
+  clickRate: number;
+}
+
+export interface SentEmailTimelineEvent {
+  type: string;
+  timestamp: string;
+  /** @nullable */
+  detail?: string | null;
+  /** @nullable */
+  openNumber?: number | null;
+}
+
+export interface SentEmailTimeline {
+  events: SentEmailTimelineEvent[];
+  email: string;
+  subject: string;
+  openCount: number;
+  clickCount: number;
+  /** @nullable */
+  firstOpenedAt?: string | null;
+  /** @nullable */
+  lastOpenedAt?: string | null;
+}
+
 export interface AdminStats {
   totalUsers: number;
   totalCampaigns: number;
@@ -598,6 +628,11 @@ export const GetDraftsStatus = {
 export type AdminGetUsersParams = {
 page?: number;
 limit?: number;
+};
+
+export type GetSentEmailStatsParams = {
+dateFrom?: string;
+dateTo?: string;
 };
 
 export type AdminGetLogsParams = {

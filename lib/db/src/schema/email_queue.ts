@@ -26,6 +26,7 @@ export const emailQueueTable = pgTable("email_queue", {
   retryAfter: timestamp("retry_after"),
   sentAt: timestamp("sent_at"),
   bounceAt: timestamp("bounce_at"),
+  isTest: boolean("is_test").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

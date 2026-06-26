@@ -22,6 +22,57 @@ function sendPixel(res: any) {
   res.send(PIXEL);
 }
 
+/**
+ * Returns true if the IP is a private/loopback address that should never
+ * be recorded as a real open (localhost, RFC-1918, link-local).
+ */
+function isPrivateIp(ip: string | null): boolean {
+  if (!ip) return false;
+  const s = ip.trim();
+  if (s === "::1" || s === "127.0.0.1" || s === "localhost") return true;
+  // IPv4-mapped IPv6
+  const v4 = s.replace(/^::ffff:/i, "");
+  return (
+    /^127\./.test(v4) ||
+    /^10\./.test(v4) ||
+    /^192\.168\./.test(v4) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(v4) ||
+    /^169\.254\./.test(v4) ||
+    /^fc00:/i.test(s) ||
+    /^fd[0-9a-f]{2}:/i.test(s)
+  );
+}
+
+/**
+ * Returns true if the user-agent looks like an email prefetch bot / mail
+ * privacy proxy that pre-downloads images without human intent.
+ */
+function isBotUserAgent(ua: string | null): boolean {
+  if (!ua) return false;
+  const l = ua.toLowerCase();
+  // Known mail-prefetch services
+  if (l.includes("apple privacy protection")) return true;
+  if (l.includes("outlook fetch worker"))    return true;
+  if (l.includes("microsoft office"))        return true;
+  if (l.includes("yahoo slurp"))             return true;
+  if (l.includes("googlebot"))               return true;
+  if (l.includes("bingbot"))                 return true;
+  if (l.includes("applebot"))                return true;
+  if (l.includes("mimecast"))                return true;
+  if (l.includes("proofpoint"))              return true;
+  if (l.includes("barracuda"))               return true;
+  // Generic bot keywords
+  return (
+    l.includes("bot") ||
+    l.includes("crawler") ||
+    l.includes("spider") ||
+    l.includes("prefetch") ||
+    l.includes("preview") ||
+    l.includes("scan") ||
+    l.includes("monitor")
+  );
+}
+
 router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
   const { trackingId } = req.params;
   const ip = req.ip ?? null;
@@ -29,6 +80,32 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
   const ts = new Date();
 
   try {
+    // ── Filter false opens ───────────────────────────────────────────────────
+    if (isPrivateIp(ip)) {
+      logger.info({ trackingId, ip }, "[TRACK/OPEN] Private/loopback IP — open ignored");
+      sendPixel(res);
+      return;
+    }
+    if (isBotUserAgent(ua)) {
+      logger.info({ trackingId, ua }, "[TRACK/OPEN] Bot/prefetch user-agent — open ignored");
+      sendPixel(res);
+      return;
+    }
+
+    // ── Early isTest guard: check email_queue BEFORE touching drafts.
+    // This covers both the draft-exists path AND the lazy-create path.
+    const [queueCheck] = await db
+      .select({ isTest: emailQueueTable.isTest })
+      .from(emailQueueTable)
+      .where(eq(emailQueueTable.trackingId, trackingId))
+      .limit(1);
+
+    if (queueCheck?.isTest) {
+      logger.info({ trackingId }, "[TRACK/OPEN] Test email — open not recorded (isTest=true)");
+      sendPixel(res);
+      return;
+    }
+
     let draft = await db
       .select({ id: draftsTable.id, sentAt: draftsTable.sentAt })
       .from(draftsTable)
@@ -48,6 +125,7 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
           leadId:     emailQueueTable.leadId,
           email:      emailQueueTable.email,
           subject:    emailQueueTable.subject,
+          isTest:     emailQueueTable.isTest,
         })
         .from(emailQueueTable)
         .where(and(
@@ -57,6 +135,13 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
         .limit(1);
 
       if (queueItem) {
+        // isTest is already handled above via queueCheck, but guard defensively
+        if (queueItem.isTest) {
+          logger.info({ trackingId }, "[TRACK/OPEN] Test email — open not recorded (lazy path)");
+          sendPixel(res);
+          return;
+        }
+
         logger.info({ trackingId, queueItemId: queueItem.id },
           "[TRACK/OPEN] No draft row found — lazy-creating from SMTP queue item");
         try {
@@ -162,23 +247,39 @@ router.get("/track/click/:trackingId", async (req, res): Promise<void> => {
   }
 
   try {
-    const [draft] = await db
-      .select({ id: draftsTable.id })
-      .from(draftsTable)
-      .where(eq(draftsTable.trackingId, trackingId));
-
-    if (!draft) {
-      logger.warn({ trackingId, url, label }, "[TRACK/CLICK] No draft found for trackingId");
+    // Do not record clicks from bots or private IPs
+    if (isPrivateIp(ip) || isBotUserAgent(ua)) {
+      logger.info({ trackingId, url }, "[TRACK/CLICK] Bot/private-IP click ignored");
     } else {
-      await db.insert(emailTrackingEventsTable).values({
-        draftId:     draft.id,
-        eventType:   "click",
-        linkUrl:     url,
-        buttonLabel: label ?? null,
-        ipAddress:   ip,
-        userAgent:   ua,
-      });
-      logger.info({ trackingId, draftId: draft.id, label, url, ip, timestamp: new Date().toISOString() }, "[TRACK/CLICK] Click recorded");
+      // Skip click recording for test emails
+      const [queueCheck] = await db
+        .select({ isTest: emailQueueTable.isTest })
+        .from(emailQueueTable)
+        .where(eq(emailQueueTable.trackingId, trackingId))
+        .limit(1);
+
+      if (queueCheck?.isTest) {
+        logger.info({ trackingId, url }, "[TRACK/CLICK] Test email — click not recorded (isTest=true)");
+      } else {
+        const [draft] = await db
+          .select({ id: draftsTable.id })
+          .from(draftsTable)
+          .where(eq(draftsTable.trackingId, trackingId));
+
+        if (!draft) {
+          logger.warn({ trackingId, url, label }, "[TRACK/CLICK] No draft found for trackingId");
+        } else {
+          await db.insert(emailTrackingEventsTable).values({
+            draftId:     draft.id,
+            eventType:   "click",
+            linkUrl:     url,
+            buttonLabel: label ?? null,
+            ipAddress:   ip,
+            userAgent:   ua,
+          });
+          logger.info({ trackingId, draftId: draft.id, label, url, ip, timestamp: new Date().toISOString() }, "[TRACK/CLICK] Click recorded");
+        }
+      }
     }
   } catch (err) {
     logger.error({ trackingId, url, err }, "[TRACK/CLICK] Error recording click");

@@ -11,4 +11,5 @@ export interface EmailTemplateUpdate {
   subject?: string;
   body?: string;
   isDefault?: boolean;
+  ctaButtonsJson?: string | null;
 }

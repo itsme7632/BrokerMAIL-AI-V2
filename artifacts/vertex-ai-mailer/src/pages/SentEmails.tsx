@@ -45,9 +45,21 @@ type GlobalStats = {
   failed: number;
   openRate: number;
   tracked: number;
+  bounceRate: number;
+  clickCount: number;
+  clickRate: number;
 };
 
-type TimelineEvent = { type: string; timestamp: string; detail?: string };
+type TimelineEvent = { type: string; timestamp: string; detail?: string; openNumber?: number };
+type TimelineResponse = {
+  events: TimelineEvent[];
+  email: string;
+  subject: string;
+  openCount: number;
+  clickCount: number;
+  firstOpenedAt: string | null;
+  lastOpenedAt: string | null;
+};
 type StatusFilter = "all" | "delivered" | "bounced" | "failed" | "opened" | "unopened";
 type DateRange = "today" | "24h" | "7d" | "30d" | "custom";
 
@@ -293,27 +305,33 @@ function EmailPreviewModal({ emailId, open, onClose }: { emailId: number | null;
   const { data: timeline, isLoading: loadingTimeline } = useQuery({
     queryKey: ["sent-email-timeline", emailId],
     enabled: !!emailId && open,
-    queryFn: () => apiFetch<{ events: TimelineEvent[]; email: string; subject: string }>(
+    queryFn: () => apiFetch<TimelineResponse>(
       `/api/sent-emails/${emailId}/timeline`
     ),
   });
 
   const timelineIcons: Record<string, React.ReactNode> = {
-    sent:      <CheckCircle2 className="h-4 w-4 text-blue-500" />,
-    accepted:  <CheckCircle2 className="h-4 w-4 text-emerald-500" />,
-    delivered: <CheckCircle2 className="h-4 w-4 text-emerald-500" />,
-    opened:    <Eye className="h-4 w-4 text-violet-500" />,
-    clicked:   <MousePointerClick className="h-4 w-4 text-green-500" />,
-    failed:    <AlertCircle className="h-4 w-4 text-red-500" />,
+    queued:        <BarChart3 className="h-4 w-4 text-slate-400" />,
+    smtp_accepted: <CheckCircle2 className="h-4 w-4 text-emerald-500" />,
+    open:          <Eye className="h-4 w-4 text-violet-500" />,
+    click:         <MousePointerClick className="h-4 w-4 text-green-500" />,
+    bounce:        <AlertTriangle className="h-4 w-4 text-orange-500" />,
+    failed:        <AlertCircle className="h-4 w-4 text-red-500" />,
   };
-  const timelineLabels: Record<string, string> = {
-    sent:      "Email sent via SMTP",
-    accepted:  "Accepted by mail server",
-    delivered: "Accepted by mail server",
-    opened:    "Recipient opened email",
-    failed:    "Delivery failed",
-    clicked:   "Clicked a CTA button",
-  };
+
+  function getTimelineLabel(ev: TimelineEvent): string {
+    switch (ev.type) {
+      case "queued":        return "Email queued";
+      case "smtp_accepted": return "Accepted by mail server (SMTP 250)";
+      case "open":          return ev.openNumber != null ? `Open #${ev.openNumber}` : "Opened";
+      case "click":         return "Link clicked";
+      case "bounce":        return "Bounce detected";
+      case "failed":        return "Delivery failed";
+      default:              return ev.type;
+    }
+  }
+
+  const hasEngagement = timeline && (timeline.openCount > 0 || timeline.clickCount > 0);
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
@@ -328,6 +346,30 @@ function EmailPreviewModal({ emailId, open, onClose }: { emailId: number | null;
                 <span className="text-xs text-slate-500 flex items-center gap-1"><AtSign className="h-3 w-3" /> {preview.to}</span>
                 {preview.customerName && <span className="text-xs text-slate-500 flex items-center gap-1"><User className="h-3 w-3" /> {preview.customerName}</span>}
                 {preview.sentAt && <span className="text-xs text-slate-500 flex items-center gap-1"><Calendar className="h-3 w-3" />{new Date(preview.sentAt).toLocaleString()}</span>}
+              </div>
+            )}
+            {hasEngagement && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 pt-2 border-t border-slate-100">
+                {timeline!.openCount > 0 && (
+                  <span className="text-xs text-violet-700 flex items-center gap-1">
+                    <Eye className="h-3 w-3" />
+                    <strong>{timeline!.openCount}</strong> open{timeline!.openCount !== 1 ? "s" : ""}
+                    {timeline!.firstOpenedAt && (
+                      <span className="text-slate-400 ml-1">
+                        · first {formatRelativeTime(timeline!.firstOpenedAt)}
+                        {timeline!.openCount > 1 && timeline!.lastOpenedAt
+                          ? ` · last ${formatRelativeTime(timeline!.lastOpenedAt)}`
+                          : ""}
+                      </span>
+                    )}
+                  </span>
+                )}
+                {timeline!.clickCount > 0 && (
+                  <span className="text-xs text-green-700 flex items-center gap-1">
+                    <MousePointerClick className="h-3 w-3" />
+                    <strong>{timeline!.clickCount}</strong> click{timeline!.clickCount !== 1 ? "s" : ""}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -359,9 +401,16 @@ function EmailPreviewModal({ emailId, open, onClose }: { emailId: number | null;
                       {i < timeline!.events.length - 1 && <div className="w-px flex-1 bg-slate-200 mt-1 min-h-[12px]" />}
                     </div>
                     <div className="min-w-0 pb-1">
-                      <p className="text-xs font-medium text-slate-800">{timelineLabels[ev.type] ?? ev.type}</p>
+                      <p className="text-xs font-medium text-slate-800">{getTimelineLabel(ev)}</p>
                       <p className="text-xs text-slate-400 mt-0.5">{new Date(ev.timestamp).toLocaleString()}</p>
-                      {ev.detail && <p className="text-xs text-slate-400 truncate mt-0.5" title={ev.detail}>{ev.detail.length > 40 ? ev.detail.slice(0, 40) + "…" : ev.detail}</p>}
+                      {ev.type === "open" && ev.detail && (
+                        <p className="text-xs text-muted-foreground truncate mt-0.5" title={ev.detail}>
+                          {ev.detail.length > 36 ? ev.detail.slice(0, 36) + "…" : ev.detail}
+                        </p>
+                      )}
+                      {ev.type !== "open" && ev.detail && (
+                        <p className="text-xs text-slate-400 truncate mt-0.5" title={ev.detail}>{ev.detail.length > 40 ? ev.detail.slice(0, 40) + "…" : ev.detail}</p>
+                      )}
                     </div>
                   </li>
                 ))}
@@ -551,33 +600,43 @@ export default function SentEmails() {
       </div>
 
       {/* Stats cards — GLOBAL for the selected date range, never affected by status tab */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {[
           {
-            label: "Total Sent",
+            label: "Sent",
             value: statsLoading ? null : (globalStats?.total ?? 0),
             icon: <Mail className="h-4 w-4 text-blue-500" />,
-            sub: "all statuses",
-          },
-          {
-            label: "Opened",
-            value: statsLoading ? null : (globalStats?.opened ?? 0),
-            icon: <Eye className="h-4 w-4 text-emerald-500" />,
-            sub: globalStats && globalStats.tracked > 0
-              ? `of ${globalStats.tracked} tracked`
-              : "no tracking data",
-          },
-          {
-            label: "Bounced",
-            value: statsLoading ? null : (globalStats?.bounced ?? 0),
-            icon: <AlertTriangle className="h-4 w-4 text-orange-500" />,
-            sub: "bounce-backs",
+            sub: globalStats ? `${globalStats.tracked} tracked` : "all statuses",
           },
           {
             label: "Open Rate",
             value: statsLoading ? null : (globalStats && globalStats.tracked > 0 ? `${globalStats.openRate}%` : "—"),
-            icon: <TrendingUp className="h-4 w-4 text-amber-500" />,
-            sub: "of tracked emails",
+            icon: <Eye className="h-4 w-4 text-emerald-500" />,
+            sub: globalStats && globalStats.opened > 0
+              ? `${globalStats.opened} of ${globalStats.tracked} opened`
+              : "of tracked emails",
+          },
+          {
+            label: "Click Rate",
+            value: statsLoading ? null : (globalStats && globalStats.tracked > 0 ? `${globalStats.clickRate}%` : "—"),
+            icon: <MousePointerClick className="h-4 w-4 text-green-500" />,
+            sub: globalStats && globalStats.clickCount > 0
+              ? `${globalStats.clickCount} total click${globalStats.clickCount !== 1 ? "s" : ""}`
+              : "no clicks yet",
+          },
+          {
+            label: "Bounce Rate",
+            value: statsLoading ? null : (globalStats && globalStats.total > 0 ? `${globalStats.bounceRate}%` : "—"),
+            icon: <AlertTriangle className="h-4 w-4 text-orange-500" />,
+            sub: globalStats && globalStats.bounced > 0
+              ? `${globalStats.bounced} bounce${globalStats.bounced !== 1 ? "s" : ""}`
+              : "no bounces",
+          },
+          {
+            label: "Failed",
+            value: statsLoading ? null : (globalStats?.failed ?? 0),
+            icon: <AlertCircle className="h-4 w-4 text-red-500" />,
+            sub: "delivery failures",
           },
         ].map(s => (
           <div key={s.label} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm p-4">

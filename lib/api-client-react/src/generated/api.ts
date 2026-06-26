@@ -49,6 +49,7 @@ import type {
   GetDraftsParams,
   GetLeadsParams,
   GetRecentCampaignsParams,
+  GetSentEmailStatsParams,
   GmailCallbackParams,
   GmailStatus,
   GoogleAuthCallbackParams,
@@ -66,6 +67,8 @@ import type {
   ParsedFileResult,
   PreviewEmailInput,
   RegisterInput,
+  SentEmailStats,
+  SentEmailTimeline,
   User
 } from './api.schemas';
 
@@ -1393,12 +1396,12 @@ export function useGetCampaign<TData = Awaited<ReturnType<typeof getCampaign>>, 
 
 
 
-export const getUpdateCampaignUrl = (_id: number,) => {
+export const getUpdateCampaignUrl = (id: number,) => {
 
 
 
 
-  return `/api/campaigns/save`
+  return `/api/campaigns/${id}`
 }
 
 /**
@@ -1410,10 +1413,10 @@ export const updateCampaign = async (id: number,
   return customFetch<Campaign>(getUpdateCampaignUrl(id),
   {
     ...options,
-    method: 'POST',
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(
-      { id, ...campaignUpdate },)
+      campaignUpdate,)
   }
 );}
 
@@ -1465,12 +1468,12 @@ export const useUpdateCampaign = <TError = ErrorType<unknown>,
       return useMutation(getUpdateCampaignMutationOptions(options));
     }
 
-export const getDeleteCampaignUrl = (_id: number,) => {
+export const getDeleteCampaignUrl = (id: number,) => {
 
 
 
 
-  return `/api/campaigns/remove`
+  return `/api/campaigns/${id}`
 }
 
 /**
@@ -1481,9 +1484,7 @@ export const deleteCampaign = async (id: number, options?: RequestInit): Promise
   return customFetch<MessageResponse>(getDeleteCampaignUrl(id),
   {
     ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify({ id })
+    method: 'DELETE'
 
 
   }
@@ -1841,12 +1842,12 @@ export function useGetLead<TData = Awaited<ReturnType<typeof getLead>>, TError =
 
 
 
-export const getUpdateLeadUrl = (_id: number,) => {
+export const getUpdateLeadUrl = (id: number,) => {
 
 
 
 
-  return `/api/leads/save`
+  return `/api/leads/${id}`
 }
 
 /**
@@ -1858,10 +1859,10 @@ export const updateLead = async (id: number,
   return customFetch<Lead>(getUpdateLeadUrl(id),
   {
     ...options,
-    method: 'POST',
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(
-      { id, ...leadUpdate },)
+      leadUpdate,)
   }
 );}
 
@@ -1913,12 +1914,12 @@ export const useUpdateLead = <TError = ErrorType<unknown>,
       return useMutation(getUpdateLeadMutationOptions(options));
     }
 
-export const getDeleteLeadUrl = (_id: number,) => {
+export const getDeleteLeadUrl = (id: number,) => {
 
 
 
 
-  return `/api/leads/remove`
+  return `/api/leads/${id}`
 }
 
 /**
@@ -1929,9 +1930,7 @@ export const deleteLead = async (id: number, options?: RequestInit): Promise<Mes
   return customFetch<MessageResponse>(getDeleteLeadUrl(id),
   {
     ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify({ id })
+    method: 'DELETE'
 
 
   }
@@ -2351,12 +2350,12 @@ export function useGetTemplate<TData = Awaited<ReturnType<typeof getTemplate>>, 
 
 
 
-export const getUpdateTemplateUrl = (_id: number,) => {
+export const getUpdateTemplateUrl = (id: number,) => {
 
 
 
 
-  return `/api/templates/save`
+  return `/api/templates/${id}`
 }
 
 /**
@@ -2368,10 +2367,10 @@ export const updateTemplate = async (id: number,
   return customFetch<EmailTemplate>(getUpdateTemplateUrl(id),
   {
     ...options,
-    method: 'POST',
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(
-      { id, ...emailTemplateUpdate },)
+      emailTemplateUpdate,)
   }
 );}
 
@@ -2423,12 +2422,12 @@ export const useUpdateTemplate = <TError = ErrorType<unknown>,
       return useMutation(getUpdateTemplateMutationOptions(options));
     }
 
-export const getDeleteTemplateUrl = (_id: number,) => {
+export const getDeleteTemplateUrl = (id: number,) => {
 
 
 
 
-  return `/api/templates/remove`
+  return `/api/templates/${id}`
 }
 
 /**
@@ -2439,9 +2438,7 @@ export const deleteTemplate = async (id: number, options?: RequestInit): Promise
   return customFetch<MessageResponse>(getDeleteTemplateUrl(id),
   {
     ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify({ id })
+    method: 'DELETE'
 
 
   }
@@ -3084,6 +3081,167 @@ export function useAdminGetUsers<TData = Awaited<ReturnType<typeof adminGetUsers
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getAdminGetUsersQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetSentEmailStatsUrl = (params?: GetSentEmailStatsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/sent-emails/stats?${stringifiedParams}` : `/api/sent-emails/stats`
+}
+
+/**
+ * @summary Global stats for sent emails in a date range
+ */
+export const getSentEmailStats = async (params?: GetSentEmailStatsParams, options?: RequestInit): Promise<SentEmailStats> => {
+
+  return customFetch<SentEmailStats>(getGetSentEmailStatsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSentEmailStatsQueryKey = (params?: GetSentEmailStatsParams,) => {
+    return [
+    `/api/sent-emails/stats`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetSentEmailStatsQueryOptions = <TData = Awaited<ReturnType<typeof getSentEmailStats>>, TError = ErrorType<unknown>>(params?: GetSentEmailStatsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSentEmailStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSentEmailStatsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSentEmailStats>>> = ({ signal }) => getSentEmailStats(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSentEmailStats>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSentEmailStatsQueryResult = NonNullable<Awaited<ReturnType<typeof getSentEmailStats>>>
+export type GetSentEmailStatsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Global stats for sent emails in a date range
+ */
+
+export function useGetSentEmailStats<TData = Awaited<ReturnType<typeof getSentEmailStats>>, TError = ErrorType<unknown>>(
+ params?: GetSentEmailStatsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSentEmailStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSentEmailStatsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetSentEmailTimelineUrl = (id: number,) => {
+
+
+
+
+  return `/api/sent-emails/${id}/timeline`
+}
+
+/**
+ * @summary Activity timeline for a sent email
+ */
+export const getSentEmailTimeline = async (id: number, options?: RequestInit): Promise<SentEmailTimeline> => {
+
+  return customFetch<SentEmailTimeline>(getGetSentEmailTimelineUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSentEmailTimelineQueryKey = (id: number,) => {
+    return [
+    `/api/sent-emails/${id}/timeline`
+    ] as const;
+    }
+
+
+export const getGetSentEmailTimelineQueryOptions = <TData = Awaited<ReturnType<typeof getSentEmailTimeline>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSentEmailTimeline>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSentEmailTimelineQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSentEmailTimeline>>> = ({ signal }) => getSentEmailTimeline(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSentEmailTimeline>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSentEmailTimelineQueryResult = NonNullable<Awaited<ReturnType<typeof getSentEmailTimeline>>>
+export type GetSentEmailTimelineQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Activity timeline for a sent email
+ */
+
+export function useGetSentEmailTimeline<TData = Awaited<ReturnType<typeof getSentEmailTimeline>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSentEmailTimeline>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSentEmailTimelineQueryOptions(id,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

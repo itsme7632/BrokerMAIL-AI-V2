@@ -13,6 +13,7 @@ export interface EmailTemplate {
   subject: string;
   body: string;
   isDefault: boolean;
+  ctaButtonsJson?: string | null;
   createdAt: string;
   updatedAt: string;
 }

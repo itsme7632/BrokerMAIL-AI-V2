@@ -14,4 +14,5 @@ export interface EmailTemplateInput {
   /** @minLength 1 */
   body: string;
   isDefault?: boolean;
+  ctaButtonsJson?: string | null;
 }

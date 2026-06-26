@@ -25,7 +25,7 @@ import {
   processedBouncesTable,
   emailTrackingEventsTable,
 } from "@workspace/db";
-import { and, eq, isNotNull, desc, count } from "drizzle-orm";
+import { and, eq, isNotNull, desc, count, inArray } from "drizzle-orm";
 import { isPermanentBounce, extractBounceCode } from "./email-validator";
 import { decrypt } from "./crypto";
 import { logger } from "./logger";
@@ -343,11 +343,11 @@ async function _scanMailbox(
         let bounceRecorded = false;
 
         if (item) {
-          // ── SAFETY CHECK: Never bounce an email that has open/click events ──
-          // If the recipient actually opened the email (tracking pixel fired), it
-          // reached the inbox. A bounce NDR for the same address must be spurious,
-          // stale, or a false match. Log it for review and skip the update.
-          let openEventCount = 0;
+          // ── SAFETY CHECK: Never bounce an email that has open OR click events ──
+          // If the recipient opened or clicked a link, the email reached the inbox.
+          // A bounce NDR for the same address must be spurious, stale, or a false
+          // match. Log it for review and skip the update.
+          let engagementEventCount = 0;
           if (item.trackingId) {
             try {
               const [draftRow] = await db
@@ -363,36 +363,36 @@ async function _scanMailbox(
                   .where(
                     and(
                       eq(emailTrackingEventsTable.draftId, draftRow.id),
-                      eq(emailTrackingEventsTable.eventType, "open"),
+                      inArray(emailTrackingEventsTable.eventType, ["open", "click"]),
                     ),
                   );
-                openEventCount = total ?? 0;
+                engagementEventCount = total ?? 0;
               }
             } catch (checkErr) {
               logger.warn(
                 { checkErr, emailQueueId: item.id },
-                "[BOUNCE-SCAN] Could not check open events — proceeding with bounce (safe side)",
+                "[BOUNCE-SCAN] Could not check open/click events — proceeding with bounce (safe side)",
               );
             }
           }
 
-          if (openEventCount > 0) {
-            // Email was definitively opened — this bounce is a false positive.
+          if (engagementEventCount > 0) {
+            // Email was definitively delivered (opened or clicked) — false positive.
             // Do NOT mark as bounced. Log everything for diagnosis.
             logger.error(
               {
-                mailboxId:        mailbox.id,
-                seq:              msg.seq,
-                bounceMessageId:  messageId ?? "(missing)",
+                mailboxId:            mailbox.id,
+                seq:                  msg.seq,
+                bounceMessageId:      messageId ?? "(missing)",
                 recipient,
-                emailQueueId:     item.id,
-                trackingId:       item.trackingId ?? "(none)",
-                openEventCount,
-                bounceReason:     reason,
-                action:           "SKIPPED — false positive bounce suppressed",
+                emailQueueId:         item.id,
+                trackingId:           item.trackingId ?? "(none)",
+                engagementEventCount,
+                bounceReason:         reason,
+                action:               "SKIPPED — false positive bounce suppressed",
               },
-              "[BOUNCE-SCAN] FALSE POSITIVE DETECTED: bounce NDR received for email that has open tracking events. " +
-              "Email was delivered and opened. Bounce NOT recorded. Flagged for review.",
+              "[BOUNCE-SCAN] FALSE POSITIVE DETECTED: bounce NDR received for email that has open/click tracking events. " +
+              "Email was delivered and engaged with. Bounce NOT recorded. Flagged for review.",
             );
             // Record in processed_bounces with messageId so we don't re-process
             // this NDR, but do not touch email_queue status.
@@ -428,7 +428,7 @@ async function _scanMailbox(
               recipient,
               emailQueueId: item.id,
               trackingId:   item.trackingId ?? "(none)",
-              openEvents:   openEventCount,
+              openEvents:   engagementEventCount,
               source:       "email_queue",
             },
             "[BOUNCE-SCAN-DEBUG] Bounce processed — email_queue row updated to bounced",
@@ -495,42 +495,42 @@ async function _scanMailbox(
             .limit(1);
 
           if (draft) {
-            // ── SAFETY CHECK: Never bounce a draft that has open/click events ──
+            // ── SAFETY CHECK: Never bounce a draft that has open OR click events ──
             // draftsTable.id is the direct FK used by emailTrackingEventsTable.draftId,
-            // so we can query open events without an intermediate lookup.
-            let draftOpenEventCount = 0;
+            // so we can query engagement events without an intermediate lookup.
+            let draftEngagementEventCount = 0;
             try {
-              const [{ total: draftOpenTotal }] = await db
+              const [{ total: draftEngagementTotal }] = await db
                 .select({ total: count() })
                 .from(emailTrackingEventsTable)
                 .where(
                   and(
                     eq(emailTrackingEventsTable.draftId, draft.id),
-                    eq(emailTrackingEventsTable.eventType, "open"),
+                    inArray(emailTrackingEventsTable.eventType, ["open", "click"]),
                   ),
                 );
-              draftOpenEventCount = draftOpenTotal ?? 0;
+              draftEngagementEventCount = draftEngagementTotal ?? 0;
             } catch (checkErr) {
               logger.warn(
                 { checkErr, draftId: draft.id },
-                "[BOUNCE-SCAN] Could not check open events for draft — proceeding with bounce (safe side)",
+                "[BOUNCE-SCAN] Could not check open/click events for draft — proceeding with bounce (safe side)",
               );
             }
 
-            if (draftOpenEventCount > 0) {
+            if (draftEngagementEventCount > 0) {
               logger.error(
                 {
-                  mailboxId:       mailbox.id,
-                  seq:             msg.seq,
-                  bounceMessageId: messageId ?? "(missing)",
+                  mailboxId:                mailbox.id,
+                  seq:                      msg.seq,
+                  bounceMessageId:          messageId ?? "(missing)",
                   recipient,
-                  draftId:         draft.id,
-                  draftOpenEvents: draftOpenEventCount,
-                  bounceReason:    reason,
-                  action:          "SKIPPED — false positive bounce suppressed (draft path)",
+                  draftId:                  draft.id,
+                  draftEngagementEvents:    draftEngagementEventCount,
+                  bounceReason:             reason,
+                  action:                   "SKIPPED — false positive bounce suppressed (draft path)",
                 },
-                "[BOUNCE-PROTECT] FALSE POSITIVE DETECTED (draft path): bounce NDR received for draft that has open tracking events. " +
-                "Email was delivered and opened. Bounce NOT recorded.",
+                "[BOUNCE-PROTECT] FALSE POSITIVE DETECTED (draft path): bounce NDR received for draft that has open/click tracking events. " +
+                "Email was delivered and engaged with. Bounce NOT recorded.",
               );
               if (messageId) {
                 try {
@@ -570,7 +570,7 @@ async function _scanMailbox(
                 messageId:       messageId ?? "(missing)",
                 recipient,
                 draftId:         draft.id,
-                draftOpenEvents: draftOpenEventCount,
+                draftOpenEvents: draftEngagementEventCount,
                 source:          "drafts_fallback",
               },
               "[BOUNCE-SCAN-DEBUG] Bounce processed — drafts row updated to bounced",
