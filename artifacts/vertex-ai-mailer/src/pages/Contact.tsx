@@ -2,8 +2,9 @@ import { useState } from "react";
 import { PublicLayout } from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Zap, Mail, MessageSquare, Briefcase, Monitor, CheckCircle2 } from "lucide-react";
+import { Zap, Mail, MessageSquare, Briefcase, Monitor, CheckCircle2, Phone, Clock } from "lucide-react";
 import { motion } from "framer-motion";
+import { usePlatformSettings } from "@/hooks/usePlatformSettings";
 
 function FadeUp({ children, delay = 0, className = "" }: { children: React.ReactNode; delay?: number; className?: string }) {
   return (
@@ -18,6 +19,7 @@ type FormState = "idle" | "submitting" | "success";
 export default function Contact() {
   const [form, setForm] = useState({ name: "", email: "", company: "", message: "" });
   const [status, setStatus] = useState<FormState>("idle");
+  const platform = usePlatformSettings();
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -31,19 +33,25 @@ export default function Contact() {
     setStatus("success");
   }
 
+  const supportEmail    = platform.supportEmail    || "support@brokermail.ai";
+  const salesEmail      = platform.salesEmail      || "sales@brokermail.ai";
+  const responseTime    = platform.supportResponseTime || "1 business day";
+
   const contactCards = [
     {
       icon: Mail,
       title: "Support",
       desc: "Questions about setup, mailbox configuration, or sending issues.",
-      detail: "support@brokermail.ai",
+      detail: supportEmail,
+      href: `mailto:${supportEmail}`,
       color: "bg-blue-50 text-blue-600",
     },
     {
       icon: Briefcase,
       title: "Business Inquiries",
       desc: "Partnerships, integrations, and enterprise plans.",
-      detail: "partnerships@brokermail.ai",
+      detail: salesEmail,
+      href: `mailto:${salesEmail}`,
       color: "bg-violet-50 text-violet-600",
     },
     {
@@ -51,6 +59,7 @@ export default function Contact() {
       title: "Request a Demo",
       desc: "See BrokerMail AI live — we'll walk you through the full workflow.",
       detail: "Fill out the form and mention 'demo' in your message.",
+      href: null,
       color: "bg-emerald-50 text-emerald-600",
     },
   ];
@@ -72,6 +81,20 @@ export default function Contact() {
             <p className="text-slate-500 text-base sm:text-lg max-w-xl mx-auto leading-relaxed">
               Whether you need help with setup, want to request a demo, or have a business inquiry — reach out below.
             </p>
+            {(platform.businessHours || platform.contactPhone) && (
+              <div className="mt-5 flex flex-wrap justify-center gap-4 text-sm text-slate-400">
+                {platform.contactPhone && (
+                  <span className="flex items-center gap-1.5">
+                    <Phone className="h-3.5 w-3.5" /> {platform.contactPhone}
+                  </span>
+                )}
+                {platform.businessHours && (
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5" /> {platform.businessHours}
+                  </span>
+                )}
+              </div>
+            )}
           </motion.div>
         </div>
       </section>
@@ -88,7 +111,11 @@ export default function Contact() {
                   </div>
                   <h3 className="text-base font-bold text-slate-900 mb-1.5">{card.title}</h3>
                   <p className="text-sm text-slate-500 leading-relaxed mb-3">{card.desc}</p>
-                  <p className="text-xs font-semibold text-blue-600">{card.detail}</p>
+                  {card.href ? (
+                    <a href={card.href} className="text-xs font-semibold text-blue-600 hover:underline">{card.detail}</a>
+                  ) : (
+                    <p className="text-xs font-semibold text-blue-600">{card.detail}</p>
+                  )}
                 </div>
               </FadeUp>
             ))}
@@ -113,7 +140,7 @@ export default function Contact() {
                   </div>
                   <h3 className="text-xl font-bold text-slate-900">Message sent!</h3>
                   <p className="text-sm text-slate-500 leading-relaxed max-w-xs">
-                    Thanks for reaching out. We'll get back to you within one business day.
+                    Thanks for reaching out. We'll get back to you within {responseTime}.
                   </p>
                   <button
                     onClick={() => { setStatus("idle"); setForm({ name: "", email: "", company: "", message: "" }); }}
@@ -130,7 +157,7 @@ export default function Contact() {
                     </div>
                     <div>
                       <h2 className="text-base font-bold text-slate-900">Send us a message</h2>
-                      <p className="text-xs text-slate-400">We usually respond within 24 hours.</p>
+                      <p className="text-xs text-slate-400">We usually respond within {responseTime}.</p>
                     </div>
                   </div>
 

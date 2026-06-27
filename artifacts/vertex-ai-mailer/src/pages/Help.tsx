@@ -92,8 +92,8 @@ const categories: Category[] = [
       { q: "How do I upgrade my plan?", a: "Go to Settings → Plans. Click 'Request Upgrade' on the plan you want. Enter an optional note for the admin, then submit. An administrator will review and activate your new plan within 1–2 business days. You'll receive an email confirmation." },
       { q: "Is there a free plan?", a: "Yes. BrokerMAIL AI includes a free plan with a limited number of monthly sends. No credit card required. You can upgrade to a paid plan at any time." },
       { q: "How are email limits calculated?", a: "Email limits reset on the first of each calendar month. Each email delivered to one recipient counts as one send. Campaign previews, test emails, and Gmail drafts do not count toward your limit." },
-      { q: "How do I request a refund?", a: "Email billing@brokermail.ai with your account email and reason for the request. See our Refund Policy for eligibility details. Refunds are processed within 5–10 business days of approval." },
-      { q: "What payment methods are accepted?", a: "BrokerMAIL AI uses a manual billing model — our team arranges payment directly with you. We currently accept bank transfer and other methods arranged case-by-case. Contact sales@brokermail.ai to discuss." },
+      { q: "How do I request a refund?", a: "Contact our billing team using the email on the Contact page. Include your account email and reason for the request. See our Refund Policy for eligibility details. Refunds are processed within 5–10 business days of approval." },
+      { q: "What payment methods are accepted?", a: "BrokerMAIL AI uses a manual billing model — our team arranges payment directly with you. We currently accept bank transfer and other methods arranged case-by-case. Visit the Contact page to reach our sales team." },
     ],
   },
   {

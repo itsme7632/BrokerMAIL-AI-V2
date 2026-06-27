@@ -328,11 +328,23 @@ router.get("/admin/logs", requireAdmin, async (req, res): Promise<void> => {
 
 const DEFAULT_SETTINGS: Record<string, string> = {
   // General
-  platformName:    "BrokerMail AI",
-  supportEmail:    "",
-  contactPhone:    "",
-  companyAddress:  "",
-  footerText:      "Built for the auto transport industry.",
+  platformName:        "BrokerMail AI",
+  legalCompanyName:    "BrokerMAIL AI LLC",
+  websiteUrl:          "https://brokermail.ai",
+  supportEmail:        "",
+  salesEmail:          "",
+  billingEmail:        "",
+  contactPhone:        "",
+  companyAddress:      "",
+  businessHours:       "Mon–Fri, 9am–6pm EST",
+  timezone:            "EST",
+  supportResponseTime: "1 business day",
+  facebook:            "",
+  linkedin:            "",
+  twitter:             "",
+  whatsapp:            "",
+  telegram:            "",
+  footerText:          "Built for the auto transport industry.",
   maintenanceMode:      "false",
   maintenanceMessage:   "",
   maintenanceReturnTime: "",
@@ -556,11 +568,15 @@ router.put("/admin/settings", requireAdmin, async (req, res): Promise<void> => {
 
 router.get("/admin/public-settings", async (_req, res): Promise<void> => {
   const PUBLIC_KEYS = [
-    "platformName", "footerText", "defaultAccentColor", "defaultEmailSlogan",
+    "platformName", "legalCompanyName", "websiteUrl",
+    "footerText", "defaultAccentColor", "defaultEmailSlogan",
     "heroTitle", "heroSubtitle", "heroSlogan", "faqContent",
     "pricingContent", "contactContent", "maintenanceMode",
     "maintenanceMessage", "maintenanceReturnTime", "maintenanceStartedAt",
-    "supportEmail", "allowRegistrations",
+    "supportEmail", "salesEmail", "billingEmail", "contactPhone",
+    "companyAddress", "businessHours", "timezone", "supportResponseTime",
+    "facebook", "linkedin", "twitter", "whatsapp", "telegram",
+    "allowRegistrations",
   ];
   const rows   = await db.select().from(adminSettingsTable);
   const stored = Object.fromEntries(rows.map(r => [r.key, r.value]));

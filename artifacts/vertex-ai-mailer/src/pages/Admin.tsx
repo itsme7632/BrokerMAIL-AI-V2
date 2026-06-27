@@ -9,7 +9,8 @@ import {
   XCircle, RefreshCw, Trash2, ShieldCheck, ShieldOff, ChevronLeft,
   ChevronRight, Search, Filter, Activity, TrendingUp, MailCheck,
   UserCheck, Settings, Eye, MoreVertical, Crown, Ban, Edit2,
-  CreditCard, ArrowUpCircle, CheckCheck, X as XIcon,
+  CreditCard, ArrowUpCircle, CheckCheck, X as XIcon, TicketCheck,
+  MessageSquare, Tag, Clock, Send, ChevronDown as ChevronDownIcon,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -82,7 +83,7 @@ interface AdminSub {
   stripeCustomerId: string | null; stripeSubscriptionId: string | null;
 }
 
-type Tab = "overview" | "users" | "mailboxes" | "analytics" | "logs" | "settings" | "billing";
+type Tab = "overview" | "users" | "mailboxes" | "analytics" | "logs" | "settings" | "billing" | "support";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -307,6 +308,7 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "logs",       label: "Logs",       icon: Activity },
   { id: "settings",   label: "Settings",   icon: Settings },
   { id: "billing",    label: "Billing",    icon: CreditCard },
+  { id: "support",    label: "Support",    icon: TicketCheck },
 ];
 
 export default function Admin() {
@@ -365,6 +367,23 @@ export default function Admin() {
   const [rejectModal, setRejectModal]         = useState<{ id: number; note: string } | null>(null);
   const [assignPlanModal, setAssignPlanModal] = useState<{ userId: number; userName: string; currentPlanId: number } | null>(null);
   const [markingPaid, setMarkingPaid]         = useState<number | null>(null);
+
+  // Support
+  interface SupportTicketAdmin {
+    id: number; userId: number | null; userEmail: string; userName: string | null;
+    subject: string; category: string; priority: string; status: string;
+    message: string; adminNote: string | null;
+    replies: Array<{ id: string; author: string; authorName: string; message: string; createdAt: string }>;
+    createdAt: string; updatedAt: string;
+  }
+  const [supportTickets, setSupportTickets]   = useState<SupportTicketAdmin[]>([]);
+  const [supportLoading, setSupportLoading]   = useState(false);
+  const [supportFilter, setSupportFilter]     = useState("open");
+  const [supportSearch, setSupportSearch]     = useState("");
+  const [selectedTicket, setSelectedTicket]   = useState<SupportTicketAdmin | null>(null);
+  const [ticketReply, setTicketReply]         = useState("");
+  const [ticketNote, setTicketNote]           = useState("");
+  const [savingTicket, setSavingTicket]       = useState(false);
 
   // ── Data fetchers ──────────────────────────────────────────────────────────
 
@@ -441,6 +460,13 @@ export default function Admin() {
     finally { setBillingLoading(false); }
   }, []);
 
+  const loadSupport = useCallback(async () => {
+    setSupportLoading(true);
+    try { setSupportTickets(await apiFetch("support")); }
+    catch { /* silent */ }
+    finally { setSupportLoading(false); }
+  }, []);
+
   // ── Effects ────────────────────────────────────────────────────────────────
 
   useEffect(() => { loadStats(); }, [loadStats]);
@@ -450,6 +476,7 @@ export default function Admin() {
   useEffect(() => { if (tab === "logs")      loadLogs();     }, [tab, loadLogs]);
   useEffect(() => { if (tab === "settings")  loadSettings(); }, [tab, loadSettings]);
   useEffect(() => { if (tab === "billing")   loadBillingData(); }, [tab, loadBillingData]);
+  useEffect(() => { if (tab === "support")   loadSupport();     }, [tab, loadSupport]);
 
   // ── User actions ───────────────────────────────────────────────────────────
 
@@ -1237,8 +1264,253 @@ export default function Admin() {
             </div>
           )}
 
+          {tab === "support" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <p className="text-sm text-slate-500">Manage user support tickets.</p>
+                <Button variant="outline" size="sm" onClick={loadSupport} className="gap-1.5 rounded-xl h-8">
+                  <RefreshCw className={`h-3.5 w-3.5 ${supportLoading ? "animate-spin" : ""}`} />
+                </Button>
+              </div>
+
+              {/* Filters */}
+              <div className="flex flex-wrap gap-2 items-center">
+                <div className="relative flex-1 min-w-[160px] max-w-xs">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                  <Input
+                    value={supportSearch}
+                    onChange={e => setSupportSearch(e.target.value)}
+                    placeholder="Search tickets…"
+                    className="pl-9 h-8 rounded-xl text-sm"
+                  />
+                </div>
+                {["all", "open", "in_progress", "waiting_for_user", "resolved", "closed"].map(s => (
+                  <button key={s}
+                    onClick={() => setSupportFilter(s)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-medium capitalize transition-colors ${
+                      supportFilter === s
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100"
+                    }`}
+                  >
+                    {s === "in_progress" ? "In Progress" : s === "waiting_for_user" ? "Awaiting" : s.charAt(0).toUpperCase() + s.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              {(() => {
+                const filtered = supportTickets.filter(t => {
+                  if (supportFilter !== "all" && t.status !== supportFilter) return false;
+                  if (supportSearch && !t.subject.toLowerCase().includes(supportSearch.toLowerCase()) && !t.userEmail.toLowerCase().includes(supportSearch.toLowerCase())) return false;
+                  return true;
+                });
+                const statusColor: Record<string, string> = {
+                  open:             "bg-blue-100 text-blue-700",
+                  in_progress:      "bg-amber-100 text-amber-700",
+                  waiting_for_user: "bg-purple-100 text-purple-700",
+                  resolved:         "bg-emerald-100 text-emerald-700",
+                  closed:           "bg-slate-100 text-slate-500",
+                };
+                const priorityColor: Record<string, string> = {
+                  low:    "bg-slate-100 text-slate-500",
+                  medium: "bg-blue-100 text-blue-600",
+                  high:   "bg-orange-100 text-orange-600",
+                  urgent: "bg-red-100 text-red-600",
+                };
+                return supportLoading ? (
+                  <div className="space-y-2">{Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div>
+                ) : filtered.length === 0 ? (
+                  <div className="text-center py-10 text-sm text-slate-400">
+                    <TicketCheck className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                    No tickets found.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {filtered.map(ticket => (
+                      <div key={ticket.id}
+                        className={`rounded-2xl border p-4 cursor-pointer transition-all hover:shadow-sm ${
+                          selectedTicket?.id === ticket.id
+                            ? "border-blue-300 bg-blue-50/50"
+                            : "border-slate-200 bg-white hover:border-blue-200"
+                        }`}
+                        onClick={() => {
+                          setSelectedTicket(ticket);
+                          setTicketReply("");
+                          setTicketNote(ticket.adminNote ?? "");
+                        }}
+                      >
+                        <div className="flex flex-wrap items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                              <span className="text-xs font-mono text-slate-400">#{ticket.id}</span>
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor[ticket.status] ?? "bg-slate-100 text-slate-500"}`}>
+                                {ticket.status.replace(/_/g, " ")}
+                              </span>
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${priorityColor[ticket.priority] ?? priorityColor.medium}`}>
+                                {ticket.priority}
+                              </span>
+                            </div>
+                            <p className="text-sm font-semibold text-slate-900 truncate">{ticket.subject}</p>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              {ticket.userEmail} · {new Date(ticket.createdAt).toLocaleDateString()}
+                              {ticket.replies?.length > 0 && ` · ${ticket.replies.length} ${ticket.replies.length === 1 ? "reply" : "replies"}`}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
         </div>
       </div>
+
+      {/* Support ticket detail modal */}
+      {selectedTicket && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedTicket(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl border border-slate-200 z-10 flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-slate-100 flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                  <span className="text-xs font-mono text-slate-400">#{selectedTicket.id}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                    { open: "bg-blue-100 text-blue-700", in_progress: "bg-amber-100 text-amber-700",
+                      waiting_for_user: "bg-purple-100 text-purple-700", resolved: "bg-emerald-100 text-emerald-700",
+                      closed: "bg-slate-100 text-slate-500" }[selectedTicket.status] ?? "bg-slate-100 text-slate-500"
+                  }`}>{selectedTicket.status.replace(/_/g, " ")}</span>
+                </div>
+                <h3 className="font-bold text-slate-900 text-base truncate">{selectedTicket.subject}</h3>
+                <p className="text-xs text-slate-500">{selectedTicket.userEmail} · {new Date(selectedTicket.createdAt).toLocaleDateString()}</p>
+              </div>
+              <button onClick={() => setSelectedTicket(null)} className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 flex-shrink-0">
+                <XIcon className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Thread */}
+            <div className="overflow-y-auto flex-1 p-5 space-y-4">
+              {/* Original message */}
+              <div className="bg-slate-50 rounded-xl p-4 text-sm text-slate-700 whitespace-pre-wrap">{selectedTicket.message}</div>
+
+              {/* Replies */}
+              {(selectedTicket.replies ?? []).map((r) => (
+                <div key={r.id} className={`flex gap-2 ${r.author === "admin" ? "flex-row-reverse" : ""}`}>
+                  <div className={`flex-1 rounded-xl px-4 py-3 text-sm whitespace-pre-wrap ${
+                    r.author === "admin"
+                      ? "bg-blue-600 text-white ml-8"
+                      : "bg-slate-100 text-slate-700 mr-8"
+                  }`}>
+                    <p className={`text-[11px] font-semibold mb-1 ${r.author === "admin" ? "text-blue-100" : "text-slate-500"}`}>
+                      {r.author === "admin" ? "Support Team" : "User"} · {new Date(r.createdAt).toLocaleDateString()}
+                    </p>
+                    {r.message}
+                  </div>
+                </div>
+              ))}
+
+              {/* Admin controls */}
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-500">Status</label>
+                    <select
+                      value={selectedTicket.status}
+                      onChange={async e => {
+                        await apiFetch(`support/${selectedTicket.id}`, { method: "PATCH", body: JSON.stringify({ status: e.target.value }) });
+                        loadSupport();
+                        setSelectedTicket(prev => prev ? { ...prev, status: e.target.value } : null);
+                      }}
+                      className="w-full h-9 px-2 rounded-xl border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {["open","in_progress","waiting_for_user","resolved","closed"].map(s => (
+                        <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-500">Priority</label>
+                    <select
+                      value={selectedTicket.priority}
+                      onChange={async e => {
+                        await apiFetch(`support/${selectedTicket.id}`, { method: "PATCH", body: JSON.stringify({ priority: e.target.value }) });
+                        loadSupport();
+                        setSelectedTicket(prev => prev ? { ...prev, priority: e.target.value } : null);
+                      }}
+                      className="w-full h-9 px-2 rounded-xl border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {["low","medium","high","urgent"].map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500">Admin Note (private)</label>
+                  <textarea
+                    value={ticketNote}
+                    onChange={e => setTicketNote(e.target.value)}
+                    placeholder="Internal note — not visible to user…"
+                    className="w-full h-16 px-3 py-2 rounded-xl border border-slate-200 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <Button size="sm" variant="outline" className="rounded-xl h-7 text-xs"
+                    onClick={async () => {
+                      await apiFetch(`support/${selectedTicket.id}`, { method: "PATCH", body: JSON.stringify({ adminNote: ticketNote }) });
+                      toast({ title: "Note saved" });
+                      loadSupport();
+                    }}>
+                    Save Note
+                  </Button>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500">Reply to User</label>
+                  <textarea
+                    value={ticketReply}
+                    onChange={e => setTicketReply(e.target.value)}
+                    placeholder="Type your reply to the user…"
+                    rows={3}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <Button size="sm" className="rounded-xl h-8 gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
+                    disabled={savingTicket || !ticketReply.trim()}
+                    onClick={async () => {
+                      setSavingTicket(true);
+                      try {
+                        await apiFetch(`support/${selectedTicket.id}/reply`, { method: "POST", body: JSON.stringify({ message: ticketReply }) });
+                        setTicketReply("");
+                        toast({ title: "Reply sent" });
+                        loadSupport();
+                        setSelectedTicket(null);
+                      } catch (e: any) {
+                        toast({ title: "Error", description: e.message, variant: "destructive" });
+                      } finally { setSavingTicket(false); }
+                    }}>
+                    <Send className="h-3.5 w-3.5" /> Send Reply
+                  </Button>
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <Button size="sm" variant="outline"
+                    className="h-7 text-xs rounded-xl border-red-200 text-red-600 hover:bg-red-50"
+                    onClick={async () => {
+                      if (!confirm("Delete this ticket?")) return;
+                      await apiFetch(`support/${selectedTicket.id}`, { method: "DELETE" });
+                      setSelectedTicket(null);
+                      loadSupport();
+                      toast({ title: "Ticket deleted" });
+                    }}>
+                    <Trash2 className="h-3 w-3 mr-1" /> Delete
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* User edit modal */}
       {editUser && (

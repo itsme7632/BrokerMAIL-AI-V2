@@ -1199,12 +1199,34 @@ export function AdminSettings() {
                     type="email" placeholder="support@brokermail.ai" />
                   <Field label="Sales Email" settingsKey="salesEmail" settings={settings} onChange={set}
                     type="email" placeholder="sales@brokermail.ai" />
+                  <Field label="Billing Email" settingsKey="billingEmail" settings={settings} onChange={set}
+                    type="email" placeholder="billing@brokermail.ai" />
                   <Field label="Contact Phone" settingsKey="contactPhone" settings={settings} onChange={set}
                     type="tel" placeholder="+1 (555) 000-0000" />
+                  <Field label="Business Hours" settingsKey="businessHours" settings={settings} onChange={set}
+                    placeholder="Mon–Fri, 9am–6pm EST" />
+                  <Field label="Support Response Time" settingsKey="supportResponseTime" settings={settings} onChange={set}
+                    placeholder="1 business day" />
                   <div className="sm:col-span-2">
                     <Field label="Business Address" settingsKey="companyAddress" settings={settings} onChange={set}
                       placeholder="123 Main St, Orlando, FL 32801" />
                   </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Social Media</p>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <Field label="Facebook URL" settingsKey="facebook" settings={settings} onChange={set}
+                    placeholder="https://facebook.com/yourpage" />
+                  <Field label="LinkedIn URL" settingsKey="linkedin" settings={settings} onChange={set}
+                    placeholder="https://linkedin.com/company/yourcompany" />
+                  <Field label="Twitter / X URL" settingsKey="twitter" settings={settings} onChange={set}
+                    placeholder="https://twitter.com/yourhandle" />
+                  <Field label="WhatsApp Link" settingsKey="whatsapp" settings={settings} onChange={set}
+                    placeholder="https://wa.me/15550000000" />
+                  <Field label="Telegram Link" settingsKey="telegram" settings={settings} onChange={set}
+                    placeholder="https://t.me/yourchannel" />
                 </div>
               </div>
 
@@ -1247,8 +1269,10 @@ export function AdminSettings() {
 
               <SaveBar saving={saving} onSave={() => saveSection([
                 "platformName", "legalCompanyName", "websiteUrl",
-                "supportEmail", "salesEmail", "contactPhone",
-                "companyAddress", "footerText", "maintenanceMode",
+                "supportEmail", "salesEmail", "billingEmail", "contactPhone",
+                "businessHours", "supportResponseTime", "companyAddress",
+                "facebook", "linkedin", "twitter", "whatsapp", "telegram",
+                "footerText", "maintenanceMode",
                 "maintenanceMessage", "maintenanceReturnTime",
               ])} label="Save General Settings" />
             </div>

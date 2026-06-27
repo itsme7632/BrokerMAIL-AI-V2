@@ -2,6 +2,7 @@ import { useState } from "react";
 import { PublicLayout } from "@/components/layout/PublicLayout";
 import { CreditCard } from "lucide-react";
 import { Link } from "wouter";
+import { usePlatformSettings } from "@/hooks/usePlatformSettings";
 
 const LAST_UPDATED = "June 1, 2025";
 
@@ -158,6 +159,29 @@ const sections: Section[] = [
 
 export default function Refund() {
   const [active, setActive] = useState(sections[0].id);
+  const platform = usePlatformSettings();
+
+  const billingEmail  = platform.billingEmail  || "billing@brokermail.ai";
+  const supportEmail  = platform.supportEmail  || "support@brokermail.ai";
+  const dynamicSections = sections.map(s => s.id !== "contact" ? s : {
+    ...s,
+    content: (
+      <>
+        <p>For all billing questions, refund requests, or payment disputes:</p>
+        <ul>
+          <li>Email: <a href={`mailto:${billingEmail}`}>{billingEmail}</a></li>
+          <li>Subject line: include your account email and "Refund Request" or "Billing Question"</li>
+        </ul>
+        <p>For general support: <a href={`mailto:${supportEmail}`}>{supportEmail}</a></p>
+        <p>
+          See also:{" "}
+          <Link href="/terms"><span className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">Terms & Conditions</span></Link>
+          {" "}and{" "}
+          <Link href="/contact"><span className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">Contact Us</span></Link>
+        </p>
+      </>
+    ),
+  });
 
   return (
     <PublicLayout>
@@ -179,7 +203,7 @@ export default function Refund() {
             <aside className="hidden lg:block w-52 shrink-0">
               <div className="sticky top-24 space-y-1">
                 <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3">On this page</p>
-                {sections.map(s => (
+                {dynamicSections.map(s => (
                   <a
                     key={s.id}
                     href={`#${s.id}`}
@@ -197,7 +221,7 @@ export default function Refund() {
             </aside>
 
             <div className="flex-1 min-w-0">
-              {sections.map(s => (
+              {dynamicSections.map(s => (
                 <section key={s.id} id={s.id} className="mb-10 scroll-mt-28">
                   <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-3 pb-2 border-b border-slate-100 dark:border-slate-800">{s.title}</h2>
                   <div className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed space-y-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1.5 [&_a]:text-blue-600 dark:[&_a]:text-blue-400 [&_a:hover]:underline [&_strong]:text-slate-800 dark:[&_strong]:text-slate-200">

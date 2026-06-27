@@ -19,6 +19,7 @@ import sentEmailsRouter from "./sent-emails";
 import notificationsRouter from "./notifications";
 import suppressionsRouter from "./suppressions";
 import composerRouter from "./composer";
+import supportRouter from "./support";
 
 const router: IRouter = Router();
 
@@ -42,5 +43,6 @@ router.use(sentEmailsRouter);
 router.use(notificationsRouter);
 router.use(suppressionsRouter);
 router.use(composerRouter);
+router.use(supportRouter);
 
 export default router;

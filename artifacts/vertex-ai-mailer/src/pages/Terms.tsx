@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { PublicLayout } from "@/components/layout/PublicLayout";
 import { FileText } from "lucide-react";
+import { usePlatformSettings } from "@/hooks/usePlatformSettings";
 
 const LAST_UPDATED = "June 1, 2025";
 
@@ -191,6 +192,21 @@ const sections: Section[] = [
 
 export default function Terms() {
   const [active, setActive] = useState(sections[0].id);
+  const platform = usePlatformSettings();
+
+  const supportEmail  = platform.supportEmail  || "support@brokermail.ai";
+  const dynamicSections = sections.map(s => s.id !== "contact" ? s : {
+    ...s,
+    content: (
+      <>
+        <p>If you have any questions about these Terms, please contact us:</p>
+        <ul>
+          <li>Support: <a href={`mailto:${supportEmail}`}>{supportEmail}</a></li>
+        </ul>
+        <p>We reserve the right to update these Terms at any time. Material changes will be communicated via email to active subscribers at least 14 days before they take effect. Continued use of BrokerMAIL AI after the effective date constitutes acceptance of the updated Terms.</p>
+      </>
+    ),
+  });
 
   return (
     <PublicLayout>
@@ -214,7 +230,7 @@ export default function Terms() {
             <aside className="hidden lg:block w-52 shrink-0">
               <div className="sticky top-24 space-y-1">
                 <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3">On this page</p>
-                {sections.map(s => (
+                {dynamicSections.map(s => (
                   <a
                     key={s.id}
                     href={`#${s.id}`}
@@ -234,7 +250,7 @@ export default function Terms() {
             {/* Content */}
             <div className="flex-1 min-w-0">
               <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:font-bold prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline prose-ul:my-3 prose-li:my-1 prose-p:leading-relaxed">
-                {sections.map(s => (
+                {dynamicSections.map(s => (
                   <section key={s.id} id={s.id} className="mb-10 scroll-mt-28">
                     <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-3 pb-2 border-b border-slate-100 dark:border-slate-800">{s.title}</h2>
                     <div className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed space-y-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1.5 [&_a]:text-blue-600 [&_a:hover]:underline">

@@ -5,7 +5,7 @@ import { Logo } from "@/components/Logo";
 import {
   LayoutDashboard, FileText, UploadCloud, Mail, Settings, ShieldAlert,
   Menu, X, Server, CreditCard, SendHorizonal, Megaphone, LayoutGrid,
-  LogOut, Palette, HelpCircle, ChevronDown, Moon, Sun, PenLine,
+  LogOut, Palette, HelpCircle, ChevronDown, Moon, Sun, PenLine, TicketCheck,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -27,6 +27,7 @@ const NAV_ITEMS = [
   { href: "/drafts",            icon: Mail,            label: "Gmail Drafts",     exact: false },
   { href: "/mailbox",           icon: Server,          label: "Mailbox",          exact: true  },
   { href: "/plans",             icon: CreditCard,      label: "Plans & Billing",  exact: true  },
+  { href: "/support",           icon: TicketCheck,     label: "Support",          exact: false },
 ];
 
 function NavItem({ href, icon: Icon, label, exact }: {
@@ -116,9 +117,9 @@ function UserProfileDropdown({ user, logout }: {
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild className="rounded-lg cursor-pointer">
-          <a href="mailto:support@brokermail.ai">
-            <HelpCircle className="mr-2 h-4 w-4 text-muted-foreground" /> Help Center
-          </a>
+          <Link href="/support">
+            <HelpCircle className="mr-2 h-4 w-4 text-muted-foreground" /> Support
+          </Link>
         </DropdownMenuItem>
 
         {user.role === "admin" && (

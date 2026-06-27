@@ -40,6 +40,8 @@ import CampaignDetail from "@/pages/CampaignDetail";
 import Maintenance from "@/pages/Maintenance";
 import SingleEmailComposer from "@/pages/SingleEmailComposer";
 import DesignTemplateLibrary from "@/pages/DesignTemplateLibrary";
+import SupportTickets from "@/pages/SupportTickets";
+import SupportTicketDetail from "@/pages/SupportTicketDetail";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -176,6 +178,18 @@ function Router() {
       <Route path="/upgrade-confirmation">
         <ProtectedRoute>
           <AppLayout><UpgradeConfirmation /></AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/support/:id">
+        <ProtectedRoute>
+          <AppLayout><SupportTicketDetail /></AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/support">
+        <ProtectedRoute>
+          <AppLayout><SupportTickets /></AppLayout>
         </ProtectedRoute>
       </Route>
 
