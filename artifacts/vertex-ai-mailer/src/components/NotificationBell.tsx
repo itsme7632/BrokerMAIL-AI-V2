@@ -159,21 +159,34 @@ export function NotificationBell() {
 
       const notifs: NotifItem[] = [];
 
-      // Email opens
+      // Email opens + clicks
       if (opensRes.ok) {
         const data = await opensRes.json();
         for (const e of (data.events ?? [])) {
-          notifs.push({
-            id:          `open-${e.id}`,
-            type:        "open",
-            title:       e.customerName ?? e.email ?? "Someone",
-            body:        e.isAppleMail
-              ? `Possibly opened your email${e.subject ? ` — ${e.subject}` : ""}`
-              : `Opened your email${e.subject ? ` — ${e.subject}` : ""}`,
-            timestamp:   e.openedAt,
-            href:        "/sent-emails",
-            isAppleMail: e.isAppleMail,
-          });
+          const who = e.customerName ?? e.email ?? "Someone";
+          if (e.eventType === "click") {
+            const label = e.buttonLabel ?? e.linkUrl ?? "a link";
+            notifs.push({
+              id:        `click-${e.id}`,
+              type:      "open" as NotifType, // reuse open icon (green)
+              title:     who,
+              body:      `Clicked ${label}${e.subject ? ` — ${e.subject}` : ""}`,
+              timestamp: e.openedAt,
+              href:      "/sent-emails",
+            });
+          } else {
+            notifs.push({
+              id:          `open-${e.id}`,
+              type:        "open",
+              title:       who,
+              body:        e.isAppleMail
+                ? `Possibly opened your email${e.subject ? ` — ${e.subject}` : ""}`
+                : `Opened your email${e.subject ? ` — ${e.subject}` : ""}`,
+              timestamp:   e.openedAt,
+              href:        "/sent-emails",
+              isAppleMail: e.isAppleMail,
+            });
+          }
         }
       }
 

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import {
-  db, emailQueueTable, draftsTable, emailTrackingEventsTable,
+  db, emailQueueTable, draftsTable, emailTrackingEventsTable, leadsTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray, isNotNull, gte } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
@@ -9,7 +9,7 @@ const router: IRouter = Router();
 
 /**
  * GET /api/notifications/live
- * Returns recent email-open events for the logged-in user.
+ * Returns recent email-open AND email-click events for the logged-in user.
  * Covers both SMTP-queued sends and Gmail-only drafts (marked as sent).
  * Uses ?limit=N (default 20, max 50)
  * Uses ?since=ISO_TIMESTAMP to filter to events after a given time.
@@ -74,6 +74,7 @@ router.get("/notifications/live", requireAuth, async (req, res): Promise<void> =
         subject:    draftsTable.subject,
         campaignId: draftsTable.campaignId,
         trackingId: draftsTable.trackingId,
+        leadId:     draftsTable.leadId,
       })
       .from(draftsTable)
       .where(
@@ -89,10 +90,36 @@ router.get("/notifications/live", requireAuth, async (req, res): Promise<void> =
     // Exclude draft IDs already covered by the SMTP path
     const gmailOnlyDrafts = gmailDraftItems.filter(d => !smtpDraftIdSet.has(d.id));
 
-    // Build: draftId → { email, subject, campaignId }
-    const gmailDraftMap = new Map<number, { email: string | null; subject: string; campaignId: number | null }>();
+    // ── Fetch lead names for Gmail drafts ─────────────────────────────────────
+    // Join via leadId so notifications show "John Smith opened your email"
+    // instead of the raw email address.
+    const gmailLeadIds = gmailOnlyDrafts
+      .map(d => d.leadId)
+      .filter((id): id is number => id != null);
+
+    const leadNameMap = new Map<number, string>();
+    if (gmailLeadIds.length > 0) {
+      const leads = await db
+        .select({ id: leadsTable.id, name: leadsTable.name })
+        .from(leadsTable)
+        .where(inArray(leadsTable.id, gmailLeadIds));
+      for (const l of leads) leadNameMap.set(l.id, l.name);
+    }
+
+    // Build: draftId → { email, subject, campaignId, customerName }
+    const gmailDraftMap = new Map<number, {
+      email: string | null;
+      subject: string;
+      campaignId: number | null;
+      customerName: string | null;
+    }>();
     for (const d of gmailOnlyDrafts) {
-      gmailDraftMap.set(d.id, { email: d.email, subject: d.subject, campaignId: d.campaignId });
+      gmailDraftMap.set(d.id, {
+        email:        d.email,
+        subject:      d.subject,
+        campaignId:   d.campaignId,
+        customerName: d.leadId ? (leadNameMap.get(d.leadId) ?? null) : null,
+      });
     }
 
     // ── Collect all draft IDs to query events for ─────────────────────────────
@@ -106,10 +133,9 @@ router.get("/notifications/live", requireAuth, async (req, res): Promise<void> =
       return;
     }
 
-    // ── Fetch open events ─────────────────────────────────────────────────────
+    // ── Fetch open + click events ─────────────────────────────────────────────
     const conditions: any[] = [
       inArray(emailTrackingEventsTable.draftId, allDraftIds),
-      eq(emailTrackingEventsTable.eventType, "open"),
     ];
     if (since && !isNaN(since.getTime())) {
       conditions.push(gte(emailTrackingEventsTable.createdAt, since));
@@ -141,14 +167,17 @@ router.get("/notifications/live", requireAuth, async (req, res): Promise<void> =
         queueId    = qItem.id;
         let row: Record<string, string> = {};
         try { if (qItem.rowDataJson) row = JSON.parse(qItem.rowDataJson); } catch {}
-        customerName = row.name ?? row.companyName ?? null;
+        // Case-insensitive name lookup: "name", "Name", "full_name", etc.
+        const nameKey = Object.keys(row).find(k => k.toLowerCase() === "name")
+          ?? Object.keys(row).find(k => k.toLowerCase().includes("name"));
+        customerName = nameKey ? row[nameKey] : (row.companyName ?? null);
       } else if (e.draftId != null && gmailDraftMap.has(e.draftId)) {
-        // Gmail draft path — context from draftsTable directly
+        // Gmail draft path — context from draftsTable + lead join
         const gDraft = gmailDraftMap.get(e.draftId)!;
         email        = gDraft.email;
         subject      = gDraft.subject;
         campaignId   = gDraft.campaignId;
-        customerName = null;
+        customerName = gDraft.customerName;
       }
 
       const ua = e.userAgent ?? "";
@@ -158,6 +187,9 @@ router.get("/notifications/live", requireAuth, async (req, res): Promise<void> =
 
       return {
         id:           e.id,
+        eventType:    e.eventType,        // "open" | "click"
+        linkUrl:      e.linkUrl ?? null,  // click target URL
+        buttonLabel:  e.buttonLabel ?? null,
         openedAt:     e.createdAt.toISOString(),
         email,
         customerName,

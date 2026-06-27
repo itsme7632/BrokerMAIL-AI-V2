@@ -61,15 +61,13 @@ function isBotUserAgent(ua: string | null): boolean {
   if (l.includes("mimecast"))                return true;
   if (l.includes("proofpoint"))              return true;
   if (l.includes("barracuda"))               return true;
-  // Generic bot keywords
+  // Generic bot keywords — intentionally narrow to avoid blocking real email clients.
+  // "preview" and "scan" were removed: too broad and can match legitimate UAs.
   return (
     l.includes("bot") ||
     l.includes("crawler") ||
     l.includes("spider") ||
-    l.includes("prefetch") ||
-    l.includes("preview") ||
-    l.includes("scan") ||
-    l.includes("monitor")
+    l.includes("prefetch")
   );
 }
 
