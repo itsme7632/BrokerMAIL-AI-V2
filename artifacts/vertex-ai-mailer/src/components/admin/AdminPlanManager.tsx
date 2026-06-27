@@ -182,6 +182,13 @@ function PlanForm({
     if (!initial.id) set("slug", s);
   }
 
+  // Auto-derive priceLabel from price so the displayed label always matches
+  function handlePriceChange(raw: string) {
+    const cents = parseLimit(raw);
+    const autoLabel = cents === 0 ? "Free" : `$${(cents / 100 % 1 === 0 ? cents / 100 : (cents / 100).toFixed(2))}/mo`;
+    setForm(prev => ({ ...prev, price: cents, priceLabel: autoLabel }));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     await onSave(form);
@@ -215,12 +222,13 @@ function PlanForm({
       <div className="grid sm:grid-cols-3 gap-3">
         <label className="block">
           <span className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1.5"><DollarSign className="h-3 w-3" />Price (cents)</span>
-          <Input type="number" min="0" value={form.price} onChange={e => set("price", parseLimit(e.target.value))} className="h-9 text-sm font-mono" />
+          <Input type="number" min="0" value={form.price} onChange={e => handlePriceChange(e.target.value)} className="h-9 text-sm font-mono" />
           <p className="text-[10px] text-slate-400 dark:text-slate-600 mt-1">e.g. 2900 = $29.00/mo</p>
         </label>
         <label className="block">
           <span className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">Price Label</span>
           <Input value={form.priceLabel} onChange={e => set("priceLabel", e.target.value)} placeholder="$29/mo" className="h-9 text-sm" />
+          <p className="text-[10px] text-slate-400 dark:text-slate-600 mt-1">Auto-set from price, or override</p>
         </label>
         <label className="block">
           <span className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">Button Text</span>
