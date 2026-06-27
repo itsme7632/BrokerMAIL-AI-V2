@@ -394,9 +394,12 @@ router.post("/drafts/from-template", requireAuth, async (req, res): Promise<void
       results.push({ email, subject, status: "failed", error: phase1Err ?? "Unknown error" });
       failed++;
     } else {
+      // sentAt left null intentionally — broker must click "Mark Sent" in BrokerMAIL after
+      // sending the draft from Gmail. This prevents the broker's own preview from firing
+      // a false "opened" event on the tracking pixel.
       try {
         await db.insert(draftsTable).values({
-          userId: user.id, gmailDraftId, email, subject, body: bodyText, status: "success", trackingId, sentAt: new Date(),
+          userId: user.id, gmailDraftId, email, subject, body: bodyText, status: "success", trackingId,
         });
       } catch (draftErr: any) {
         logger.warn({ draftErr, email }, "[DRAFTS] Non-fatal: drafts table insert failed — draft WAS created in Gmail");

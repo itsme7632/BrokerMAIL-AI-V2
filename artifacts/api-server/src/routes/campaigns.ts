@@ -1645,11 +1645,15 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
         failed++;
       } else {
         // Draft confirmed created in Gmail — record success (DB writes here are non-fatal)
+        // sentAt is intentionally left null: the broker still needs to open Gmail and manually
+        // send the draft. The tracking pixel should only count opens AFTER the broker clicks
+        // "Mark Sent" in BrokerMAIL (which sets sentAt). Setting sentAt here would cause a
+        // false "opened" event when the broker previews the draft before sending it.
         try {
           await db.insert(draftsTable).values({
             userId: user.id, campaignId, leadId: lead.id,
             gmailDraftId, email: lead.email, subject: generatedSubject, body: generatedBody,
-            status: "success", trackingId, sentAt: new Date(),
+            status: "success", trackingId,
           });
         } catch (draftErr) {
           logger.warn({ draftErr, campaignId, leadId: lead.id },
@@ -2333,10 +2337,12 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
         : bodyHtml;
       const gmailDraftId = await createGmailDraft(freshUser, lead.email, generated.subject, generated.body, gDraftTrackedHtml);
 
+      // sentAt left null intentionally — broker must "Mark Sent" in BrokerMAIL after
+      // sending the draft from Gmail, which activates open tracking.
       await db.insert(draftsTable).values({
         userId: user.id, campaignId: campaign.id, leadId: lead.id,
         gmailDraftId, email: lead.email, subject: generated.subject, body: generated.body,
-        status: "success", trackingId, sentAt: new Date(),
+        status: "success", trackingId,
       });
       await db.update(leadsTable)
         .set({ status: "drafted", gmailDraftId, updatedAt: new Date() })
@@ -2486,8 +2492,9 @@ router.post("/campaigns/:id/leads/:leadId/retry", requireAuth, async (req, res):
     try {
       const gmailDraftId = await createGmailDraft(gFreshUser, lead.email!, gGenerated.subject, gGenerated.body, gTrackedHtml);
 
+      // sentAt left null intentionally — broker must "Mark Sent" in BrokerMAIL after sending.
       await db.update(draftsTable)
-        .set({ status: "success", gmailDraftId, subject: gGenerated.subject, body: gGenerated.body, trackingId: gTrackingId, errorMessage: null, sentAt: new Date() })
+        .set({ status: "success", gmailDraftId, subject: gGenerated.subject, body: gGenerated.body, trackingId: gTrackingId, errorMessage: null })
         .where(eq(draftsTable.id, failedDraft.id));
 
       await db.update(leadsTable)
