@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, FileText, Loader2, ArrowRight, Copy, Trash2 } from "lucide-react";
+import { Plus, FileText, Loader2, ArrowRight, Copy, Trash2, Pencil } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 function getAuthHeaders(): Record<string, string> {
