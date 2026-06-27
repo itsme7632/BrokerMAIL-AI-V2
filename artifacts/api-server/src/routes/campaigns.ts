@@ -16,7 +16,7 @@ import {
 import { generatePersonalizedEmail, AiConfigError } from "../lib/ai";
 import { createGmailDraft } from "../lib/gmail";
 import { validateEmailFast } from "../lib/email-validator";
-import { buildHtmlEmail, replaceVarsText, formatPrice, type BrandingSettings } from "../lib/email-html";
+import { buildHtmlEmail, replaceVarsText, formatPrice, extractLogoAttachment, type BrandingSettings } from "../lib/email-html";
 import type { User } from "@workspace/db";
 import { randomUUID } from "crypto";
 import { sendEmail } from "../lib/smtp";
@@ -1605,7 +1605,9 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
           try { return template.ctaButtonsJson ? JSON.parse(template.ctaButtonsJson) : []; }
           catch { return []; }
         })();
-        const bodyHtml = buildHtmlEmail(template.body, leadRow, branding, {
+        const gmailLogoAttachment = extractLogoAttachment(branding.logoUrl);
+        const gmailBranding = gmailLogoAttachment ? { ...branding, logoUrl: `cid:${gmailLogoAttachment.cid}` } : branding;
+        const bodyHtml = buildHtmlEmail(template.body, leadRow, gmailBranding, {
           style: emailStyle as any,
           useSignatureBuilder: useSig,
           ctaButtons: gmailCtaButtons,
@@ -1619,7 +1621,7 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
           ? (bodyHtml.includes("</body>") ? bodyHtml.replace(/<\/body>/i, `${gmailPixelTag}</body>`) : bodyHtml + gmailPixelTag)
           : bodyHtml;
 
-        gmailDraftId = await createGmailDraft(freshUser, lead.email, generatedSubject, generatedBody, gmailTrackedHtml);
+        gmailDraftId = await createGmailDraft(freshUser, lead.email, generatedSubject, generatedBody, gmailTrackedHtml, gmailLogoAttachment);
       } catch (err) {
         phase1Error = err instanceof Error ? err.message : String(err);
       }
@@ -2322,7 +2324,9 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
         try { return template.ctaButtonsJson ? JSON.parse(template.ctaButtonsJson) : []; }
         catch { return []; }
       })();
-      const bodyHtml = buildHtmlEmail(template.body, leadRow, branding, {
+      const gDraftLogoAttachment = extractLogoAttachment(branding.logoUrl);
+      const gDraftBranding = gDraftLogoAttachment ? { ...branding, logoUrl: `cid:${gDraftLogoAttachment.cid}` } : branding;
+      const bodyHtml = buildHtmlEmail(template.body, leadRow, gDraftBranding, {
         style: emailStyle,
         useSignatureBuilder: useSig,
         ctaButtons: gDraftCtaButtons,
@@ -2335,7 +2339,7 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
       const gDraftTrackedHtml = gDraftPixelTag
         ? (bodyHtml.includes("</body>") ? bodyHtml.replace(/<\/body>/i, `${gDraftPixelTag}</body>`) : bodyHtml + gDraftPixelTag)
         : bodyHtml;
-      const gmailDraftId = await createGmailDraft(freshUser, lead.email, generated.subject, generated.body, gDraftTrackedHtml);
+      const gmailDraftId = await createGmailDraft(freshUser, lead.email, generated.subject, generated.body, gDraftTrackedHtml, gDraftLogoAttachment);
 
       // sentAt left null intentionally — broker must "Mark Sent" in BrokerMAIL after
       // sending the draft from Gmail, which activates open tracking.
@@ -2475,7 +2479,9 @@ router.post("/campaigns/:id/leads/:leadId/retry", requireAuth, async (req, res):
       } else { throw aiErr; }
     }
 
-    const gBodyHtml = buildHtmlEmail(gTemplate.body, gLeadRow, gBranding, {
+    const gLogoAttachment = extractLogoAttachment(gBranding.logoUrl);
+    const gGmailBranding = gLogoAttachment ? { ...gBranding, logoUrl: `cid:${gLogoAttachment.cid}` } : gBranding;
+    const gBodyHtml = buildHtmlEmail(gTemplate.body, gLeadRow, gGmailBranding, {
       style: gStyle as any, useSignatureBuilder: gUseSig, ctaButtons: gCtaButtons,
       trackingId: gTracking.clickTrackingEnabled ? gTrackingId : undefined,
       publicBase: gTracking.clickTrackingEnabled ? gPublicBase : undefined,
@@ -2490,7 +2496,7 @@ router.post("/campaigns/:id/leads/:leadId/retry", requireAuth, async (req, res):
     logger.info({ campaignId, leadId, draftId: failedDraft.id }, "[RETRY-LEAD] Retrying failed Gmail draft");
 
     try {
-      const gmailDraftId = await createGmailDraft(gFreshUser, lead.email!, gGenerated.subject, gGenerated.body, gTrackedHtml);
+      const gmailDraftId = await createGmailDraft(gFreshUser, lead.email!, gGenerated.subject, gGenerated.body, gTrackedHtml, gLogoAttachment);
 
       // sentAt left null intentionally — broker must "Mark Sent" in BrokerMAIL after sending.
       await db.update(draftsTable)

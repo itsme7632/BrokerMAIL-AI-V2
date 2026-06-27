@@ -2,6 +2,7 @@ import { google } from "googleapis";
 import { db, usersTable } from "@workspace/db";
 import type { User } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import type { LogoAttachment } from "./email-html";
 
 const OAUTH_CLIENT_ID = process.env.GMAIL_CLIENT_ID ?? "";
 const OAUTH_CLIENT_SECRET = process.env.GMAIL_CLIENT_SECRET ?? "";
@@ -105,7 +106,8 @@ export async function createGmailDraft(
   to: string,
   subject: string,
   bodyText: string,
-  bodyHtml?: string
+  bodyHtml?: string,
+  logoAttachment?: LogoAttachment | null
 ): Promise<string> {
   if (!user.gmailAccessToken) {
     throw new Error("Gmail not connected — please reconnect Gmail in Settings.");
@@ -118,12 +120,52 @@ export async function createGmailDraft(
 
   const gmail = await getGmailClient(user);
   const subjectEncoded = `=?UTF-8?B?${Buffer.from(subject, "utf-8").toString("base64")}?=`;
-  const boundary = "====VERTEX_MAILER_BOUNDARY====";
+  const altBoundary     = "====VM_ALT====";
+  const relatedBoundary = "====VM_RELATED====";
 
   let rawMessage: string;
 
-  if (bodyHtml) {
-    // Multipart/alternative: text first (fallback), then HTML (preferred)
+  if (bodyHtml && logoAttachment) {
+    // multipart/related wraps multipart/alternative + inline logo image (CID)
+    const textB64 = Buffer.from(bodyText, "utf-8").toString("base64");
+    const htmlB64 = Buffer.from(bodyHtml, "utf-8").toString("base64");
+    const logoExt = logoAttachment.mimeType.split("/")[1] ?? "png";
+
+    rawMessage = [
+      `To: ${to}`,
+      `Subject: ${subjectEncoded}`,
+      "MIME-Version: 1.0",
+      `Content-Type: multipart/related; boundary="${relatedBoundary}"`,
+      "",
+      `--${relatedBoundary}`,
+      `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+      "",
+      `--${altBoundary}`,
+      "Content-Type: text/plain; charset=UTF-8",
+      "Content-Transfer-Encoding: base64",
+      "",
+      textB64,
+      "",
+      `--${altBoundary}`,
+      "Content-Type: text/html; charset=UTF-8",
+      "Content-Transfer-Encoding: base64",
+      "",
+      htmlB64,
+      "",
+      `--${altBoundary}--`,
+      "",
+      `--${relatedBoundary}`,
+      `Content-Type: ${logoAttachment.mimeType}; name="logo.${logoExt}"`,
+      "Content-Transfer-Encoding: base64",
+      `Content-ID: <${logoAttachment.cid}>`,
+      `Content-Disposition: inline; filename="logo.${logoExt}"`,
+      "",
+      logoAttachment.base64,
+      "",
+      `--${relatedBoundary}--`,
+    ].join("\r\n");
+  } else if (bodyHtml) {
+    // multipart/alternative: text fallback + HTML (no inline image)
     const textB64 = Buffer.from(bodyText, "utf-8").toString("base64");
     const htmlB64 = Buffer.from(bodyHtml, "utf-8").toString("base64");
 
@@ -131,21 +173,21 @@ export async function createGmailDraft(
       `To: ${to}`,
       `Subject: ${subjectEncoded}`,
       "MIME-Version: 1.0",
-      `Content-Type: multipart/alternative; boundary="${boundary}"`,
+      `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
       "",
-      `--${boundary}`,
+      `--${altBoundary}`,
       "Content-Type: text/plain; charset=UTF-8",
       "Content-Transfer-Encoding: base64",
       "",
       textB64,
       "",
-      `--${boundary}`,
+      `--${altBoundary}`,
       "Content-Type: text/html; charset=UTF-8",
       "Content-Transfer-Encoding: base64",
       "",
       htmlB64,
       "",
-      `--${boundary}--`,
+      `--${altBoundary}--`,
     ].join("\r\n");
   } else {
     rawMessage = [
@@ -207,6 +249,7 @@ export async function sendGmailMessage(
     bodyText: string;
     bodyHtml?: string;
     attachments?: Array<{ filename: string; content: Buffer; contentType: string }>;
+    logoAttachment?: LogoAttachment | null;
   }
 ): Promise<string> {
   if (!user.gmailAccessToken) {
@@ -218,8 +261,9 @@ export async function sendGmailMessage(
 
   const gmail = await getGmailClient(user);
   const subjectEncoded = `=?UTF-8?B?${Buffer.from(opts.subject, "utf-8").toString("base64")}?=`;
-  const outerBoundary = "====BROKERMAIL_OUTER====";
-  const innerBoundary = "====BROKERMAIL_INNER====";
+  const mixedBoundary   = "====VM_MIXED====";
+  const relatedBoundary = "====VM_RELATED====";
+  const altBoundary     = "====VM_ALT====";
 
   const headers: string[] = [
     `To: ${opts.to}`,
@@ -230,68 +274,109 @@ export async function sendGmailMessage(
   ];
 
   let rawMessage: string;
+  const hasAttachments = opts.attachments && opts.attachments.length > 0;
+  const { logoAttachment } = opts;
 
-  if (opts.attachments && opts.attachments.length > 0) {
+  if (opts.bodyHtml && (hasAttachments || logoAttachment)) {
+    // multipart/mixed (outer) → multipart/related (logo) → multipart/alternative + file attachments
     const textB64 = Buffer.from(opts.bodyText, "utf-8").toString("base64");
-    const htmlB64 = opts.bodyHtml
-      ? Buffer.from(opts.bodyHtml, "utf-8").toString("base64")
-      : textB64;
+    const htmlB64 = Buffer.from(opts.bodyHtml, "utf-8").toString("base64");
 
     const parts: string[] = [
       ...headers,
-      `Content-Type: multipart/mixed; boundary="${outerBoundary}"`,
+      `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`,
       "",
-      `--${outerBoundary}`,
-      `Content-Type: multipart/alternative; boundary="${innerBoundary}"`,
-      "",
-      `--${innerBoundary}`,
-      "Content-Type: text/plain; charset=UTF-8",
-      "Content-Transfer-Encoding: base64",
-      "",
-      textB64,
-      "",
-      `--${innerBoundary}`,
-      "Content-Type: text/html; charset=UTF-8",
-      "Content-Transfer-Encoding: base64",
-      "",
-      htmlB64,
-      "",
-      `--${innerBoundary}--`,
     ];
 
-    for (const att of opts.attachments) {
+    if (logoAttachment) {
+      const logoExt = logoAttachment.mimeType.split("/")[1] ?? "png";
       parts.push(
+        `--${mixedBoundary}`,
+        `Content-Type: multipart/related; boundary="${relatedBoundary}"`,
         "",
-        `--${outerBoundary}`,
-        `Content-Type: ${att.contentType}; name="${att.filename}"`,
+        `--${relatedBoundary}`,
+        `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+        "",
+        `--${altBoundary}`,
+        "Content-Type: text/plain; charset=UTF-8",
         "Content-Transfer-Encoding: base64",
-        `Content-Disposition: attachment; filename="${att.filename}"`,
         "",
-        att.content.toString("base64"),
+        textB64,
+        "",
+        `--${altBoundary}`,
+        "Content-Type: text/html; charset=UTF-8",
+        "Content-Transfer-Encoding: base64",
+        "",
+        htmlB64,
+        "",
+        `--${altBoundary}--`,
+        "",
+        `--${relatedBoundary}`,
+        `Content-Type: ${logoAttachment.mimeType}; name="logo.${logoExt}"`,
+        "Content-Transfer-Encoding: base64",
+        `Content-ID: <${logoAttachment.cid}>`,
+        `Content-Disposition: inline; filename="logo.${logoExt}"`,
+        "",
+        logoAttachment.base64,
+        "",
+        `--${relatedBoundary}--`,
+      );
+    } else {
+      parts.push(
+        `--${mixedBoundary}`,
+        `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+        "",
+        `--${altBoundary}`,
+        "Content-Type: text/plain; charset=UTF-8",
+        "Content-Transfer-Encoding: base64",
+        "",
+        textB64,
+        "",
+        `--${altBoundary}`,
+        "Content-Type: text/html; charset=UTF-8",
+        "Content-Transfer-Encoding: base64",
+        "",
+        htmlB64,
+        "",
+        `--${altBoundary}--`,
       );
     }
-    parts.push("", `--${outerBoundary}--`);
+
+    if (hasAttachments) {
+      for (const att of opts.attachments!) {
+        parts.push(
+          "",
+          `--${mixedBoundary}`,
+          `Content-Type: ${att.contentType}; name="${att.filename}"`,
+          "Content-Transfer-Encoding: base64",
+          `Content-Disposition: attachment; filename="${att.filename}"`,
+          "",
+          att.content.toString("base64"),
+        );
+      }
+    }
+    parts.push("", `--${mixedBoundary}--`);
     rawMessage = parts.join("\r\n");
   } else if (opts.bodyHtml) {
     const textB64 = Buffer.from(opts.bodyText, "utf-8").toString("base64");
     const htmlB64 = Buffer.from(opts.bodyHtml, "utf-8").toString("base64");
     rawMessage = [
       ...headers,
-      `Content-Type: multipart/alternative; boundary="${innerBoundary}"`,
+      `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
       "",
-      `--${innerBoundary}`,
+      `--${altBoundary}`,
       "Content-Type: text/plain; charset=UTF-8",
       "Content-Transfer-Encoding: base64",
       "",
       textB64,
       "",
-      `--${innerBoundary}`,
+      `--${altBoundary}`,
       "Content-Type: text/html; charset=UTF-8",
       "Content-Transfer-Encoding: base64",
       "",
       htmlB64,
       "",
-      `--${innerBoundary}--`,
+      `--${altBoundary}--`,
     ].join("\r\n");
   } else {
     rawMessage = [

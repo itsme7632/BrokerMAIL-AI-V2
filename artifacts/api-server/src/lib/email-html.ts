@@ -136,6 +136,27 @@ ${extraCss}
 </style>`;
 }
 
+// ─── Logo attachment (CID inline embedding for email clients) ─────────────────
+
+export interface LogoAttachment {
+  cid: string;
+  mimeType: string;
+  base64: string;
+}
+
+/**
+ * If `logoUrl` is a data: URI (as stored in the DB), extract the mime type and
+ * base64 payload so it can be embedded as a CID inline attachment in the MIME
+ * message instead of as a src="data:…" attribute (which Gmail / Outlook strip).
+ * Returns null for http(s) URLs or when no logo is set.
+ */
+export function extractLogoAttachment(logoUrl?: string | null): LogoAttachment | null {
+  if (!logoUrl) return null;
+  const match = logoUrl.match(/^data:([^;]+);base64,(.+)$/s);
+  if (!match) return null;
+  return { cid: "company-logo@brokermail.ai", mimeType: match[1], base64: match[2] };
+}
+
 function buildLogoHtml(branding: BrandingSettings, maxWidth = 120, maxHeight = 44): string {
   if (!branding.logoUrl) return "";
   const alt = branding.companyName ? escapeHtml(branding.companyName) : "Company Logo";

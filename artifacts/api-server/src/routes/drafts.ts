@@ -12,6 +12,7 @@ import {
   formatPrice,
   replaceVarsText,
   buildHtmlEmail,
+  extractLogoAttachment,
   type EmailStyle,
   type BrandingSettings,
 } from "../lib/email-html";
@@ -377,7 +378,9 @@ router.post("/drafts/from-template", requireAuth, async (req, res): Promise<void
     const bodyText = replaceVarsText(template.body, row);
 
     const trackingId = randomUUID();
-    const bodyHtml = buildHtmlEmail(template.body, row, branding, {
+    const draftLogoAttachment = extractLogoAttachment(branding.logoUrl);
+    const draftBranding = draftLogoAttachment ? { ...branding, logoUrl: `cid:${draftLogoAttachment.cid}` } : branding;
+    const bodyHtml = buildHtmlEmail(template.body, row, draftBranding, {
       style: emailStyle,
       useSignatureBuilder: useSig,
       ctaButtons: ctaButtonsFromTemplate,
@@ -395,7 +398,7 @@ router.post("/drafts/from-template", requireAuth, async (req, res): Promise<void
     let gmailDraftId: string | null = null;
     let phase1Err: string | null = null;
     try {
-      gmailDraftId = await createGmailDraft(freshUser, email, subject, bodyText, trackedHtml);
+      gmailDraftId = await createGmailDraft(freshUser, email, subject, bodyText, trackedHtml, draftLogoAttachment);
     } catch (err: any) {
       phase1Err = String(err?.message ?? "Unknown error");
     }
