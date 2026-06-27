@@ -14,6 +14,12 @@ import { maintenanceMiddleware } from "./lib/maintenance";
 
 const app: Express = express();
 
+// Trust the reverse proxy (Replit deployment proxy, Nginx, etc.)
+// Without this, req.ip always shows 127.0.0.1 (the proxy's loopback address)
+// instead of the real client IP — which breaks the open-tracking pixel filter
+// and causes every real email open to be silently dropped as "private IP".
+app.set("trust proxy", true);
+
 app.use(
   pinoHttp({
     logger,
