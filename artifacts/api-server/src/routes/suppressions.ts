@@ -109,7 +109,7 @@ router.post("/suppressions/remove", requireAuth, async (req, res): Promise<void>
 
   const [deleted] = await db
     .delete(suppressionListTable)
-    .where(eq(suppressionListTable.email, email))
+    .where(and(eq(suppressionListTable.userId, user.id), eq(suppressionListTable.email, email)))
     .returning();
 
   if (!deleted) { res.status(404).json({ error: "Email not in suppression list" }); return; }

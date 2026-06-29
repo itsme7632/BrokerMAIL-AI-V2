@@ -170,7 +170,7 @@ router.post("/drafts/mark-sent", requireAuth, async (req, res): Promise<void> =>
 
 router.patch("/drafts/:id/mark-sent", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  const id   = parseInt(req.params.id, 10);
+  const id   = parseInt(req.params.id as string, 10);
   if (!id) { res.status(400).json({ error: "Invalid draft id" }); return; }
 
   const [draft] = await db.update(draftsTable)
