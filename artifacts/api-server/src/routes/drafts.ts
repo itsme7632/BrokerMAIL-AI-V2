@@ -132,6 +132,90 @@ router.get("/drafts/:id", requireAuth, async (req, res): Promise<void> => {
   res.json({ ...draft, createdAt: draft.createdAt.toISOString() });
 });
 
+// ─── Auto-sync: detect which drafts were already sent from Gmail ──────────────
+/**
+ * POST /api/drafts/sync-sent
+ *
+ * Checks every unsent Gmail draft for the authenticated user by calling
+ * gmail.users.drafts.get(). If Gmail returns 404 the draft no longer exists
+ * in the Drafts folder — the user sent it from Gmail — so we auto-set sentAt.
+ *
+ * Safe to call repeatedly; idempotent (already-marked drafts are skipped via
+ * the WHERE sentAt IS NULL filter).
+ */
+router.post("/drafts/sync-sent", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+
+  // Only possible when Gmail is connected
+  if (!user.gmailAccessToken) {
+    res.json({ autoMarked: 0, checked: 0, skipped: "no_gmail" });
+    return;
+  }
+
+  // Fetch all unsent, non-SMTP Gmail drafts for this user
+  const unsent = await db
+    .select({ id: draftsTable.id, gmailDraftId: draftsTable.gmailDraftId })
+    .from(draftsTable)
+    .where(
+      and(
+        eq(draftsTable.userId, user.id),
+        sql`${draftsTable.sentAt} IS NULL`,
+        sql`${draftsTable.gmailDraftId} IS NOT NULL`,
+        sql`${draftsTable.gmailDraftId} NOT LIKE 'smtp:%'`,
+        sql`${draftsTable.status} = 'success'`,
+      )
+    );
+
+  if (unsent.length === 0) {
+    res.json({ autoMarked: 0, checked: 0 });
+    return;
+  }
+
+  const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+  if (!freshUser?.gmailAccessToken) {
+    res.json({ autoMarked: 0, checked: 0, skipped: "no_gmail" });
+    return;
+  }
+
+  let gmail: Awaited<ReturnType<typeof import("../lib/gmail").getGmailClient>>;
+  try {
+    gmail = await (await import("../lib/gmail")).getGmailClient(freshUser);
+  } catch {
+    res.json({ autoMarked: 0, checked: 0, skipped: "gmail_auth_error" });
+    return;
+  }
+
+  const sentAt = new Date();
+  const autoMarkedIds: number[] = [];
+
+  await Promise.all(
+    unsent.map(async (draft) => {
+      if (!draft.gmailDraftId) return;
+      try {
+        await gmail.users.drafts.get({ userId: "me", id: draft.gmailDraftId, format: "minimal" });
+        // Draft still exists in Gmail — not sent yet, skip
+      } catch (err: any) {
+        const status = err?.response?.status ?? err?.status ?? err?.code;
+        if (status === 404) {
+          // Draft is gone from Gmail → user sent it
+          autoMarkedIds.push(draft.id);
+        }
+        // Any other error (auth, network) — skip silently
+      }
+    })
+  );
+
+  if (autoMarkedIds.length > 0) {
+    await db
+      .update(draftsTable)
+      .set({ sentAt })
+      .where(inArray(draftsTable.id, autoMarkedIds));
+  }
+
+  logger.info({ userId: user.id, checked: unsent.length, autoMarked: autoMarkedIds.length }, "[SYNC-SENT] Auto-marked drafts as sent");
+  res.json({ autoMarked: autoMarkedIds.length, checked: unsent.length });
+});
+
 // ─── Mark as sent (activates open tracking) ───────────────────────────────────
 /**
  * PATCH /api/drafts/:id/mark-sent  — REST form

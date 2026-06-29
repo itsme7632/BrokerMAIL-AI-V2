@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useGetDrafts } from "@workspace/api-client-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { UploadCloud, Eye, MousePointerClick, AtSign, Clock, Mail, Send, CheckCircle2 } from "lucide-react";
+import { UploadCloud, Eye, MousePointerClick, AtSign, Clock, Mail, RefreshCw, CheckCircle2 } from "lucide-react";
 
 type DraftWithTracking = {
   id: number;
@@ -36,28 +36,53 @@ function getAuthHeaders(): Record<string, string> {
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
+async function syncSent(): Promise<{ autoMarked: number; checked: number }> {
+  const res = await fetch("/api/drafts/sync-sent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+  });
+  if (!res.ok) return { autoMarked: 0, checked: 0 };
+  return res.json();
+}
+
 export default function Drafts() {
   const [page, setPage] = useState(1);
   const { data, isLoading, refetch } = useGetDrafts({ page, limit: 20 });
-  const [markingSent, setMarkingSent] = useState<Set<number>>(new Set());
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ autoMarked: number; checked: number } | null>(null);
+  const didAutoSync = useRef(false);
+
+  // Auto-sync once on first load (after data arrives)
+  useEffect(() => {
+    if (isLoading || didAutoSync.current) return;
+    didAutoSync.current = true;
+    (async () => {
+      const result = await syncSent();
+      if (result.autoMarked > 0) {
+        setSyncResult(result);
+        refetch();
+        // Clear the banner after 6 s
+        setTimeout(() => setSyncResult(null), 6000);
+      }
+    })();
+  }, [isLoading]);
+
+  async function handleSync() {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const result = await syncSent();
+      setSyncResult(result);
+      if (result.autoMarked > 0) refetch();
+      setTimeout(() => setSyncResult(null), 6000);
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   const drafts = (data?.data ?? []) as unknown as DraftWithTracking[];
   const total  = data?.total ?? 0;
   const pages  = Math.max(1, Math.ceil(total / 20));
-
-  async function handleMarkSent(draftId: number) {
-    setMarkingSent(prev => new Set(prev).add(draftId));
-    try {
-      await fetch(`/api/drafts/mark-sent`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("auth_token") ?? ""}` },
-        body: JSON.stringify({ id: draftId }),
-      });
-      refetch();
-    } finally {
-      setMarkingSent(prev => { const s = new Set(prev); s.delete(draftId); return s; });
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -68,13 +93,39 @@ export default function Drafts() {
             All drafts created from your templates. Find them in your Gmail Drafts folder.
           </p>
         </div>
-        <Button asChild className="gap-2 rounded-xl shadow-sm">
-          <Link href="/leads/import">
-            <UploadCloud className="h-4 w-4" />
-            Upload &amp; Send
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSync}
+            disabled={syncing}
+            className="gap-1.5 rounded-xl text-sm"
+            title="Check Gmail for drafts you've already sent and activate their tracking"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Checking Gmail…" : "Sync from Gmail"}
+          </Button>
+          <Button asChild className="gap-2 rounded-xl shadow-sm">
+            <Link href="/leads/import">
+              <UploadCloud className="h-4 w-4" />
+              Upload &amp; Send
+            </Link>
+          </Button>
+        </div>
       </div>
+
+      {syncResult && (
+        <div className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium border ${
+          syncResult.autoMarked > 0
+            ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+            : "bg-slate-50 border-slate-200 text-slate-600"
+        }`}>
+          <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+          {syncResult.autoMarked > 0
+            ? `${syncResult.autoMarked} draft${syncResult.autoMarked > 1 ? "s" : ""} auto-marked as sent — tracking is now live!`
+            : `Checked ${syncResult.checked} draft${syncResult.checked !== 1 ? "s" : ""} — none sent yet.`}
+        </div>
+      )}
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
@@ -171,17 +222,7 @@ export default function Drafts() {
                             <CheckCircle2 className="h-3 w-3" /> Sent
                           </span>
                         ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={markingSent.has(draft.id)}
-                            onClick={() => handleMarkSent(draft.id)}
-                            className="rounded-lg text-xs h-7 px-2.5 gap-1"
-                            title="Click after sending this draft from Gmail to activate open tracking"
-                          >
-                            <Send className="h-3 w-3" />
-                            {markingSent.has(draft.id) ? "Saving…" : "Mark Sent"}
-                          </Button>
+                          <span className="text-xs text-slate-400 italic">Pending send…</span>
                         )
                       )}
                     </TableCell>
