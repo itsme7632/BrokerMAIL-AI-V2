@@ -8,6 +8,7 @@ import { db, pool, usersTable, plansTable, campaignsTable, emailQueueTable, lead
 import { eq, and, inArray, isNotNull } from "drizzle-orm";
 import { startCampaignProcessor } from "./routes/campaigns";
 import { runBounceScanner } from "./lib/bounce-scanner";
+import { runGmailDraftSync } from "./lib/gmail-draft-sync";
 import { hashPassword } from "./lib/auth";
 import { maintenanceMiddleware } from "./lib/maintenance";
 
@@ -254,7 +255,7 @@ async function runWatchdog(): Promise<void> {
 }
 
 // Start watchdog 10 s after boot, then every 60 s
-// Also runs bounce scanner on each cycle (IMAP-based DSN detection)
+// Also runs bounce scanner and Gmail draft sync on each cycle
 setTimeout(() => {
   runWatchdog().catch(() => {});
   runBounceScanner().catch(() => {});
@@ -263,6 +264,16 @@ setTimeout(() => {
     runBounceScanner().catch(() => {});
   }, 60_000);
 }, 10_000);
+
+// Gmail draft sync — runs every 5 minutes
+// Detects drafts the broker sent from Gmail and auto-activates their tracking.
+// Starts 30 s after boot (after the watchdog has settled).
+setTimeout(() => {
+  runGmailDraftSync().catch(() => {});
+  setInterval(() => {
+    runGmailDraftSync().catch(() => {});
+  }, 5 * 60_000);
+}, 30_000);
 
 // ---------------------------------------------------------------------------
 // Startup schema validation — compares DB columns against Drizzle schema
