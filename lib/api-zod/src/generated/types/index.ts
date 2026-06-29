@@ -17,6 +17,7 @@ export * from './bulkImportResult';
 export * from './bulkLeadImportInput';
 export * from './campaign';
 export * from './campaignInput';
+export * from './campaignSendMode';
 export * from './campaignStatus';
 export * from './campaignUpdate';
 export * from './campaignUpdateStatus';

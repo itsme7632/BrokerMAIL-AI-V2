@@ -1064,6 +1064,11 @@ components:
           type: integer
         failedCount:
           type: integer
+        sendMode:
+          type: string
+          enum: [smtp, gmail]
+        fileName:
+          type: ["string", "null"]
         createdAt:
           type: string
         updatedAt:

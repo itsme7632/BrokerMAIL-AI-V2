@@ -5,6 +5,7 @@
  * Vertex AI Mailer API
  * OpenAPI spec version: 0.1.0
  */
+import type { CampaignSendMode } from './campaignSendMode';
 import type { CampaignStatus } from './campaignStatus';
 
 export interface Campaign {
@@ -17,6 +18,9 @@ export interface Campaign {
   totalLeads: number;
   draftedCount: number;
   failedCount: number;
+  sendMode?: CampaignSendMode;
+  /** @nullable */
+  fileName?: string | null;
   createdAt: string;
   updatedAt: string;
 }

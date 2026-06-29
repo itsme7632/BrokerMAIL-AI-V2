@@ -2699,7 +2699,7 @@ export function AdminSettings() {
                     </div>
                     <div className="flex items-end">
                       <Button variant="outline" className="rounded-xl gap-2 whitespace-nowrap"
-                        disabled={!restoreFile || validating} onClick={doValidateRestore}>
+                        disabled={!restoreFile || validating} onClick={() => doValidateRestore()}>
                         {validating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
                         {validating ? "Validating..." : "Validate ZIP"}
                       </Button>

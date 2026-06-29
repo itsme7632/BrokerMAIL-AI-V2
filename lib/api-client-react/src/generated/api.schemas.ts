@@ -109,6 +109,14 @@ export const CampaignStatus = {
   completed: 'completed',
 } as const;
 
+export type CampaignSendMode = typeof CampaignSendMode[keyof typeof CampaignSendMode];
+
+
+export const CampaignSendMode = {
+  smtp: 'smtp',
+  gmail: 'gmail',
+} as const;
+
 export interface Campaign {
   id: number;
   userId: number;
@@ -119,6 +127,9 @@ export interface Campaign {
   totalLeads: number;
   draftedCount: number;
   failedCount: number;
+  sendMode?: CampaignSendMode;
+  /** @nullable */
+  fileName?: string | null;
   createdAt: string;
   updatedAt: string;
 }

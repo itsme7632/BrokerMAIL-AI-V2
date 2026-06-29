@@ -267,7 +267,7 @@ export default function CampaignDetail() {
 
   const { data: leadsData, isLoading: isLeadsLoading } = useGetLeads(
     { campaignId, page: leadsPage, limit: 10 },
-    { query: { enabled: !!campaignId && showLeads } }
+    { query: { enabled: !!campaignId && showLeads, queryKey: getGetLeadsQueryKey({ campaignId, page: leadsPage, limit: 10 }) } }
   );
 
   const { data: analytics } = useQuery({

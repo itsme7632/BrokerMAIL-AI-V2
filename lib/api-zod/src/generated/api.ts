@@ -152,6 +152,8 @@ export const GetRecentCampaignsResponseItem = zod.object({
   "totalLeads": zod.number(),
   "draftedCount": zod.number(),
   "failedCount": zod.number(),
+  "sendMode": zod.enum(['smtp', 'gmail']).optional(),
+  "fileName": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -199,6 +201,8 @@ export const GetCampaignsResponse = zod.object({
   "totalLeads": zod.number(),
   "draftedCount": zod.number(),
   "failedCount": zod.number(),
+  "sendMode": zod.enum(['smtp', 'gmail']).optional(),
+  "fileName": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })),
@@ -236,6 +240,8 @@ export const GetCampaignResponse = zod.object({
   "totalLeads": zod.number(),
   "draftedCount": zod.number(),
   "failedCount": zod.number(),
+  "sendMode": zod.enum(['smtp', 'gmail']).optional(),
+  "fileName": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -266,6 +272,8 @@ export const UpdateCampaignResponse = zod.object({
   "totalLeads": zod.number(),
   "draftedCount": zod.number(),
   "failedCount": zod.number(),
+  "sendMode": zod.enum(['smtp', 'gmail']).optional(),
+  "fileName": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
