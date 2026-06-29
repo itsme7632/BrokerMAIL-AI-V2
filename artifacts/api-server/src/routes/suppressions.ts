@@ -11,26 +11,31 @@
 
 import { Router, type IRouter } from "express";
 import { db, suppressionListTable } from "@workspace/db";
-import { eq, desc, count, sql } from "drizzle-orm";
+import { eq, desc, count, sql, and, ilike } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 
 const router: IRouter = Router();
 
 // GET /api/suppressions
 router.get("/suppressions", requireAuth, async (req, res): Promise<void> => {
-  const user  = req.user!;
-  const page  = Math.max(1, parseInt(req.query.page  as string, 10) || 1);
-  const limit = Math.min(200, parseInt(req.query.limit as string, 10) || 50);
+  const user   = req.user!;
+  const page   = Math.max(1, parseInt(req.query.page  as string, 10) || 1);
+  const limit  = Math.min(200, parseInt(req.query.limit as string, 10) || 50);
+  const q      = typeof req.query.q === "string" ? req.query.q.trim() : "";
+
+  const baseWhere = q
+    ? and(eq(suppressionListTable.userId, user.id), ilike(suppressionListTable.email, `%${q}%`))
+    : eq(suppressionListTable.userId, user.id);
 
   const [totalRow] = await db
     .select({ count: count() })
     .from(suppressionListTable)
-    .where(eq(suppressionListTable.userId, user.id));
+    .where(baseWhere);
 
   const rows = await db
     .select()
     .from(suppressionListTable)
-    .where(eq(suppressionListTable.userId, user.id))
+    .where(baseWhere)
     .orderBy(desc(suppressionListTable.createdAt))
     .limit(limit)
     .offset((page - 1) * limit);
@@ -75,6 +80,25 @@ router.get("/suppressions/stats", requireAuth, async (req, res): Promise<void> =
     lastSuppressionAt: lastRow?.createdAt.toISOString() ?? null,
     topReasons:        reasons.map(r => ({ reason: r.reason, count: r.cnt })),
   });
+});
+
+// POST /api/suppressions/add — manually add an email to the suppression list
+router.post("/suppressions/add", requireAuth, async (req, res): Promise<void> => {
+  const user   = req.user!;
+  const email  = typeof req.body.email  === "string" ? req.body.email.trim().toLowerCase()  : "";
+  const reason = typeof req.body.reason === "string" ? req.body.reason.trim() : "manual";
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    res.status(400).json({ error: "Valid email address is required" });
+    return;
+  }
+
+  try {
+    await db.insert(suppressionListTable).values({ userId: user.id, email, reason }).onConflictDoNothing();
+    res.status(201).json({ message: "Added to suppression list", email, reason });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to add email to suppression list" });
+  }
 });
 
 // POST /api/suppressions/remove — proxy-safe alias; removes one email

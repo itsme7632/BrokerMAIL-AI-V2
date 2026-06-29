@@ -27,6 +27,7 @@ const NAV_ITEMS = [
   { href: "/drafts",            icon: Mail,            label: "Gmail Drafts",     exact: false },
   { href: "/mailbox",           icon: Server,          label: "Mailbox",          exact: true  },
   { href: "/plans",             icon: CreditCard,      label: "Plans & Billing",  exact: true  },
+  { href: "/suppressions",      icon: ShieldAlert,     label: "Suppression List", exact: true  },
   { href: "/support",           icon: TicketCheck,     label: "Support",          exact: false },
 ];
 

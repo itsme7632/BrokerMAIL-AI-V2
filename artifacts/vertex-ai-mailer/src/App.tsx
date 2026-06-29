@@ -42,6 +42,7 @@ import SingleEmailComposer from "@/pages/SingleEmailComposer";
 import DesignTemplateLibrary from "@/pages/DesignTemplateLibrary";
 import SupportTickets from "@/pages/SupportTickets";
 import SupportTicketDetail from "@/pages/SupportTicketDetail";
+import SuppressionList from "@/pages/SuppressionList";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -190,6 +191,12 @@ function Router() {
       <Route path="/support">
         <ProtectedRoute>
           <AppLayout><SupportTickets /></AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/suppressions">
+        <ProtectedRoute>
+          <AppLayout><SuppressionList /></AppLayout>
         </ProtectedRoute>
       </Route>
 
