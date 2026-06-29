@@ -4,9 +4,38 @@ import { getGmailClient } from "./gmail";
 import { logger } from "./logger";
 
 /**
- * Check every unsent Gmail draft for `userId` against the Gmail API.
- * If a draft returns 404 it has been sent (or deleted) from Gmail — we
- * auto-set `sentAt` so tracking activates immediately.
+ * Fetch all current draft IDs from Gmail for `user` — handles pagination so
+ * we never miss a draft even when the user has > 500 sitting unsent.
+ */
+async function listAllGmailDraftIds(
+  gmail: Awaited<ReturnType<typeof getGmailClient>>
+): Promise<Set<string>> {
+  const ids = new Set<string>();
+  let pageToken: string | undefined;
+
+  do {
+    const res = await gmail.users.drafts.list({
+      userId: "me",
+      maxResults: 500,
+      ...(pageToken ? { pageToken } : {}),
+    });
+
+    for (const d of res.data.drafts ?? []) {
+      if (d.id) ids.add(d.id);
+    }
+
+    pageToken = res.data.nextPageToken ?? undefined;
+  } while (pageToken);
+
+  return ids;
+}
+
+/**
+ * Check every unsent Gmail draft for `userId` by comparing our stored draft IDs
+ * against Gmail's actual Drafts folder (one list call, not per-draft fetches).
+ *
+ * If a stored draft ID is absent from Gmail's Drafts folder the broker already
+ * sent it → we auto-set sentAt so tracking activates immediately.
  *
  * Returns { autoMarked, checked } — safe to call from both HTTP handlers and
  * the background job.
@@ -50,28 +79,35 @@ export async function syncSentDrafts(
     return { autoMarked: 0, checked: 0, skipped: "gmail_auth_error" };
   }
 
-  const autoMarkedIds: number[] = [];
+  // Fetch the complete set of Gmail draft IDs currently in the Drafts folder.
+  // Any of our stored IDs that are missing → the broker sent (or deleted) them.
+  let currentGmailDraftIds: Set<string>;
+  try {
+    currentGmailDraftIds = await listAllGmailDraftIds(gmail);
+    logger.info(
+      { userId, gmailDrafts: currentGmailDraftIds.size, ourUnsent: unsent.length },
+      "[GMAIL-SYNC] Draft list fetched"
+    );
+  } catch (err: any) {
+    logger.warn(
+      { err: err?.message, userId },
+      "[GMAIL-SYNC] Failed to list Gmail drafts — skipping user"
+    );
+    return { autoMarked: 0, checked: 0, skipped: "list_error" };
+  }
 
-  await Promise.all(
-    unsent.map(async (draft) => {
-      if (!draft.gmailDraftId) return;
-      try {
-        await gmail.users.drafts.get({
-          userId: "me",
-          id: draft.gmailDraftId,
-          format: "minimal",
-        });
-        // Draft still exists in Gmail — not sent yet
-      } catch (err: any) {
-        const status = err?.response?.status ?? err?.status ?? err?.code;
-        if (status === 404) {
-          // Draft is gone from Gmail → broker sent it
-          autoMarkedIds.push(draft.id);
-        }
-        // Auth/network errors — skip silently; they'll be retried next cycle
-      }
-    })
-  );
+  // Cross-reference: IDs absent from Gmail = sent
+  const autoMarkedIds: number[] = [];
+  for (const draft of unsent) {
+    if (!draft.gmailDraftId) continue;
+    if (!currentGmailDraftIds.has(draft.gmailDraftId)) {
+      autoMarkedIds.push(draft.id);
+      logger.info(
+        { userId, draftId: draft.id, gmailDraftId: draft.gmailDraftId },
+        "[GMAIL-SYNC] Draft absent from Gmail — marking as sent"
+      );
+    }
+  }
 
   if (autoMarkedIds.length > 0) {
     const sentAt = new Date();
@@ -98,7 +134,6 @@ export async function syncSentDrafts(
  */
 export async function runGmailDraftSync(): Promise<void> {
   try {
-    // Find every user who has Gmail connected and at least one unsent draft
     const usersWithUnsent = await db
       .selectDistinct({ userId: draftsTable.userId })
       .from(draftsTable)
@@ -122,7 +157,6 @@ export async function runGmailDraftSync(): Promise<void> {
     for (const { userId } of usersWithUnsent) {
       const result = await syncSentDrafts(userId);
       totalMarked += result.autoMarked;
-      // Small delay between users to avoid hammering the Gmail API
       await new Promise((r) => setTimeout(r, 200));
     }
 
