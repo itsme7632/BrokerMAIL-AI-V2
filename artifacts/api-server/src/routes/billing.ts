@@ -228,7 +228,7 @@ router.get("/admin/plan-requests", requireAdmin, async (req, res): Promise<void>
 
 router.post("/admin/plan-requests/:id/approve", requireAdmin, async (req, res): Promise<void> => {
   const admin = req.user!;
-  const requestId = parseInt(req.params.id, 10);
+  const requestId = parseInt((req.params.id as string), 10);
 
   const [request] = await db.select().from(planRequestsTable)
     .where(eq(planRequestsTable.id, requestId));
@@ -278,7 +278,7 @@ router.post("/admin/plan-requests/:id/approve", requireAdmin, async (req, res): 
 
 router.post("/admin/plan-requests/:id/reject", requireAdmin, async (req, res): Promise<void> => {
   const admin = req.user!;
-  const requestId = parseInt(req.params.id, 10);
+  const requestId = parseInt((req.params.id as string), 10);
   const { note } = req.body as { note?: string };
 
   const [request] = await db.select().from(planRequestsTable)
@@ -305,7 +305,7 @@ router.post("/admin/plan-requests/:id/reject", requireAdmin, async (req, res): P
 
 router.post("/admin/plan-requests/:id/mark-paid", requireAdmin, async (req, res): Promise<void> => {
   const admin = req.user!;
-  const requestId = parseInt(req.params.id, 10);
+  const requestId = parseInt((req.params.id as string), 10);
   const { note } = req.body as { note?: string };
 
   const [request] = await db.select().from(planRequestsTable)
@@ -376,7 +376,7 @@ router.get("/admin/subscriptions", requireAdmin, async (_req, res): Promise<void
 
 router.post("/admin/users/:id/assign-plan", requireAdmin, async (req, res): Promise<void> => {
   const admin = req.user!;
-  const targetUserId = parseInt(req.params.id, 10);
+  const targetUserId = parseInt((req.params.id as string), 10);
   const { planId } = req.body as { planId: number };
 
   const [plan] = await db.select().from(plansTable).where(eq(plansTable.id, planId));
@@ -435,7 +435,7 @@ router.post("/admin/payment-methods", requireAdmin, async (req, res): Promise<vo
 });
 
 router.put("/admin/payment-methods/:id", requireAdmin, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt((req.params.id as string), 10);
   const { displayName, type, isEnabled, instructions, accountDetails, walletAddress, qrCodeUrl, sortOrder } = req.body;
 
   await db.update(paymentMethodsTable).set({
@@ -454,7 +454,7 @@ router.put("/admin/payment-methods/:id", requireAdmin, async (req, res): Promise
 });
 
 router.delete("/admin/payment-methods/:id", requireAdmin, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt((req.params.id as string), 10);
   await db.delete(paymentMethodsTable).where(eq(paymentMethodsTable.id, id));
   res.json({ ok: true });
 });

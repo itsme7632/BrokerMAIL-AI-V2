@@ -411,7 +411,7 @@ router.get("/sent-emails/stats", requireAuth, async (req, res): Promise<void> =>
 
 router.get("/sent-emails/:id/preview", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  const id   = parseInt(req.params.id, 10);
+  const id   = parseInt((req.params.id as string), 10);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const [item] = await db.select().from(emailQueueTable)
@@ -495,7 +495,7 @@ router.get("/sent-emails/:id/preview", requireAuth, async (req, res): Promise<vo
 
 router.get("/sent-emails/:id/timeline", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  const id   = parseInt(req.params.id, 10);
+  const id   = parseInt((req.params.id as string), 10);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const [item] = await db.select({
@@ -597,7 +597,7 @@ router.get("/sent-emails/:id/timeline", requireAuth, async (req, res): Promise<v
 
 router.post("/sent-emails/:id/retry", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  const id   = parseInt(req.params.id, 10);
+  const id   = parseInt((req.params.id as string), 10);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const [item] = await db.select().from(emailQueueTable)
@@ -692,7 +692,7 @@ router.post("/sent-emails/:id/retry", requireAuth, async (req, res): Promise<voi
 
 router.post("/sent-emails/:id/edit-resend", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  const id   = parseInt(req.params.id, 10);
+  const id   = parseInt((req.params.id as string), 10);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const { toEmail, subject: editedSubject, note } = req.body as {
@@ -809,7 +809,7 @@ router.post("/sent-emails/:id/edit-resend", requireAuth, async (req, res): Promi
 
 router.patch("/sent-emails/:id/ignore", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  const id   = parseInt(req.params.id, 10);
+  const id   = parseInt((req.params.id as string), 10);
   if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const [item] = await db.select({ id: emailQueueTable.id }).from(emailQueueTable)

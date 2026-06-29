@@ -53,7 +53,7 @@ router.post("/support/upload", requireAuth, upload.single("file"), (req, res) =>
 });
 
 router.get("/support/files/:filename", (req, res) => {
-  const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const filename = (req.params.filename as string).replace(/[^a-zA-Z0-9._-]/g, "_");
   const filePath = path.join(UPLOAD_DIR, filename);
   if (!fs.existsSync(filePath)) { res.status(404).json({ error: "File not found" }); return; }
   res.sendFile(filePath);
@@ -108,7 +108,7 @@ router.get("/support/tickets", requireAuth, async (req, res): Promise<void> => {
 
 router.get("/support/tickets/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt((req.params.id as string), 10);
 
   const [ticket] = await db.select().from(supportTicketsTable)
     .where(and(eq(supportTicketsTable.id, id), eq(supportTicketsTable.userId, user.id)));
@@ -121,7 +121,7 @@ router.get("/support/tickets/:id", requireAuth, async (req, res): Promise<void> 
 
 router.post("/support/tickets/:id/reply", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt((req.params.id as string), 10);
   const { message, attachments = [] } = req.body as { message: string; attachments?: string[] };
 
   if (!message?.trim()) { res.status(400).json({ error: "Message required." }); return; }
@@ -162,7 +162,7 @@ router.post("/support/tickets/:id/reply", requireAuth, async (req, res): Promise
 
 router.post("/support/tickets/:id/close", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt((req.params.id as string), 10);
 
   const [ticket] = await db.select().from(supportTicketsTable)
     .where(and(eq(supportTicketsTable.id, id), eq(supportTicketsTable.userId, user.id)));

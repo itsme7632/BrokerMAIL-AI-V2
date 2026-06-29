@@ -141,7 +141,7 @@ router.post("/composer/drafts", requireAuth, async (req, res) => {
 // ── PUT /api/composer/drafts/:id ──────────────────────────────────────────────
 router.put("/composer/drafts/:id", requireAuth, async (req, res) => {
   const user = req.user as User;
-  const id   = parseInt(req.params.id);
+  const id   = parseInt((req.params.id as string));
   try {
     const { mailboxId, mailboxType, toEmail, ccEmail, bccEmail, subject, body, trackOpen, trackClick, includeBranding, attachmentsMeta } = req.body;
     const [draft] = await db
@@ -173,7 +173,7 @@ router.put("/composer/drafts/:id", requireAuth, async (req, res) => {
 // ── DELETE /api/composer/drafts/:id ──────────────────────────────────────────
 router.delete("/composer/drafts/:id", requireAuth, async (req, res) => {
   const user = req.user as User;
-  const id   = parseInt(req.params.id);
+  const id   = parseInt((req.params.id as string));
   try {
     await db.delete(composerDraftsTable)
       .where(and(eq(composerDraftsTable.id, id), eq(composerDraftsTable.userId, user.id)));
@@ -240,7 +240,7 @@ router.post("/composer/design-templates", requireAuth, async (req, res) => {
 // ── PUT /api/composer/design-templates/:id ────────────────────────────────────
 router.put("/composer/design-templates/:id", requireAuth, async (req, res) => {
   const user = req.user as User;
-  const id   = parseInt(req.params.id);
+  const id   = parseInt((req.params.id as string));
   try {
     const { name, description, htmlLayout } = req.body;
     const [row] = await db
@@ -264,7 +264,7 @@ router.put("/composer/design-templates/:id", requireAuth, async (req, res) => {
 // ── DELETE /api/composer/design-templates/:id ─────────────────────────────────
 router.delete("/composer/design-templates/:id", requireAuth, async (req, res) => {
   const user = req.user as User;
-  const id   = parseInt(req.params.id);
+  const id   = parseInt((req.params.id as string));
   try {
     await db.delete(designTemplatesTable)
       .where(and(eq(designTemplatesTable.id, id), eq(designTemplatesTable.userId, user.id)));
@@ -278,7 +278,7 @@ router.delete("/composer/design-templates/:id", requireAuth, async (req, res) =>
 // ── POST /api/composer/design-templates/:id/duplicate ────────────────────────
 router.post("/composer/design-templates/:id/duplicate", requireAuth, async (req, res) => {
   const user = req.user as User;
-  const id   = parseInt(req.params.id);
+  const id   = parseInt((req.params.id as string));
   try {
     const [original] = await db.select()
       .from(designTemplatesTable)
@@ -563,7 +563,7 @@ router.post("/composer/email-templates", requireAuth, async (req, res) => {
 // ── PUT /api/composer/email-templates/:id ─────────────────────────────────────
 router.put("/composer/email-templates/:id", requireAuth, async (req, res) => {
   const user = req.user as User;
-  const id   = parseInt(req.params.id);
+  const id   = parseInt((req.params.id as string));
   try {
     const { name, subject, body, designId, includeBranding } = req.body;
     const [row] = await db
@@ -588,7 +588,7 @@ router.put("/composer/email-templates/:id", requireAuth, async (req, res) => {
 // ── DELETE /api/composer/email-templates/:id ──────────────────────────────────
 router.delete("/composer/email-templates/:id", requireAuth, async (req, res) => {
   const user = req.user as User;
-  const id   = parseInt(req.params.id);
+  const id   = parseInt((req.params.id as string));
   try {
     await db.delete(composerEmailTemplatesTable)
       .where(and(eq(composerEmailTemplatesTable.id, id), eq(composerEmailTemplatesTable.userId, user.id)));
@@ -601,7 +601,7 @@ router.delete("/composer/email-templates/:id", requireAuth, async (req, res) => 
 // ── POST /api/composer/email-templates/:id/duplicate ──────────────────────────
 router.post("/composer/email-templates/:id/duplicate", requireAuth, async (req, res) => {
   const user = req.user as User;
-  const id   = parseInt(req.params.id);
+  const id   = parseInt((req.params.id as string));
   try {
     const [original] = await db.select()
       .from(composerEmailTemplatesTable)

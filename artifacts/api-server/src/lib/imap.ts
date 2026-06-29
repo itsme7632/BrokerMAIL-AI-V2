@@ -58,14 +58,14 @@ export async function saveToSent(mailbox: Mailbox, rawMessage: Buffer): Promise<
 }
 
 async function _appendToSent(mailbox: Mailbox, rawMessage: Buffer): Promise<void> {
-  const pass = decrypt(mailbox.imapPassEncrypted);
+  const pass = decrypt(mailbox.imapPassEncrypted ?? '');
   const port = mailbox.imapPort ?? 993;
 
   const client = new ImapFlow({
-    host: mailbox.imapHost,
+    host: mailbox.imapHost ?? '',
     port,
     secure: port === 993,
-    auth: { user: mailbox.imapUser, pass },
+    auth: { user: mailbox.imapUser ?? '', pass },
     tls: { rejectUnauthorized: false },
     logger: false,
     // Generous timeouts for slow servers; fire-and-forget so latency is fine.
@@ -105,7 +105,8 @@ async function _appendToSent(mailbox: Mailbox, rawMessage: Buffer): Promise<void
     // Enumerate all folders once. We collect every path so the name-match
     // fallback has the full list even if we short-circuit on the special-use flag.
     const allPaths: string[] = [];
-    for await (const box of client.list()) {
+    const listedBoxes = await client.list();
+    for (const box of listedBoxes) {
       const specialUse = (box as any).specialUse as string | undefined;
       allPaths.push(box.path);
       if (specialUse === "\\Sent" && !targetFolder) {

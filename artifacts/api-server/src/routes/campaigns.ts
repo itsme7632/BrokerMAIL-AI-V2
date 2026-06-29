@@ -1249,7 +1249,7 @@ router.get("/campaigns/:id", requireAuth, async (req, res): Promise<void> => {
 // ─── GET /api/campaigns/:id/progress ─────────────────────────────────────────
 router.get("/campaigns/:id/progress", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  const campaignId = parseInt(req.params.id, 10);
+  const campaignId = parseInt((req.params.id as string), 10);
   if (!campaignId) { res.status(400).json({ error: "Invalid campaign id" }); return; }
 
   const [campaign] = await db.select().from(campaignsTable)
@@ -1389,7 +1389,7 @@ router.get("/campaigns/:id/progress", requireAuth, async (req, res): Promise<voi
  */
 router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  const campaignId = parseInt(req.params.id, 10);
+  const campaignId = parseInt((req.params.id as string), 10);
   if (!campaignId) { res.status(400).json({ error: "Invalid campaign id" }); return; }
 
   const { batchSize } = req.body as { batchSize?: number };
@@ -1702,7 +1702,7 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
  */
 router.post("/campaigns/:id/start-campaign", requireAuth, async (req, res): Promise<void> => {
   const user       = req.user!;
-  const campaignId = parseInt(req.params.id, 10);
+  const campaignId = parseInt((req.params.id as string), 10);
   if (!campaignId) { res.status(400).json({ success: false, error: "Invalid campaign id" }); return; }
 
   try {
@@ -1873,7 +1873,7 @@ router.post("/campaigns/:id/start-campaign", requireAuth, async (req, res): Prom
 // ─── POST /api/campaigns/:id/pause ────────────────────────────────────────────
 router.post("/campaigns/:id/pause", requireAuth, async (req, res): Promise<void> => {
   const user       = req.user!;
-  const campaignId = parseInt(req.params.id, 10);
+  const campaignId = parseInt((req.params.id as string), 10);
   if (!campaignId) { res.status(400).json({ success: false, error: "Invalid campaign id" }); return; }
 
   try {
@@ -1898,7 +1898,7 @@ router.post("/campaigns/:id/pause", requireAuth, async (req, res): Promise<void>
 // ─── POST /api/campaigns/:id/resume ───────────────────────────────────────────
 router.post("/campaigns/:id/resume", requireAuth, async (req, res): Promise<void> => {
   const user       = req.user!;
-  const campaignId = parseInt(req.params.id, 10);
+  const campaignId = parseInt((req.params.id as string), 10);
   if (!campaignId) { res.status(400).json({ success: false, error: "Invalid campaign id" }); return; }
 
   try {
@@ -1946,7 +1946,7 @@ router.post("/campaigns/:id/resume", requireAuth, async (req, res): Promise<void
 // ─── POST /api/campaigns/:id/cancel ───────────────────────────────────────────
 router.post("/campaigns/:id/cancel", requireAuth, async (req, res): Promise<void> => {
   const user       = req.user!;
-  const campaignId = parseInt(req.params.id, 10);
+  const campaignId = parseInt((req.params.id as string), 10);
   if (!campaignId) { res.status(400).json({ success: false, error: "Invalid campaign id" }); return; }
 
   try {
@@ -1970,7 +1970,7 @@ router.post("/campaigns/:id/cancel", requireAuth, async (req, res): Promise<void
 // ─── POST /api/campaigns/:id/duplicate ───────────────────────────────────────
 router.post("/campaigns/:id/duplicate", requireAuth, async (req, res): Promise<void> => {
   const user       = req.user!;
-  const campaignId = parseInt(req.params.id, 10);
+  const campaignId = parseInt((req.params.id as string), 10);
   if (!campaignId) { res.status(400).json({ error: "Invalid campaign id" }); return; }
 
   try {
@@ -2011,7 +2011,7 @@ router.post("/campaigns/:id/duplicate", requireAuth, async (req, res): Promise<v
 // ─── POST /api/campaigns/:id/archive ─────────────────────────────────────────
 router.post("/campaigns/:id/archive", requireAuth, async (req, res): Promise<void> => {
   const user       = req.user!;
-  const campaignId = parseInt(req.params.id, 10);
+  const campaignId = parseInt((req.params.id as string), 10);
   if (!campaignId) { res.status(400).json({ error: "Invalid campaign id" }); return; }
 
   try {
@@ -2032,7 +2032,7 @@ router.post("/campaigns/:id/archive", requireAuth, async (req, res): Promise<voi
 // ─── GET /api/campaigns/:id/batches ──────────────────────────────────────────
 router.get("/campaigns/:id/batches", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  const campaignId = parseInt(req.params.id, 10);
+  const campaignId = parseInt((req.params.id as string), 10);
   if (!campaignId) { res.status(400).json({ error: "Invalid campaign id" }); return; }
 
   const [campaign] = await db.select({ id: campaignsTable.id })
@@ -2050,7 +2050,7 @@ router.get("/campaigns/:id/batches", requireAuth, async (req, res): Promise<void
 // ─── GET /api/campaigns/:id/diagnostics ──────────────────────────────────────
 router.get("/campaigns/:id/diagnostics", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  const campaignId = parseInt(req.params.id, 10);
+  const campaignId = parseInt((req.params.id as string), 10);
   if (!campaignId) { res.status(400).json({ error: "Invalid campaign id" }); return; }
 
   const [campaign] = await db.select().from(campaignsTable)
@@ -2387,8 +2387,8 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
 
 router.post("/campaigns/:id/leads/:leadId/retry", requireAuth, async (req, res): Promise<void> => {
   const user       = req.user!;
-  const campaignId = parseInt(req.params.id, 10);
-  const leadId     = parseInt(req.params.leadId, 10);
+  const campaignId = parseInt((req.params.id as string), 10);
+  const leadId     = parseInt((req.params.leadId as string), 10);
   if (!campaignId || !leadId) { res.status(400).json({ error: "Invalid campaign or lead id" }); return; }
 
   const [campaign] = await db.select().from(campaignsTable)
@@ -2613,7 +2613,7 @@ router.post("/campaigns/:id/leads/:leadId/retry", requireAuth, async (req, res):
 
 router.get("/campaigns/:id/analytics", requireAuth, async (req, res): Promise<void> => {
   const user       = req.user!;
-  const campaignId = parseInt(req.params.id, 10);
+  const campaignId = parseInt((req.params.id as string), 10);
   if (!campaignId) { res.status(400).json({ error: "Invalid campaign id" }); return; }
 
   const [campaign] = await db
@@ -2817,7 +2817,7 @@ router.get("/campaigns/:id/analytics", requireAuth, async (req, res): Promise<vo
  */
 router.get("/campaigns/:id/start-diagnostics", requireAuth, async (req, res): Promise<void> => {
   const user       = req.user!;
-  const campaignId = parseInt(req.params.id, 10);
+  const campaignId = parseInt((req.params.id as string), 10);
   if (!campaignId) { res.status(400).json({ error: "Invalid campaign id" }); return; }
 
   try {

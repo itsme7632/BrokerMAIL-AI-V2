@@ -140,7 +140,7 @@ router.get("/admin/users", requireAdmin, async (req, res): Promise<void> => {
 });
 
 router.patch("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => {
-  const targetId = parseInt(req.params.id, 10);
+  const targetId = parseInt((req.params.id as string), 10);
   const admin    = req.user!;
   if (targetId === admin.id && req.body.role === "user") {
     res.status(400).json({ error: "Cannot remove your own admin role." });
@@ -194,7 +194,7 @@ router.post("/admin/users/save", requireAdmin, async (req, res): Promise<void> =
 });
 
 router.delete("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => {
-  const targetId = parseInt(req.params.id, 10);
+  const targetId = parseInt((req.params.id as string), 10);
   const admin    = req.user!;
   if (targetId === admin.id) {
     res.status(400).json({ error: "Cannot delete your own account from the admin panel." });
@@ -637,7 +637,7 @@ router.post("/admin/plans", requireAdmin, async (req, res): Promise<void> => {
 });
 
 router.put("/admin/plans/:id", requireAdmin, async (req, res): Promise<void> => {
-  const id    = parseInt(req.params.id, 10);
+  const id    = parseInt((req.params.id as string), 10);
   const admin = req.user!;
   const {
     name, description, price, priceLabel, isPopular, buttonText, supportLevel,
@@ -675,7 +675,7 @@ router.put("/admin/plans/:id", requireAdmin, async (req, res): Promise<void> => 
 
 router.delete("/admin/plans/:id", requireAdmin, async (req, res): Promise<void> => {
   const admin  = req.user!;
-  const planId = parseInt(req.params.id, 10);
+  const planId = parseInt((req.params.id as string), 10);
 
   const [plan] = await db.select().from(plansTable).where(eq(plansTable.id, planId));
   if (!plan) { res.status(404).json({ error: "Plan not found." }); return; }
@@ -764,7 +764,7 @@ router.get("/admin/plan-requests", requireAdmin, async (req, res): Promise<void>
 });
 
 router.post("/admin/plan-requests/:id/approve", requireAdmin, async (req, res): Promise<void> => {
-  const id    = parseInt(req.params.id, 10);
+  const id    = parseInt((req.params.id as string), 10);
   const admin = req.user!;
 
   const [request] = await db.select().from(planRequestsTable).where(eq(planRequestsTable.id, id));
@@ -796,7 +796,7 @@ router.post("/admin/plan-requests/:id/approve", requireAdmin, async (req, res): 
 });
 
 router.post("/admin/plan-requests/:id/reject", requireAdmin, async (req, res): Promise<void> => {
-  const id    = parseInt(req.params.id, 10);
+  const id    = parseInt((req.params.id as string), 10);
   const admin = req.user!;
   const { note } = req.body as { note?: string };
 
@@ -819,7 +819,7 @@ router.post("/admin/plan-requests/:id/reject", requireAdmin, async (req, res): P
 // ─── Credits: Adjust credits for a user ──────────────────────────────────────
 
 router.post("/admin/users/:id/credits", requireAdmin, async (req, res): Promise<void> => {
-  const targetId = parseInt(req.params.id, 10);
+  const targetId = parseInt((req.params.id as string), 10);
   const admin    = req.user!;
   const { amount, reason } = req.body as { amount: number; reason?: string };
 
@@ -847,7 +847,7 @@ router.post("/admin/users/:id/credits", requireAdmin, async (req, res): Promise<
 // ─── Credits: Credit history for a user ──────────────────────────────────────
 
 router.get("/admin/users/:id/credit-history", requireAdmin, async (req, res): Promise<void> => {
-  const targetId = parseInt(req.params.id, 10);
+  const targetId = parseInt((req.params.id as string), 10);
   const logs = await db.select().from(systemLogsTable)
     .where(and(eq(systemLogsTable.userId, targetId), ilike(systemLogsTable.type, "credit_adjustment")))
     .orderBy(desc(systemLogsTable.createdAt))
@@ -887,7 +887,7 @@ router.get("/admin/support", requireAdmin, async (req, res): Promise<void> => {
 });
 
 router.get("/admin/support/:id", requireAdmin, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt((req.params.id as string), 10);
   const [ticket] = await db.select().from(supportTicketsTable).where(eq(supportTicketsTable.id, id));
   if (!ticket) { res.status(404).json({ error: "Ticket not found." }); return; }
   res.json({
@@ -899,7 +899,7 @@ router.get("/admin/support/:id", requireAdmin, async (req, res): Promise<void> =
 });
 
 router.patch("/admin/support/:id", requireAdmin, async (req, res): Promise<void> => {
-  const id    = parseInt(req.params.id, 10);
+  const id    = parseInt((req.params.id as string), 10);
   const admin = req.user!;
   const { status, priority, adminNote, assignedTo } = req.body as Record<string, string>;
 
@@ -949,7 +949,7 @@ router.post("/admin/support/save", requireAdmin, async (req, res): Promise<void>
 });
 
 router.post("/admin/support/:id/reply", requireAdmin, async (req, res): Promise<void> => {
-  const id    = parseInt(req.params.id, 10);
+  const id    = parseInt((req.params.id as string), 10);
   const admin = req.user!;
   const { message } = req.body as { message: string };
 
@@ -977,7 +977,7 @@ router.post("/admin/support/:id/reply", requireAdmin, async (req, res): Promise<
 });
 
 router.delete("/admin/support/:id", requireAdmin, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt((req.params.id as string), 10);
   await db.delete(supportTicketsTable).where(eq(supportTicketsTable.id, id));
   res.json({ ok: true });
 });
@@ -1020,9 +1020,9 @@ router.get("/admin/export/users", requireAdmin, async (req, res): Promise<void> 
 router.get("/admin/export/campaigns", requireAdmin, async (_req, res): Promise<void> => {
   const campaigns = await db.select().from(campaignsTable).orderBy(desc(campaignsTable.createdAt));
   const csv = [
-    "id,userId,name,status,subject,createdAt",
+    "id,userId,name,status,createdAt",
     ...campaigns.map(c =>
-      `${c.id},${c.userId},"${c.name}","${c.status}","${(c.subject ?? "").replace(/"/g, '""')}",${c.createdAt.toISOString()}`
+      `${c.id},${c.userId},"${c.name}","${c.status}",${c.createdAt.toISOString()}`
     ),
   ].join("\n");
   res.setHeader("Content-Type", "text/csv");
@@ -1797,7 +1797,7 @@ router.get("/admin/backup/history", requireAdmin, async (_req, res): Promise<voi
 
 router.get("/admin/backup/download/:id", requireAdmin, async (req, res): Promise<void> => {
   try {
-    const id = Number(req.params.id);
+    const id = Number((req.params.id as string));
     const [row] = await db.select({
       name: backupHistoryTable.name,
       zipData: backupHistoryTable.zipData,
@@ -1818,7 +1818,7 @@ router.get("/admin/backup/download/:id", requireAdmin, async (req, res): Promise
 
 router.delete("/admin/backup/:id", requireAdmin, async (req, res): Promise<void> => {
   try {
-    const id = Number(req.params.id);
+    const id = Number((req.params.id as string));
     await db.delete(backupHistoryTable).where(eq(backupHistoryTable.id, id));
     res.json({ success: true });
   } catch (err: any) {
@@ -2287,7 +2287,7 @@ router.get("/admin/audit", requireAdmin, async (req, res): Promise<void> => {
 });
 
 router.post("/admin/users/:id/assign-plan", requireAdmin, async (req, res): Promise<void> => {
-  const targetId = parseInt(req.params.id, 10);
+  const targetId = parseInt((req.params.id as string), 10);
   const admin    = req.user!;
   const { planId } = req.body as { planId: number };
 

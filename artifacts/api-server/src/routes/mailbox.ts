@@ -632,7 +632,7 @@ router.post("/mailbox/send", requireAuth, async (req, res): Promise<void> => {
 // ─── GET /api/mailbox/send/status/:jobId ──────────────────────────────────────
 router.get("/mailbox/send/status/:jobId", requireAuth, async (req, res): Promise<void> => {
   const user   = req.user!;
-  const jobId  = req.params.jobId;
+  const jobId  = (req.params.jobId as string);
 
   const items = await db
     .select()
@@ -726,7 +726,7 @@ function decodeQuotedPrintable(str: string): string {
 // ─── POST /api/mailbox/send/retry/:jobId ──────────────────────────────────────
 router.post("/mailbox/send/retry/:jobId", requireAuth, async (req, res): Promise<void> => {
   const user  = req.user!;
-  const jobId = req.params.jobId;
+  const jobId = (req.params.jobId as string);
 
   // Reset failed/deferred items to pending
   await db
@@ -778,7 +778,7 @@ router.post("/mailbox/send/retry/:jobId", requireAuth, async (req, res): Promise
 // ─── POST /api/mailbox/send/cancel/:jobId ─────────────────────────────────────
 router.post("/mailbox/send/cancel/:jobId", requireAuth, async (req, res): Promise<void> => {
   const user  = req.user!;
-  const jobId = req.params.jobId;
+  const jobId = (req.params.jobId as string);
 
   activeJobs.delete(jobId);
 
