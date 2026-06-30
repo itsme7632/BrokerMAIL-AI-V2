@@ -1,3 +1,5 @@
+import { markdownToHtml } from "@workspace/markdown";
+
 /**
  * HTML email builder — fully white-label, zero platform branding.
  *
@@ -317,7 +319,7 @@ function cleanTemplate(
       </tr>`
     : "";
 
-  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(body, row), FONT, "#374151");
+  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(markdownToHtml(body), row), FONT, "#374151");
   const sigHtml  = useSig ? buildSignatureHtml(row.agent_name ?? "", branding, "#e2e8f0", FONT) : "";
   const ctaHtml  = buildCtaButtonsHtml(options.ctaButtons ?? [], row, options.trackingId, options.publicBase, FONT);
 
@@ -375,7 +377,7 @@ function modernTemplate(
       </tr>`
     : "";
 
-  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(body, row), FONT, "#374151");
+  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(markdownToHtml(body), row), FONT, "#374151");
   const sigHtml  = useSig ? buildSignatureHtml(row.agent_name ?? "", branding, "#e0e7ff", FONT) : "";
   const ctaHtml  = buildCtaButtonsHtml(options.ctaButtons ?? [], row, options.trackingId, options.publicBase, FONT);
 
@@ -445,7 +447,7 @@ function minimalTemplate(
       <tr><td style="padding:4px 0;"></td></tr>`
     : `<tr><td style="padding:24px 0 0;"></td></tr>`;
 
-  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(body, row), FONT, "#374151");
+  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(markdownToHtml(body), row), FONT, "#374151");
   const sigHtml  = useSig ? buildSignatureHtml(row.agent_name ?? "", branding, "#f1f5f9", FONT) : "";
   const ctaHtml  = buildCtaButtonsHtml(options.ctaButtons ?? [], row, options.trackingId, options.publicBase, FONT);
 
@@ -486,7 +488,7 @@ function luxuryTemplate(
        ${tagline ? `<p class="em-tag" style="margin:0;font-family:${HEADING_FONT};color:rgba(212,175,55,0.85);font-size:11px;font-weight:400;letter-spacing:1.5px;text-transform:uppercase;">${tagline}</p>` : ""}`
     : "";
 
-  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(body, row), BODY_FONT, "#1e293b");
+  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(markdownToHtml(body), row), BODY_FONT, "#1e293b");
   const sigHtml  = useSig ? buildSignatureHtml(row.agent_name ?? "", branding, "#d97706", HEADING_FONT) : "";
   const ctaHtml  = buildCtaButtonsHtml(options.ctaButtons ?? [], row, options.trackingId, options.publicBase, HEADING_FONT);
 
@@ -575,7 +577,7 @@ function corporateTemplate(
       </tr>`
     : "";
 
-  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(body, row), FONT, "#1e293b");
+  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(markdownToHtml(body), row), FONT, "#1e293b");
   const sigHtml  = useSig ? buildSignatureHtml(row.agent_name ?? "", branding, "#cbd5e1", FONT) : "";
   const ctaHtml  = buildCtaButtonsHtml(options.ctaButtons ?? [], row, options.trackingId, options.publicBase, FONT);
 
@@ -669,7 +671,7 @@ function urgentTemplate(
     </td>
   </tr>`;
 
-  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(body, row), FONT, "#1e293b");
+  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(markdownToHtml(body), row), FONT, "#1e293b");
   const sigHtml  = useSig ? buildSignatureHtml(row.agent_name ?? "", branding, "#fecaca", FONT) : "";
   const ctaHtml  = buildCtaButtonsHtml(options.ctaButtons ?? [], row, options.trackingId, options.publicBase, FONT);
 
@@ -768,7 +770,7 @@ function dispatchTemplate(
       </tr>`
     : "";
 
-  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(body, row), FONT, "#1e293b");
+  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(markdownToHtml(body), row), FONT, "#1e293b");
   const sigHtml  = useSig ? buildSignatureHtml(row.agent_name ?? "", branding, "#a7f3d0", FONT) : "";
   const ctaHtml  = buildCtaButtonsHtml(options.ctaButtons ?? [], row, options.trackingId, options.publicBase, FONT);
 
@@ -859,7 +861,7 @@ function friendlyTemplate(
       </tr>`
     : "";
 
-  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(body, row), FONT, "#374151");
+  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(markdownToHtml(body), row), FONT, "#374151");
   const sigHtml  = useSig ? buildSignatureHtml(row.agent_name ?? "", branding, "#bae6fd", FONT) : "";
   const ctaHtml  = buildCtaButtonsHtml(options.ctaButtons ?? [], row, options.trackingId, options.publicBase, FONT);
 
@@ -947,7 +949,7 @@ function mobileTemplate(
       </tr>`
     : "";
 
-  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(body, row), FONT, "#1e293b", "17px");
+  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(markdownToHtml(body), row), FONT, "#1e293b", "17px");
   const sigHtml  = useSig ? buildSignatureHtml(row.agent_name ?? "", branding, "#e2e8f0", FONT) : "";
   const ctaHtml  = buildCtaButtonsHtml(options.ctaButtons ?? [], row, options.trackingId, options.publicBase, FONT);
 
@@ -1026,7 +1028,7 @@ function darkTemplate(
       </tr>`
     : "";
 
-  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(body, row), FONT, "#cbd5e1");
+  const bodyHtml = textToHtmlParagraphs(replaceVarsHtml(markdownToHtml(body), row), FONT, "#cbd5e1");
   const sigHtml  = useSig ? buildSignatureHtml(row.agent_name ?? "", branding, "#334155", FONT, "#c8d3e0") : "";
   const ctaHtml  = buildCtaButtonsHtml(options.ctaButtons ?? [], row, options.trackingId, options.publicBase, FONT);
 

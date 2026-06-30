@@ -175,6 +175,9 @@ importers:
       '@workspace/db':
         specifier: workspace:*
         version: link:../../lib/db
+      '@workspace/markdown':
+        specifier: workspace:*
+        version: link:../../lib/markdown
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
@@ -573,6 +576,9 @@ importers:
       '@workspace/api-client-react':
         specifier: workspace:*
         version: link:../../lib/api-client-react
+      '@workspace/markdown':
+        specifier: workspace:*
+        version: link:../../lib/markdown
       class-variance-authority:
         specifier: 'catalog:'
         version: 0.7.1
@@ -706,6 +712,8 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 25.6.2
+
+  lib/markdown: {}
 
   scripts:
     devDependencies:

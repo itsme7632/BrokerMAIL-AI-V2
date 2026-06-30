@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Save, Loader2, Eye, Code2, Plus, Trash2, MousePointerClick } from "lucide-react";
+import { markdownToHtml } from "@workspace/markdown";
 
 // Lead variables only — branding is applied automatically from Settings
 const CHIPS = [
@@ -104,7 +105,12 @@ export default function TemplateEditor() {
   const [isSaving, setIsSaving] = useState(false);
 
   const previewSubject = useMemo(() => replaceVariables(subject, SAMPLE_ROW), [subject]);
-  const previewBody    = useMemo(() => replaceVariables(body, SAMPLE_ROW),    [body]);
+  // Same shared renderer used by the backend (final email HTML) and SingleEmailComposer —
+  // markdown runs first so `**bold**`/`*italic*`/etc render, then {vars} are substituted.
+  const previewBodyHtml = useMemo(
+    () => replaceVariables(markdownToHtml(body), SAMPLE_ROW),
+    [body]
+  );
 
   // Fetch HTML preview from the server — uses the EXACT same renderer as actual drafts
   const fetchHtmlPreview = useCallback(async (bodyText: string, subjectText: string, buttons: CtaButton[]) => {
@@ -436,9 +442,10 @@ export default function TemplateEditor() {
               {body ? (
                 <div>
                   <div className="text-xs text-slate-400 dark:text-slate-500 uppercase font-semibold tracking-wider mb-1.5">Body</div>
-                  <div className="whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-mono bg-slate-50 dark:bg-slate-800 rounded-xl p-4 border border-slate-100 dark:border-slate-700">
-                    {previewBody}
-                  </div>
+                  <div
+                    className="whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-mono bg-slate-50 dark:bg-slate-800 rounded-xl p-4 border border-slate-100 dark:border-slate-700"
+                    dangerouslySetInnerHTML={{ __html: previewBodyHtml }}
+                  />
                 </div>
               ) : (
                 <div className="text-xs text-slate-300 italic">Add body text…</div>

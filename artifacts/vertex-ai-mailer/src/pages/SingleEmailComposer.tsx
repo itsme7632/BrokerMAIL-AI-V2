@@ -14,6 +14,7 @@ import {
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { MD_RULES } from "@workspace/markdown";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -457,21 +458,10 @@ export async function compressLogo(dataUrl: string): Promise<string> {
 }
 
 // ── Smart Markdown inline formatting ───────────────────────────────────────────
-// Patterns are checked longest-delimiter-first so ** (bold) wins over * (italic).
-// Each rule: `re` matches text-before-cursor ending with the complete pattern,
-// capturing the inner content in group 1.
-const MD_RULES: ReadonlyArray<{ re: RegExp; tag: string; style?: string }> = [
-  { re: /\*\*([^*\n]{1,300})\*\*$/, tag: "strong" },
-  { re: /~~([^~\n]{1,300})~~$/, tag: "s" },
-  { re: /__([^_\n]{1,300})__$/, tag: "u" },
-  // Italic: negative lookbehind ensures we don't match the tail of **bold**
-  { re: /(?<!\*)\*([^*\n]{1,300})\*$/, tag: "em" },
-  {
-    re: /`([^`\n]{1,300})`$/,
-    tag: "code",
-    style: "font-family:monospace;background:#f1f5f9;border-radius:3px;padding:1px 5px;font-size:0.875em;color:#e11d48;",
-  },
-];
+// Patterns (bold/italic/strikethrough/underline/code) live in the shared
+// @workspace/markdown package — see that package's MD_RULES for the canonical
+// definitions, also reused by TemplateEditor's previews and the backend's
+// final email HTML builder so all three stay in sync.
 
 /**
  * Scans the text node at the current cursor position.
