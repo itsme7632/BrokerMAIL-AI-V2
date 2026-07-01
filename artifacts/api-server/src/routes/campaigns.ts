@@ -2575,13 +2575,8 @@ router.post("/campaigns/:id/leads/:leadId/retry", requireAuth, async (req, res):
   try {
     await sendEmail(mailbox, { to: queueItem.email, subject, text: bodyText, html: trackedHtml });
 
-    await db.insert(draftsTable).values({
-      userId: user.id, campaignId, leadId,
-      email: queueItem.email, subject, body: bodyText,
-      status: "success", trackingId,
-      gmailDraftId: `smtp:retry:lead:${leadId}`,
-    });
-
+    // ── Critical state updates first — these must succeed so the sent email
+    // is visible and trackingId is linked to the queue row before anything else.
     const now = new Date();
     await db.update(emailQueueTable)
       .set({ status: "success", sentAt: now, trackingId, lastError: null, attempts: queueItem.attempts + 1 })
@@ -2596,6 +2591,24 @@ router.post("/campaigns/:id/leads/:leadId/retry", requireAuth, async (req, res):
       failedCount: sql`GREATEST(${campaignsTable.failedCount} - 1, 0)`,
       updatedAt: new Date(),
     }).where(eq(campaignsTable.id, campaignId));
+
+    // ── Non-fatal: drafts tracking record — failure here must never roll back
+    // a successfully sent email. sentAt is set to now() so the tracking pixel
+    // records opens immediately without needing "Mark Sent". The queue row
+    // already has the trackingId, so even if this insert fails the
+    // SMTP-fallback lazy-create path in tracking.ts will recover on first open.
+    try {
+      await db.insert(draftsTable).values({
+        userId: user.id, campaignId, leadId,
+        email: queueItem.email, subject, body: bodyText,
+        status: "success", trackingId,
+        gmailDraftId: `smtp:retry:lead:${leadId}`,
+        sentAt: now,
+      });
+    } catch (draftErr) {
+      logger.warn({ draftErr, campaignId, leadId, trackingId },
+        "[RETRY-LEAD] Non-fatal: drafts table insert failed — email WAS sent, queue/lead already marked success");
+    }
 
     logger.info({ campaignId, leadId, trackingId }, "[RETRY-LEAD] Lead retried successfully");
     res.json({ ok: true, sentAt: now.toISOString(), trackingId });

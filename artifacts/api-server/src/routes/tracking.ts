@@ -77,20 +77,24 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
   const ua = req.get("user-agent") ?? null;
   const ts = new Date();
 
+  // Step 1 — log every incoming request so we can see it in server logs
+  logger.info({ trackingId, ip, ua, timestamp: ts.toISOString() }, "[TRACK/OPEN] 1. Pixel request received");
+
   try {
-    // ── Filter false opens ───────────────────────────────────────────────────
+    // ── Step 2: Filter false opens ─────────────────────────────────────────
     if (isPrivateIp(ip)) {
-      logger.info({ trackingId, ip }, "[TRACK/OPEN] Private/loopback IP — open ignored");
+      logger.info({ trackingId, ip }, "[TRACK/OPEN] 2a. Private/loopback IP — open ignored, serving pixel");
       sendPixel(res);
       return;
     }
     if (isBotUserAgent(ua)) {
-      logger.info({ trackingId, ua }, "[TRACK/OPEN] Bot/prefetch user-agent — open ignored");
+      logger.info({ trackingId, ua }, "[TRACK/OPEN] 2b. Bot/prefetch user-agent — open ignored, serving pixel");
       sendPixel(res);
       return;
     }
+    logger.info({ trackingId, ip, ua }, "[TRACK/OPEN] 2c. IP and UA checks passed — proceeding to DB lookup");
 
-    // ── Early isTest guard: check email_queue BEFORE touching drafts.
+    // ── Step 3: Early isTest guard: check email_queue BEFORE touching drafts.
     // This covers both the draft-exists path AND the lazy-create path.
     const [queueCheck] = await db
       .select({ isTest: emailQueueTable.isTest })
@@ -98,23 +102,36 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
       .where(eq(emailQueueTable.trackingId, trackingId))
       .limit(1);
 
+    logger.info({ trackingId, queueCheckFound: !!queueCheck, isTest: queueCheck?.isTest ?? null },
+      "[TRACK/OPEN] 3. email_queue isTest lookup result");
+
     if (queueCheck?.isTest) {
-      logger.info({ trackingId }, "[TRACK/OPEN] Test email — open not recorded (isTest=true)");
+      logger.info({ trackingId }, "[TRACK/OPEN] 3a. Test email — open not recorded (isTest=true)");
       sendPixel(res);
       return;
     }
 
+    // ── Step 4: Draft lookup by trackingId ────────────────────────────────
     let draft = await db
       .select({ id: draftsTable.id, sentAt: draftsTable.sentAt })
       .from(draftsTable)
       .where(eq(draftsTable.trackingId, trackingId))
       .then(rows => rows[0] as { id: number; sentAt: Date | null } | undefined);
 
-    // ── SMTP fallback: if no draft row exists for this trackingId, check whether
-    // a successfully-sent SMTP queue item owns it (can happen when the non-fatal
-    // drafts table insert was silently skipped in the processor).  Lazy-create
-    // a minimal draft row so the event can be recorded and shown in the UI.
+    logger.info({
+      trackingId,
+      draftFound: !!draft,
+      draftId:    draft?.id ?? null,
+      sentAt:     draft?.sentAt?.toISOString() ?? null,
+    }, "[TRACK/OPEN] 4. drafts table lookup result");
+
+    // ── Step 5: SMTP fallback — if no draft row exists for this trackingId,
+    // check whether a successfully-sent SMTP queue item owns it (can happen
+    // when the non-fatal drafts table insert was silently skipped in the
+    // processor).  Lazy-create a minimal draft row so the event can be
+    // recorded and shown in the UI.
     if (!draft) {
+      logger.info({ trackingId }, "[TRACK/OPEN] 5. No draft found — checking email_queue for SMTP fallback");
       const [queueItem] = await db
         .select({
           id:         emailQueueTable.id,
@@ -132,16 +149,19 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
         ))
         .limit(1);
 
+      logger.info({ trackingId, queueItemFound: !!queueItem, queueItemId: queueItem?.id ?? null },
+        "[TRACK/OPEN] 5a. SMTP fallback queue lookup result");
+
       if (queueItem) {
         // isTest is already handled above via queueCheck, but guard defensively
         if (queueItem.isTest) {
-          logger.info({ trackingId }, "[TRACK/OPEN] Test email — open not recorded (lazy path)");
+          logger.info({ trackingId }, "[TRACK/OPEN] 5b. Test email — open not recorded (lazy path)");
           sendPixel(res);
           return;
         }
 
         logger.info({ trackingId, queueItemId: queueItem.id },
-          "[TRACK/OPEN] No draft row found — lazy-creating from SMTP queue item");
+          "[TRACK/OPEN] 5c. Lazy-creating draft row from SMTP queue item");
         try {
           const [lazyDraft] = await db.insert(draftsTable).values({
             userId:      queueItem.userId,
@@ -155,80 +175,122 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
             gmailDraftId: `smtp:recovered:${trackingId}`,
             sentAt:      new Date(),
           }).returning({ id: draftsTable.id, sentAt: draftsTable.sentAt });
-          if (lazyDraft) draft = lazyDraft;
+          if (lazyDraft) {
+            draft = lazyDraft;
+            logger.info({ trackingId, draftId: lazyDraft.id }, "[TRACK/OPEN] 5d. Lazy draft created successfully");
+          }
         } catch (lazyErr) {
           logger.warn({ trackingId, lazyErr },
-            "[TRACK/OPEN] Lazy-create draft failed — open not recorded");
+            "[TRACK/OPEN] 5e. Lazy-create draft failed — open not recorded");
         }
       } else {
         logger.warn({ trackingId, ip, ua },
-          "[TRACK/OPEN] No draft or queue item found for trackingId — pixel served but not recorded");
+          "[TRACK/OPEN] 5f. No draft or queue item found for trackingId — pixel served but open not recorded");
       }
     }
 
     if (!draft) {
-      // nothing to record — fall through to sendPixel
-    } else if (!draft.sentAt) {
-      logger.info({ trackingId, draftId: draft.id }, "[TRACK/OPEN] Draft not yet marked as sent — preview open ignored");
+      // Nothing to record — fall through to sendPixel
+      logger.warn({ trackingId }, "[TRACK/OPEN] 6. No draft record available — open not recorded");
     } else {
-      // Deduplication: skip if this exact draft got an open from the same IP
-      // within the last 5 seconds (prevents duplicate HTTP retries / Apple Mail
-      // rapid prefetch burst, while still counting deliberate re-opens).
-      const DEDUP_WINDOW_MS = 5_000;
-      const windowStart = new Date(Date.now() - DEDUP_WINDOW_MS);
-
-      const conditions: any[] = [
-        eq(emailTrackingEventsTable.draftId, draft.id),
-        eq(emailTrackingEventsTable.eventType, "open"),
-        gte(emailTrackingEventsTable.createdAt, windowStart),
-      ];
-      // Only apply IP dedup if we have an IP (avoids blocking distinct openers
-      // behind the same corporate proxy on different minutes)
-      if (ip) {
-        conditions.push(eq(emailTrackingEventsTable.ipAddress, ip));
+      // ── Step 6: Auto-activate tracking if sentAt is null ─────────────────
+      // Gmail drafts are saved with sentAt=null until the broker manually sends
+      // them from Gmail and gmailDraftSync picks it up. If the tracking pixel
+      // fires, the email was clearly delivered — auto-set sentAt now so this
+      // and all future opens are counted correctly.
+      if (!draft.sentAt) {
+        logger.info({ trackingId, draftId: draft.id },
+          "[TRACK/OPEN] 6a. Draft sentAt is null — auto-activating (email was clearly delivered since pixel fired)");
+        try {
+          await db.update(draftsTable)
+            .set({ sentAt: ts })
+            .where(eq(draftsTable.id, draft.id));
+          draft = { ...draft, sentAt: ts };
+          logger.info({ trackingId, draftId: draft.id, sentAt: ts.toISOString() },
+            "[TRACK/OPEN] 6b. sentAt auto-set successfully — proceeding to record open");
+        } catch (autoSetErr) {
+          logger.error({ trackingId, draftId: draft.id, autoSetErr },
+            "[TRACK/OPEN] 6c. Failed to auto-set sentAt — open cannot be recorded");
+          draft = { ...draft, sentAt: null };
+        }
       }
 
-      const [recent] = await db
-        .select({ id: emailTrackingEventsTable.id })
-        .from(emailTrackingEventsTable)
-        .where(and(...conditions))
-        .orderBy(desc(emailTrackingEventsTable.createdAt))
-        .limit(1);
-
-      if (recent) {
-        logger.info({ trackingId, draftId: draft.id, ip, ua }, "[TRACK/OPEN] Deduplicated open within 5s window — not recorded");
+      if (!draft.sentAt) {
+        // sentAt still null after auto-set attempt failed — skip recording
+        logger.warn({ trackingId, draftId: draft.id },
+          "[TRACK/OPEN] 6d. sentAt still null after auto-set attempt — open not recorded");
       } else {
-        await db.insert(emailTrackingEventsTable).values({
-          draftId:   draft.id,
-          eventType: "open",
-          ipAddress: ip,
-          userAgent: ua,
-        });
+        // ── Step 7: Deduplication ─────────────────────────────────────────
+        // Skip if this exact draft got an open from the same IP within the
+        // last 5 seconds (prevents duplicate HTTP retries / Apple Mail rapid
+        // prefetch burst, while still counting deliberate re-opens).
+        const DEDUP_WINDOW_MS = 5_000;
+        const windowStart = new Date(Date.now() - DEDUP_WINDOW_MS);
 
-        // Get running open count for diagnostics
-        const [{ openCount }] = await db
-          .select({ openCount: count() })
+        const conditions: any[] = [
+          eq(emailTrackingEventsTable.draftId, draft.id),
+          eq(emailTrackingEventsTable.eventType, "open"),
+          gte(emailTrackingEventsTable.createdAt, windowStart),
+        ];
+        // Only apply IP dedup if we have an IP (avoids blocking distinct
+        // openers behind the same corporate proxy on different minutes)
+        if (ip) {
+          conditions.push(eq(emailTrackingEventsTable.ipAddress, ip));
+        }
+
+        const [recent] = await db
+          .select({ id: emailTrackingEventsTable.id })
           .from(emailTrackingEventsTable)
-          .where(and(
-            eq(emailTrackingEventsTable.draftId, draft.id),
-            eq(emailTrackingEventsTable.eventType, "open"),
-          ));
+          .where(and(...conditions))
+          .orderBy(desc(emailTrackingEventsTable.createdAt))
+          .limit(1);
 
-        logger.info({
-          trackingId,
-          draftId:    draft.id,
-          leadId:     null,
-          openCount,
-          ip,
-          ua,
-          timestamp:  ts.toISOString(),
-        }, "[TRACK/OPEN] Open recorded");
+        if (recent) {
+          logger.info({ trackingId, draftId: draft.id, ip, ua },
+            "[TRACK/OPEN] 7a. Deduplicated open within 5s window — not recorded");
+        } else {
+          // ── Step 8: Insert tracking event ──────────────────────────────
+          logger.info({ trackingId, draftId: draft.id, ip, ua },
+            "[TRACK/OPEN] 8. Inserting open event into email_tracking_events");
+          try {
+            await db.insert(emailTrackingEventsTable).values({
+              draftId:   draft.id,
+              eventType: "open",
+              ipAddress: ip,
+              userAgent: ua,
+            });
+
+            // Step 9: Confirm row count after insert
+            const [{ openCount }] = await db
+              .select({ openCount: count() })
+              .from(emailTrackingEventsTable)
+              .where(and(
+                eq(emailTrackingEventsTable.draftId, draft.id),
+                eq(emailTrackingEventsTable.eventType, "open"),
+              ));
+
+            logger.info({
+              trackingId,
+              draftId:   draft.id,
+              openCount,
+              ip,
+              ua,
+              timestamp: ts.toISOString(),
+              rowsAffected: 1,
+            }, "[TRACK/OPEN] 9. Open recorded successfully — event inserted");
+          } catch (insertErr) {
+            logger.error({ trackingId, draftId: draft.id, insertErr },
+              "[TRACK/OPEN] 9. FAILED to insert open event — DB error");
+          }
+        }
       }
     }
   } catch (err) {
-    logger.error({ trackingId, err }, "[TRACK/OPEN] Error recording open — pixel still served");
+    logger.error({ trackingId, err }, "[TRACK/OPEN] ERROR — unhandled exception in tracking handler, pixel still served");
   }
 
+  // Step 10: Serve pixel (always last, after all DB work is complete)
+  logger.info({ trackingId }, "[TRACK/OPEN] 10. Serving tracking pixel — request complete");
   sendPixel(res);
 });
 
