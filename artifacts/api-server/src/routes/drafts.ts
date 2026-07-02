@@ -8,6 +8,7 @@ import { requireAuth } from "../lib/auth";
 import { GetDraftParams } from "@workspace/api-zod";
 import { createGmailDraft } from "../lib/gmail";
 import { syncSentDrafts } from "../lib/gmail-draft-sync";
+import { isSuppressed, filterSuppressed } from "../lib/suppression";
 import {
   formatPrice,
   replaceVarsText,
@@ -208,6 +209,13 @@ router.post("/drafts/create-direct", requireAuth, async (req, res): Promise<void
     return;
   }
 
+  if (await isSuppressed(user.id, to)) {
+    res.status(409).json({
+      error: `${to} is on your suppression list (previously bounced or unsubscribed) and cannot be emailed. Remove it from Suppressions first if this was a mistake.`,
+    });
+    return;
+  }
+
   try {
     const gmailDraftId = await createGmailDraft(freshUser, to, subject, body);
     res.status(201).json({ gmailDraftId, to, subject });
@@ -363,10 +371,18 @@ router.post("/drafts/from-template", requireAuth, async (req, res): Promise<void
   let succeeded = 0;
   let failed    = 0;
 
+  const suppressedEmails = await filterSuppressed(user.id, rows.map(r => r.email ?? ""));
+
   for (const rawRow of rows) {
     const email = rawRow.email ?? "";
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       results.push({ email, subject: "", status: "failed", error: "Missing or invalid email" });
+      failed++;
+      continue;
+    }
+
+    if (suppressedEmails.has(email.trim().toLowerCase())) {
+      results.push({ email, subject: "", status: "failed", error: "Recipient is on the suppression list" });
       failed++;
       continue;
     }

@@ -13,6 +13,7 @@ import { sendEmail } from "../lib/smtp";
 import { randomUUID } from "crypto";
 import type { User } from "@workspace/db";
 import { getTrackingSettings } from "../lib/tracking-settings";
+import { isSuppressed } from "../lib/suppression";
 
 const router: IRouter = Router();
 
@@ -664,6 +665,11 @@ router.post("/sent-emails/:id/retry", requireAuth, async (req, res): Promise<voi
 
   logger.info({ id, trackingId, email: item.email, ctaCount: ctaButtons.length }, "[RETRY] Building email with tracking and CTA buttons");
 
+  if (await isSuppressed(user.id, item.email)) {
+    res.status(409).json({ error: "Recipient is on the suppression list and cannot be retried." });
+    return;
+  }
+
   try {
     await sendEmail(mailbox, { to: item.email, subject, text: bodyText, html: trackedHtml });
 
@@ -772,6 +778,11 @@ router.post("/sent-emails/:id/edit-resend", requireAuth, async (req, res): Promi
     : bodyHtml;
 
   logger.info({ id, trackingId, email: recipientEmail, ctaCount: ctaButtons.length }, "[EDIT-RESEND] Building email with tracking and CTA buttons");
+
+  if (await isSuppressed(user.id, recipientEmail)) {
+    res.status(409).json({ error: "Recipient is on the suppression list and cannot be sent to." });
+    return;
+  }
 
   try {
     await sendEmail(mailbox, { to: recipientEmail, subject: finalSubject, text: bodyText, html: trackedHtml });

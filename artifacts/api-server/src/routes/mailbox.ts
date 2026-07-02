@@ -15,6 +15,7 @@ import type { User, Mailbox, Template } from "@workspace/db";
 import { randomUUID } from "crypto";
 import { getTrackingSettings } from "../lib/tracking-settings";
 import { checkEmailLimit, checkMailboxLimit } from "../lib/plan-limits";
+import { isSuppressed } from "../lib/suppression";
 
 const router: IRouter = Router();
 
@@ -159,6 +160,16 @@ async function processJobQueue(jobId: string, box: Mailbox, template: Template, 
       const trackedHtml = pixelTag
         ? (bodyHtml.includes("</body>") ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`) : bodyHtml + pixelTag)
         : bodyHtml;
+
+      // Re-check suppression right before sending — a lead can be suppressed
+      // (bounce/unsubscribe) after it was originally queued.
+      if (await isSuppressed(user.id, item.email)) {
+        await db
+          .update(emailQueueTable)
+          .set({ status: "failed", lastError: "Recipient is on the suppression list" })
+          .where(eq(emailQueueTable.id, item.id));
+        continue;
+      }
 
       try {
         const info = await sendEmail(box, { to: item.email, subject, text: bodyText, html: trackedHtml });

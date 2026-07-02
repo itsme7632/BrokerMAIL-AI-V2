@@ -14,6 +14,7 @@ import { sendGmailMessage } from "../lib/gmail";
 import { logger } from "../lib/logger";
 import { randomUUID } from "crypto";
 import { getTrackingSettings } from "../lib/tracking-settings";
+import { isSuppressed } from "../lib/suppression";
 
 const router = Router();
 
@@ -426,6 +427,13 @@ router.post("/composer/send", requireAuth, uploadMem.array("attachments"), async
 
     if (!to?.trim()) { res.status(400).json({ error: "To address is required" }); return; }
     const { name: recipientName, bareEmail: recipientEmail } = parseToField(to);
+
+    if (await isSuppressed(user.id, recipientEmail)) {
+      res.status(409).json({
+        error: `${recipientEmail} is on your suppression list (previously bounced or unsubscribed) and cannot be emailed. Remove it from Suppressions first if this was a mistake.`,
+      });
+      return;
+    }
 
     // Resolve stored attachment IDs → buffers
     const storedIds: string[] = attachmentIds ? JSON.parse(attachmentIds) : [];

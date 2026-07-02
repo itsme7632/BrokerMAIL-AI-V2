@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, leadsTable, draftsTable, templatesTable, activityTable, suppressionListTable } from "@workspace/db";
-import { eq, and, count, ilike, desc, or, inArray } from "drizzle-orm";
+import { db, leadsTable, draftsTable, templatesTable, activityTable } from "@workspace/db";
+import { eq, and, count, ilike, desc, or } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import {
   CreateLeadBody, UpdateLeadBody, GetLeadParams, UpdateLeadParams, DeleteLeadParams,
@@ -9,6 +9,7 @@ import {
 import { generatePersonalizedEmail, AiConfigError } from "../lib/ai";
 import { replaceVarsText } from "../lib/email-html";
 import { createGmailDraft } from "../lib/gmail";
+import { filterSuppressed } from "../lib/suppression";
 
 const router: IRouter = Router();
 
@@ -127,20 +128,9 @@ router.post("/leads/bulk-import", requireAuth, async (req, res): Promise<void> =
   let suppressed = 0;
   const errors: string[] = [];
 
-  // Batch suppression check for all provided emails
+  // Batch suppression check for all provided emails (scoped to this user)
   const allEmails = leads.map(l => l.email?.trim().toLowerCase()).filter(Boolean) as string[];
-  const suppressedSet = new Set<string>();
-  if (allEmails.length > 0) {
-    try {
-      const suppressedRows = await db
-        .select({ email: suppressionListTable.email })
-        .from(suppressionListTable)
-        .where(inArray(suppressionListTable.email, allEmails));
-      for (const r of suppressedRows) suppressedSet.add(r.email);
-    } catch {
-      // non-fatal — if lookup fails, proceed without suppression filter
-    }
-  }
+  const suppressedSet = await filterSuppressed(user.id, allEmails);
 
   for (const lead of leads) {
     if (!lead.email) { skipped++; continue; }

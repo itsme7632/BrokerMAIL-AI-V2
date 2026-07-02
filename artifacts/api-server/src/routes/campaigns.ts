@@ -23,6 +23,7 @@ import { sendEmail } from "../lib/smtp";
 import { saveToSent, buildRawMessage } from "../lib/imap";
 import { getTrackingSettings } from "../lib/tracking-settings";
 import { checkEmailLimit, checkCampaignLimit } from "../lib/plan-limits";
+import { isSuppressed, filterSuppressed } from "../lib/suppression";
 
 const router: IRouter = Router();
 
@@ -849,6 +850,25 @@ export async function processCampaignFully(
       }, "[OPEN TRACKING] Pre-sendMail diagnostics");
       // ── End diagnostics ────────────────────────────────────────────────────
 
+      // ── Suppression re-check: a lead can be suppressed (bounce/unsubscribe) after
+      // it was originally imported/queued, so we must re-check right before sending. ──
+      if (await isSuppressed(user.id, item.email)) {
+        logger.warn({ campaignId, queueItemId: item.id, to: item.email }, "[CAMPAIGN] Recipient is suppressed — skipping send");
+        await db.update(emailQueueTable)
+          .set({ status: "failed", lastError: "Recipient is on the suppression list", sentAt: new Date() })
+          .where(eq(emailQueueTable.id, item.id));
+        if (item.leadId) {
+          await db.update(leadsTable)
+            .set({ status: "failed", errorMessage: "Recipient is on the suppression list", updatedAt: new Date() })
+            .where(eq(leadsTable.id, item.leadId));
+        }
+        await db.update(campaignsTable).set({
+          failedCount: sql`${campaignsTable.failedCount} + 1`,
+          updatedAt: new Date(),
+        }).where(eq(campaignsTable.id, campaignId));
+        continue;
+      }
+
       logger.info({ campaignId, queueItemId: item.id, to: item.email, subject, ctaCount: ctaButtonsFull.length, smtpHost: box.smtpHost, smtpPort: box.smtpPort, encryption: box.smtpSecure }, "[SMTP SEND] sendMail starting — host/port/ctaCount for verification");
 
       try {
@@ -1156,18 +1176,7 @@ router.post("/campaigns/from-upload", requireAuth, async (req, res): Promise<voi
   }
 
   // Batch suppression check — remove any emails already suppressed for this user
-  const suppressedSet = new Set<string>();
-  if (candidateValues.length > 0) {
-    try {
-      const suppressedRows = await db
-        .select({ email: suppressionListTable.email })
-        .from(suppressionListTable)
-        .where(inArray(suppressionListTable.email, candidateValues.map(v => v._email)));
-      for (const r of suppressedRows) suppressedSet.add(r.email);
-    } catch {
-      // non-fatal — proceed without suppression filter on lookup failure
-    }
-  }
+  const suppressedSet = await filterSuppressed(user.id, candidateValues.map(v => v._email));
 
   const leadValues = candidateValues
     .filter(v => {
@@ -1409,13 +1418,31 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
   if (!freshUser) { res.status(404).json({ error: "User not found." }); return; }
 
   // Get next batch of unsent leads
-  const nextLeads = await db.select().from(leadsTable)
+  const candidateLeads = await db.select().from(leadsTable)
     .where(and(eq(leadsTable.campaignId, campaignId), eq(leadsTable.status, "new")))
     .orderBy(leadsTable.id)
     .limit(limit);
 
-  if (nextLeads.length === 0) {
+  if (candidateLeads.length === 0) {
     res.status(400).json({ error: "No remaining leads to send. All leads have been processed." });
+    return;
+  }
+
+  // Re-check suppression right before enqueueing — a lead may have been
+  // suppressed (bounce/unsubscribe) after it was originally imported.
+  const sendBatchSuppressed = await filterSuppressed(user.id, candidateLeads.map(l => l.email ?? ""));
+  const nextLeads = candidateLeads.filter(l => !sendBatchSuppressed.has((l.email ?? "").trim().toLowerCase()));
+  if (sendBatchSuppressed.size > 0) {
+    const suppressedLeadIds = candidateLeads
+      .filter(l => sendBatchSuppressed.has((l.email ?? "").trim().toLowerCase()))
+      .map(l => l.id);
+    await db.update(leadsTable)
+      .set({ status: "failed", errorMessage: "Recipient is on the suppression list", updatedAt: new Date() })
+      .where(inArray(leadsTable.id, suppressedLeadIds));
+  }
+
+  if (nextLeads.length === 0) {
+    res.status(400).json({ error: "All remaining leads in this batch are suppressed." });
     return;
   }
 
@@ -1549,6 +1576,8 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
       batchSize: nextLeads.length,
     }).returning();
 
+    const nextLeadsSuppressed = await filterSuppressed(user.id, nextLeads.map(l => l.email ?? ""));
+
     for (const lead of nextLeads) {
       // ── Phase 1: Build the email + create the Gmail draft ──────────────────
       // This is separated from Phase 2 (DB recording) so that a DB write failure
@@ -1559,6 +1588,21 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
       let generatedBody    = "";
       let trackingId       = "";
       let phase1Error: string | null = null;
+
+      if (nextLeadsSuppressed.has((lead.email ?? "").trim().toLowerCase())) {
+        try {
+          await db.insert(draftsTable).values({
+            userId: user.id, campaignId, leadId: lead.id,
+            email: lead.email, subject: "", body: "",
+            status: "failed", errorMessage: "Recipient is on the suppression list",
+          });
+        } catch { /* non-fatal */ }
+        await db.update(leadsTable)
+          .set({ status: "failed", errorMessage: "Recipient is on the suppression list", updatedAt: new Date() })
+          .where(eq(leadsTable.id, lead.id));
+        failed++;
+        continue;
+      }
 
       try {
         const leadRow: Record<string, string> = {
@@ -2279,7 +2323,17 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
   let failed = 0;
   const errors: string[] = [];
 
+  const leadsSuppressed = await filterSuppressed(user.id, leads.map(l => l.email ?? ""));
+
   for (const lead of leads) {
+    if (leadsSuppressed.has((lead.email ?? "").trim().toLowerCase())) {
+      await db.update(leadsTable)
+        .set({ status: "failed", errorMessage: "Recipient is on the suppression list", updatedAt: new Date() })
+        .where(eq(leadsTable.id, lead.id));
+      errors.push(`${lead.email}: Recipient is on the suppression list`);
+      failed++;
+      continue;
+    }
     try {
       const leadRow: Record<string, string> = {
         name: lead.name ?? "", email: lead.email ?? "",
@@ -2495,6 +2549,11 @@ router.post("/campaigns/:id/leads/:leadId/retry", requireAuth, async (req, res):
 
     logger.info({ campaignId, leadId, draftId: failedDraft.id }, "[RETRY-LEAD] Retrying failed Gmail draft");
 
+    if (await isSuppressed(user.id, lead.email!)) {
+      res.status(409).json({ error: "Recipient is on the suppression list and cannot be retried." });
+      return;
+    }
+
     try {
       const gmailDraftId = await createGmailDraft(gFreshUser, lead.email!, gGenerated.subject, gGenerated.body, gTrackedHtml, gLogoAttachment);
 
@@ -2571,6 +2630,11 @@ router.post("/campaigns/:id/leads/:leadId/retry", requireAuth, async (req, res):
     : bodyHtml;
 
   logger.info({ campaignId, leadId, queueItemId: queueItem.id, email: queueItem.email }, "[RETRY-LEAD] Retrying failed lead");
+
+  if (await isSuppressed(user.id, queueItem.email)) {
+    res.status(409).json({ error: "Recipient is on the suppression list and cannot be retried." });
+    return;
+  }
 
   try {
     await sendEmail(mailbox, { to: queueItem.email, subject, text: bodyText, html: trackedHtml });
