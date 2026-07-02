@@ -2439,4 +2439,29 @@ router.post("/admin/test-bounce-imap", requireAdmin, async (req, res): Promise<v
   }
 });
 
+// ─── Tracking URL diagnostic endpoint ─────────────────────────────────────────
+// GET /api/admin/tracking-url-check
+// Returns the fully-resolved tracking base URL so operators can verify what
+// value is actually used for open-tracking pixels without grepping logs.
+router.get("/admin/tracking-url-check", requireAdmin, async (_req, res): Promise<void> => {
+  const { getTrackingSettings, isLocalhostUrl } = await import("../lib/tracking-settings");
+  const settings = await getTrackingSettings();
+  const isLocalhost = isLocalhostUrl(settings.trackingUrl);
+  res.json({
+    trackingUrl:          settings.trackingUrl,
+    openTrackingEnabled:  settings.openTrackingEnabled,
+    clickTrackingEnabled: settings.clickTrackingEnabled,
+    isLocalhost,
+    warning: isLocalhost
+      ? "CRITICAL: trackingUrl resolves to localhost. Tracking pixels in sent emails will point to the recipient's own machine and never reach this server. Set PUBLIC_URL=https://yourdomain.com in your PM2 environment, or set Tracking URL in Admin → Settings."
+      : null,
+    envSources: {
+      PUBLIC_URL:         process.env.PUBLIC_URL        ?? "(not set)",
+      REPLIT_DOMAINS:     process.env.REPLIT_DOMAINS    ?? "(not set)",
+      REPLIT_DEV_DOMAIN:  process.env.REPLIT_DEV_DOMAIN ?? "(not set)",
+    },
+    examplePixelUrl: `${settings.trackingUrl}/api/track/open/<trackingId>`,
+  });
+});
+
 export default router;

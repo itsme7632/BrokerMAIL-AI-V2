@@ -53,6 +53,17 @@ function resolveEnvBase(): string {
   return "http://localhost:3000";
 }
 
+/**
+ * True when the resolved base is a localhost/loopback URL — unusable for external tracking.
+ * Covers: localhost, 127.0.0.1, [::1] (IPv6 loopback), and bare ::1.
+ */
+function isLocalhostUrl(url: string): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?(\/|$)/.test(url);
+}
+
+/** Exported so admin routes can reuse the same detection logic. */
+export { isLocalhostUrl };
+
 /** Load tracking settings from DB with env-var fallback. Cached for 30 s. */
 export async function getTrackingSettings(): Promise<TrackingSettings> {
   if (_cache && Date.now() < _cache.expiresAt) return _cache.settings;
@@ -84,12 +95,47 @@ export async function getTrackingSettings(): Promise<TrackingSettings> {
     };
 
     _cache = { settings, expiresAt: Date.now() + CACHE_TTL_MS };
-    logger.debug({ trackingUrl, openTrackingEnabled: settings.openTrackingEnabled, clickTrackingEnabled: settings.clickTrackingEnabled },
-      "[TRACKING-SETTINGS] Loaded from DB");
+
+    // ── CRITICAL WARNING — tracking pixel will be unreachable ──────────────
+    // If the resolved trackingUrl is localhost, every pixel sent in emails
+    // will point to the RECIPIENT'S localhost instead of the production server.
+    // Email clients will refuse the connection silently; Express never receives
+    // a single /track/open request and PM2 logs stay empty.
+    //
+    // Fix (choose one):
+    //   A) Set PUBLIC_URL=https://yourdomain.com in your PM2 ecosystem config / .env
+    //   B) Set "Tracking URL" in the Admin → Settings panel to https://yourdomain.com
+    if (isLocalhostUrl(trackingUrl)) {
+      // Determine the best remediation based on which source produced the bad value.
+      const dbHasLocalhostValue = isLocalhostUrl(map.trackingUrl ?? "") || isLocalhostUrl(map.appUrl ?? "");
+      const fix = dbHasLocalhostValue
+        ? "DB admin_settings.trackingUrl or appUrl contains a localhost value — clear or update it in Admin → Settings to your production domain (e.g. https://getbrokermail.com). PUBLIC_URL is only consulted when BOTH DB fields are empty."
+        : "Neither DB trackingUrl/appUrl nor PUBLIC_URL env var is set. Fix: set PUBLIC_URL=https://yourdomain.com in your PM2 ecosystem env, OR set Tracking URL in Admin → Settings.";
+      logger.error({
+        trackingUrl,
+        publicUrl:       process.env.PUBLIC_URL    ?? "(not set)",
+        replitDomains:   process.env.REPLIT_DOMAINS ?? "(not set)",
+        dbTrackingUrl:   map.trackingUrl || "(empty/not in DB)",
+        dbAppUrl:        map.appUrl      || "(empty/not in DB)",
+        fix,
+      }, "[TRACKING-SETTINGS] ⚠️  TRACKING URL RESOLVES TO LOCALHOST — open-tracking pixels will be unreachable by email clients. Emails will be sent with <img src=\"http://localhost:...\"> which recipients cannot load.");
+    } else {
+      logger.debug({ trackingUrl, openTrackingEnabled: settings.openTrackingEnabled, clickTrackingEnabled: settings.clickTrackingEnabled },
+        "[TRACKING-SETTINGS] Loaded from DB");
+    }
+
     return settings;
   } catch (err) {
     logger.warn({ err }, "[TRACKING-SETTINGS] Could not load from DB — using env fallback");
     const envBase = resolveEnvBase();
+    if (isLocalhostUrl(envBase)) {
+      logger.error({
+        envBase,
+        publicUrl:     process.env.PUBLIC_URL    ?? "(not set)",
+        replitDomains: process.env.REPLIT_DOMAINS ?? "(not set)",
+        fix: "Set PUBLIC_URL=https://yourdomain.com in PM2 ecosystem OR set Tracking URL in Admin → Settings",
+      }, "[TRACKING-SETTINGS] ⚠️  TRACKING URL RESOLVES TO LOCALHOST (env fallback path) — open-tracking pixels will be unreachable by email clients. Set PUBLIC_URL or configure Tracking URL in admin settings.");
+    }
     return {
       trackingUrl: envBase, appUrl: envBase,
       openTrackingEnabled: true, clickTrackingEnabled: true,
