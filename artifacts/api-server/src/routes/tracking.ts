@@ -133,10 +133,20 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
 
     // ── Step 4: Draft lookup by trackingId ────────────────────────────────
     let draft = await db
-      .select({ id: draftsTable.id, sentAt: draftsTable.sentAt })
+      .select({ id: draftsTable.id, sentAt: draftsTable.sentAt, gmailDraftId: draftsTable.gmailDraftId })
       .from(draftsTable)
       .where(eq(draftsTable.trackingId, trackingId))
-      .then(rows => rows[0] as { id: number; sentAt: Date | null } | undefined);
+      .then((rows: Array<{ id: number; sentAt: Date | null; gmailDraftId: string | null }>) => rows[0]);
+
+    // A row is an *unconfirmed Gmail draft* when its gmailDraftId is a raw Gmail API
+    // draft ID (no synthetic prefix). Every SMTP/composer/recovery path always writes
+    // a prefixed id ("smtp:", "smtp:recovered:", "smtp:retry:", "smtp:edit-resend:",
+    // "gmail-composer:", "smtp-composer:") AND sets sentAt at insert time — so the
+    // *only* rows that ever reach this handler with sentAt === null are real Gmail
+    // drafts intentionally left unsent (see drafts.ts). Only gmailDraftSync may mark
+    // those as sent.
+    const isUnconfirmedGmailDraft = (d: { gmailDraftId: string | null } | undefined): boolean =>
+      !!d?.gmailDraftId && !d.gmailDraftId.includes(":");
 
     logger.info({
       trackingId,
@@ -145,6 +155,7 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
       sentAt:      draft?.sentAt?.toISOString() ?? null,
       // sentAtNull=true means Gmail draft not yet "marked sent" — auto-heal will fire at step 6a
       sentAtNull:  draft ? draft.sentAt === null : null,
+      isUnconfirmedGmailDraft: draft ? isUnconfirmedGmailDraft(draft) : null,
     }, "[TRACK/OPEN] 4. drafts table lookup result");
 
     // ── Step 5: SMTP fallback ─────────────────────────────────────────────
@@ -199,7 +210,7 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
             trackingId,
             gmailDraftId: `smtp:recovered:${trackingId}`,
             sentAt:       new Date(),
-          }).returning({ id: draftsTable.id, sentAt: draftsTable.sentAt });
+          }).returning({ id: draftsTable.id, sentAt: draftsTable.sentAt, gmailDraftId: draftsTable.gmailDraftId });
 
           if (lazyDraft) {
             draft = lazyDraft;
@@ -230,9 +241,15 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
         "[TRACK/OPEN] 6. EXIT PATH — No draft record available after all lookups — open not recorded");
     } else {
       // ── Step 6: Auto-activate tracking if sentAt is null ─────────────────
-      if (!draft.sentAt) {
+      if (!draft.sentAt && isUnconfirmedGmailDraft(draft)) {
+        // This is a real Gmail draft the broker has not sent yet (or Gmail Draft Sync
+        // has not confirmed as sent). Opening the draft preview in Gmail must NEVER
+        // activate tracking — only gmailDraftSync is allowed to set sentAt for these.
+        logger.info({ trackingId, draftId: draft.id, gmailDraftId: draft.gmailDraftId },
+          "[TRACK/OPEN] 6f. EXIT PATH — Unconfirmed Gmail draft (not yet sent) — auto-heal SKIPPED, open not recorded");
+      } else if (!draft.sentAt) {
         logger.info({ trackingId, draftId: draft.id },
-          "[TRACK/OPEN] 6a. Draft sentAt is null (Gmail draft not yet marked sent) — auto-activating now");
+          "[TRACK/OPEN] 6a. Draft sentAt is null (SMTP recovery case) — auto-activating now");
         try {
           await db.update(draftsTable)
             .set({ sentAt: ts })
