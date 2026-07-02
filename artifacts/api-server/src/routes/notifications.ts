@@ -4,6 +4,7 @@ import {
 } from "@workspace/db";
 import { eq, and, desc, inArray, isNotNull, gte } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -18,6 +19,9 @@ router.get("/notifications/live", requireAuth, async (req, res): Promise<void> =
   const user  = req.user!;
   const limit = Math.min(parseInt(req.query.limit as string, 10) || 20, 50);
   const since = req.query.since ? new Date(req.query.since as string) : null;
+
+  logger.info({ userId: user.id, limit, since: since?.toISOString() ?? null },
+    "[NOTIF/LIVE] 1. Query started");
 
   try {
     const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
@@ -48,6 +52,9 @@ router.get("/notifications/live", requireAuth, async (req, res): Promise<void> =
       if (q.trackingId) trackingToQueue.set(q.trackingId, q);
     }
 
+    logger.info({ userId: user.id, smtpQueueItemsWithTrackingId: queueItems.length },
+      "[NOTIF/LIVE] 2. SMTP queue items found (email_queue rows with trackingId set)");
+
     // Find draft rows that match SMTP queue trackingIds
     const smtpTrackingIds = queueItems.map(q => q.trackingId!).filter(Boolean);
     const smtpDraftRows = smtpTrackingIds.length > 0
@@ -56,6 +63,15 @@ router.get("/notifications/live", requireAuth, async (req, res): Promise<void> =
           .from(draftsTable)
           .where(inArray(draftsTable.trackingId, smtpTrackingIds))
       : [];
+
+    logger.info({
+      userId:                user.id,
+      smtpTrackingIdCount:   smtpTrackingIds.length,
+      smtpDraftRowsMatched:  smtpDraftRows.length,
+      // If smtpTrackingIdCount > 0 but smtpDraftRowsMatched = 0:
+      // the drafts table insert in the campaign processor failed silently for all sends.
+      // Events in email_tracking_events will exist but won't be found by this query.
+    }, "[NOTIF/LIVE] 3. SMTP draft rows matched to queue trackingIds");
 
     // Build: draftId → trackingId (for SMTP events)
     const draftToTracking = new Map<number, string>();
@@ -89,6 +105,18 @@ router.get("/notifications/live", requireAuth, async (req, res): Promise<void> =
 
     // Exclude draft IDs already covered by the SMTP path
     const gmailOnlyDrafts = gmailDraftItems.filter(d => !smtpDraftIdSet.has(d.id));
+
+    logger.info({
+      userId:                    user.id,
+      gmailDraftItemsWithSentAt: gmailDraftItems.length,
+      gmailOnlyDraftsExclSMTP:   gmailOnlyDrafts.length,
+      // If gmailDraftItemsWithSentAt = 0 but Gmail sends exist:
+      // - drafts.sentAt is still null (broker never marked sent AND pixel never fired AND
+      //   gmail-draft-sync hasn't run yet). Open events exist in email_tracking_events
+      //   but this query excludes the draft because sentAt IS NOT NULL filter blocks it.
+      // - The tracking pixel auto-heal (tracking.ts step 6a) sets sentAt when the pixel
+      //   fires, so after the first open this number should be >= 1.
+    }, "[NOTIF/LIVE] 4. Gmail-only draft rows found (drafts with sentAt non-null, no SMTP queue row)");
 
     // ── Fetch lead names for Gmail drafts ─────────────────────────────────────
     // Join via leadId so notifications show "John Smith opened your email"
@@ -128,7 +156,19 @@ router.get("/notifications/live", requireAuth, async (req, res): Promise<void> =
       ...gmailOnlyDrafts.map(d => d.id),
     ];
 
+    logger.info({
+      userId:           user.id,
+      smtpDraftIds:     smtpDraftRows.map(d => d.id),
+      gmailDraftIds:    gmailOnlyDrafts.map(d => d.id),
+      totalDraftIds:    allDraftIds.length,
+      // If totalDraftIds=0: no qualifying drafts for this user at all — nothing to show.
+      // Check: (A) queue items have trackingId set, (B) draft rows exist with those trackingIds,
+      // (C) Gmail draft rows have sentAt non-null (either manually marked or auto-healed by pixel).
+    }, "[NOTIF/LIVE] 5. Draft IDs collected for event query");
+
     if (allDraftIds.length === 0) {
+      logger.info({ userId: user.id },
+        "[NOTIF/LIVE] 5a. EXIT — No qualifying drafts found — returning empty events");
       res.json({ events: [], total: 0 });
       return;
     }
@@ -147,6 +187,16 @@ router.get("/notifications/live", requireAuth, async (req, res): Promise<void> =
       .where(and(...conditions))
       .orderBy(desc(emailTrackingEventsTable.createdAt))
       .limit(limit);
+
+    logger.info({
+      userId:      user.id,
+      eventsFound: events.length,
+      since:       since?.toISOString() ?? null,
+      // If totalDraftIds > 0 but eventsFound = 0:
+      // tracking events exist in email_tracking_events for those draftIds but none
+      // match the since filter OR no opens have been recorded at all yet.
+      // Verify with: SELECT * FROM email_tracking_events WHERE draft_id IN (<ids>);
+    }, "[NOTIF/LIVE] 6. Tracking events fetched from email_tracking_events");
 
     // ── Format ────────────────────────────────────────────────────────────────
     const formatted = events.map(e => {
@@ -201,9 +251,18 @@ router.get("/notifications/live", requireAuth, async (req, res): Promise<void> =
       };
     });
 
+    logger.info({
+      userId:         user.id,
+      formattedCount: formatted.length,
+      openCount:      formatted.filter(e => e.eventType === "open").length,
+      clickCount:     formatted.filter(e => e.eventType === "click").length,
+      smtpEventCount: formatted.filter(e => e.queueId != null).length,
+      gmailEventCount: formatted.filter(e => e.queueId == null).length,
+    }, "[NOTIF/LIVE] 7. Returning events to client");
+
     res.json({ events: formatted, total: formatted.length });
   } catch (err: any) {
-    console.error("notifications/live error:", err);
+    logger.error({ err, userId: (req as any).user?.id ?? null }, "[NOTIF/LIVE] ERROR — unhandled exception");
     res.status(500).json({ error: "Failed to load notifications" });
   }
 });

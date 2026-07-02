@@ -33,7 +33,8 @@ export function invalidateMaintenanceCache(): void {
 const BYPASS_PATHS = [
   "/api/auth/",
   "/api/admin/",
-  "/api/tracking/",
+  "/api/track/",     // open-tracking pixel + click redirect — must never be blocked
+  "/api/tracking/",  // legacy alias kept for safety
   "/api/health",
 ];
 

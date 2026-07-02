@@ -77,36 +77,56 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
   const ua = req.get("user-agent") ?? null;
   const ts = new Date();
 
-  // Step 1 — log every incoming request so we can see it in server logs
-  logger.info({ trackingId, ip, ua, timestamp: ts.toISOString() }, "[TRACK/OPEN] 1. Pixel request received");
+  // ── Step 1: Log every incoming request ──────────────────────────────────
+  // Dumps the full IP chain so we can diagnose reverse-proxy trust issues.
+  // If ip shows 127.0.0.1 here, NGINX is not forwarding X-Forwarded-For and
+  // every open will be dropped by the private-IP filter at step 2a.
+  logger.info({
+    trackingId,
+    ip,
+    ua,
+    timestamp:            ts.toISOString(),
+    // Raw IP headers — lets us verify what Express sees vs what the proxy sends
+    xForwardedFor:        req.headers["x-forwarded-for"]  ?? "(not set)",
+    xRealIp:              req.headers["x-real-ip"]        ?? "(not set)",
+    socketRemoteAddress:  (req.socket as any)?.remoteAddress ?? "(not set)",
+    trustProxySetting:    req.app.get("trust proxy"),
+  }, "[TRACK/OPEN] 1. Pixel request received");
 
   try {
     // ── Step 2: Filter false opens ─────────────────────────────────────────
     if (isPrivateIp(ip)) {
-      logger.info({ trackingId, ip }, "[TRACK/OPEN] 2a. Private/loopback IP — open ignored, serving pixel");
+      logger.info({
+        trackingId, ip,
+        xForwardedFor: req.headers["x-forwarded-for"] ?? "(not set)",
+        fix: "If this is a real open, NGINX is not forwarding the client IP. Add 'proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' to your NGINX location block.",
+      }, "[TRACK/OPEN] 2a. EXIT — Private/loopback IP — open ignored, serving pixel");
       sendPixel(res);
       return;
     }
     if (isBotUserAgent(ua)) {
-      logger.info({ trackingId, ua }, "[TRACK/OPEN] 2b. Bot/prefetch user-agent — open ignored, serving pixel");
+      logger.info({ trackingId, ua },
+        "[TRACK/OPEN] 2b. EXIT — Bot/prefetch user-agent — open ignored, serving pixel");
       sendPixel(res);
       return;
     }
     logger.info({ trackingId, ip, ua }, "[TRACK/OPEN] 2c. IP and UA checks passed — proceeding to DB lookup");
 
-    // ── Step 3: Early isTest guard: check email_queue BEFORE touching drafts.
-    // This covers both the draft-exists path AND the lazy-create path.
+    // ── Step 3: Early isTest guard ────────────────────────────────────────
     const [queueCheck] = await db
       .select({ isTest: emailQueueTable.isTest })
       .from(emailQueueTable)
       .where(eq(emailQueueTable.trackingId, trackingId))
       .limit(1);
 
-    logger.info({ trackingId, queueCheckFound: !!queueCheck, isTest: queueCheck?.isTest ?? null },
-      "[TRACK/OPEN] 3. email_queue isTest lookup result");
+    logger.info({
+      trackingId,
+      queueCheckFound: !!queueCheck,
+      isTest:          queueCheck?.isTest ?? null,
+    }, "[TRACK/OPEN] 3. email_queue isTest lookup result");
 
     if (queueCheck?.isTest) {
-      logger.info({ trackingId }, "[TRACK/OPEN] 3a. Test email — open not recorded (isTest=true)");
+      logger.info({ trackingId }, "[TRACK/OPEN] 3a. EXIT — Test email — open not recorded (isTest=true)");
       sendPixel(res);
       return;
     }
@@ -120,16 +140,14 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
 
     logger.info({
       trackingId,
-      draftFound: !!draft,
-      draftId:    draft?.id ?? null,
-      sentAt:     draft?.sentAt?.toISOString() ?? null,
+      draftFound:  !!draft,
+      draftId:     draft?.id    ?? null,
+      sentAt:      draft?.sentAt?.toISOString() ?? null,
+      // sentAtNull=true means Gmail draft not yet "marked sent" — auto-heal will fire at step 6a
+      sentAtNull:  draft ? draft.sentAt === null : null,
     }, "[TRACK/OPEN] 4. drafts table lookup result");
 
-    // ── Step 5: SMTP fallback — if no draft row exists for this trackingId,
-    // check whether a successfully-sent SMTP queue item owns it (can happen
-    // when the non-fatal drafts table insert was silently skipped in the
-    // processor).  Lazy-create a minimal draft row so the event can be
-    // recorded and shown in the UI.
+    // ── Step 5: SMTP fallback ─────────────────────────────────────────────
     if (!draft) {
       logger.info({ trackingId }, "[TRACK/OPEN] 5. No draft found — checking email_queue for SMTP fallback");
       const [queueItem] = await db
@@ -141,6 +159,7 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
           email:      emailQueueTable.email,
           subject:    emailQueueTable.subject,
           isTest:     emailQueueTable.isTest,
+          status:     emailQueueTable.status,
         })
         .from(emailQueueTable)
         .where(and(
@@ -149,13 +168,19 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
         ))
         .limit(1);
 
-      logger.info({ trackingId, queueItemFound: !!queueItem, queueItemId: queueItem?.id ?? null },
-        "[TRACK/OPEN] 5a. SMTP fallback queue lookup result");
+      logger.info({
+        trackingId,
+        queueItemFound:  !!queueItem,
+        queueItemId:     queueItem?.id     ?? null,
+        queueItemStatus: queueItem?.status ?? null,
+        // If queueItemFound=false but email was sent, the queue row may not have
+        // trackingId set (processor crashed before the critical UPDATE), or the
+        // queue status is not "success". Check email_queue directly with this UUID.
+      }, "[TRACK/OPEN] 5a. SMTP fallback queue lookup result");
 
       if (queueItem) {
-        // isTest is already handled above via queueCheck, but guard defensively
         if (queueItem.isTest) {
-          logger.info({ trackingId }, "[TRACK/OPEN] 5b. Test email — open not recorded (lazy path)");
+          logger.info({ trackingId }, "[TRACK/OPEN] 5b. EXIT — Test email — open not recorded (lazy path)");
           sendPixel(res);
           return;
         }
@@ -164,43 +189,50 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
           "[TRACK/OPEN] 5c. Lazy-creating draft row from SMTP queue item");
         try {
           const [lazyDraft] = await db.insert(draftsTable).values({
-            userId:      queueItem.userId,
-            campaignId:  queueItem.campaignId ?? null,
-            leadId:      queueItem.leadId     ?? null,
-            email:       queueItem.email,
-            subject:     queueItem.subject ?? "",
-            body:        "",
-            status:      "success",
+            userId:       queueItem.userId,
+            campaignId:   queueItem.campaignId ?? null,
+            leadId:       queueItem.leadId     ?? null,
+            email:        queueItem.email,
+            subject:      queueItem.subject ?? "",
+            body:         "",
+            status:       "success",
             trackingId,
             gmailDraftId: `smtp:recovered:${trackingId}`,
-            sentAt:      new Date(),
+            sentAt:       new Date(),
           }).returning({ id: draftsTable.id, sentAt: draftsTable.sentAt });
+
           if (lazyDraft) {
             draft = lazyDraft;
-            logger.info({ trackingId, draftId: lazyDraft.id }, "[TRACK/OPEN] 5d. Lazy draft created successfully");
+            logger.info({ trackingId, draftId: lazyDraft.id, sentAt: lazyDraft.sentAt?.toISOString() ?? null },
+              "[TRACK/OPEN] 5d. Lazy draft created successfully — will proceed to record event");
+          } else {
+            // returning() came back empty — insert may have silently no-op'd (e.g. conflict)
+            logger.warn({ trackingId, queueItemId: queueItem.id },
+              "[TRACK/OPEN] 5d-warn. Lazy insert returned no rows — draft may not have been created");
           }
         } catch (lazyErr) {
           logger.warn({ trackingId, lazyErr },
-            "[TRACK/OPEN] 5e. Lazy-create draft failed — open not recorded");
+            "[TRACK/OPEN] 5e. EXIT PATH — Lazy-create draft failed — open cannot be recorded");
         }
       } else {
-        logger.warn({ trackingId, ip, ua },
-          "[TRACK/OPEN] 5f. No draft or queue item found for trackingId — pixel served but open not recorded");
+        logger.warn({
+          trackingId, ip, ua,
+          // Possible causes:
+          // 1. trackingId not in email_queue at all (pixel URL is wrong / UUID mismatch)
+          // 2. email_queue row exists but status != "success" (send failed)
+          // 3. email_queue row exists but trackingId column is null (processor crashed before UPDATE)
+        }, "[TRACK/OPEN] 5f. EXIT PATH — No draft or queue item found for trackingId — pixel served but open not recorded");
       }
     }
 
     if (!draft) {
-      // Nothing to record — fall through to sendPixel
-      logger.warn({ trackingId }, "[TRACK/OPEN] 6. No draft record available — open not recorded");
+      logger.warn({ trackingId },
+        "[TRACK/OPEN] 6. EXIT PATH — No draft record available after all lookups — open not recorded");
     } else {
       // ── Step 6: Auto-activate tracking if sentAt is null ─────────────────
-      // Gmail drafts are saved with sentAt=null until the broker manually sends
-      // them from Gmail and gmailDraftSync picks it up. If the tracking pixel
-      // fires, the email was clearly delivered — auto-set sentAt now so this
-      // and all future opens are counted correctly.
       if (!draft.sentAt) {
         logger.info({ trackingId, draftId: draft.id },
-          "[TRACK/OPEN] 6a. Draft sentAt is null — auto-activating (email was clearly delivered since pixel fired)");
+          "[TRACK/OPEN] 6a. Draft sentAt is null (Gmail draft not yet marked sent) — auto-activating now");
         try {
           await db.update(draftsTable)
             .set({ sentAt: ts })
@@ -210,33 +242,44 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
             "[TRACK/OPEN] 6b. sentAt auto-set successfully — proceeding to record open");
         } catch (autoSetErr) {
           logger.error({ trackingId, draftId: draft.id, autoSetErr },
-            "[TRACK/OPEN] 6c. Failed to auto-set sentAt — open cannot be recorded");
+            "[TRACK/OPEN] 6c. EXIT PATH — Failed to auto-set sentAt — open cannot be recorded");
           draft = { ...draft, sentAt: null };
         }
+      } else {
+        // sentAt was already set (SMTP emails always have it; Gmail drafts have it after
+        // being marked sent or after the first pixel auto-healed it)
+        logger.info({ trackingId, draftId: draft.id, sentAt: draft.sentAt.toISOString() },
+          "[TRACK/OPEN] 6e. Draft already has sentAt — no auto-heal needed, proceeding to dedup check");
       }
 
       if (!draft.sentAt) {
-        // sentAt still null after auto-set attempt failed — skip recording
         logger.warn({ trackingId, draftId: draft.id },
-          "[TRACK/OPEN] 6d. sentAt still null after auto-set attempt — open not recorded");
+          "[TRACK/OPEN] 6d. EXIT PATH — sentAt still null after auto-set attempt — open not recorded");
       } else {
         // ── Step 7: Deduplication ─────────────────────────────────────────
-        // Skip if this exact draft got an open from the same IP within the
-        // last 5 seconds (prevents duplicate HTTP retries / Apple Mail rapid
-        // prefetch burst, while still counting deliberate re-opens).
         const DEDUP_WINDOW_MS = 5_000;
         const windowStart = new Date(Date.now() - DEDUP_WINDOW_MS);
+        const ipIncludedInDedup = !!ip;
 
         const conditions: any[] = [
           eq(emailTrackingEventsTable.draftId, draft.id),
           eq(emailTrackingEventsTable.eventType, "open"),
           gte(emailTrackingEventsTable.createdAt, windowStart),
         ];
-        // Only apply IP dedup if we have an IP (avoids blocking distinct
-        // openers behind the same corporate proxy on different minutes)
         if (ip) {
           conditions.push(eq(emailTrackingEventsTable.ipAddress, ip));
         }
+
+        logger.info({
+          trackingId, draftId: draft.id,
+          dedupWindowMs:      DEDUP_WINDOW_MS,
+          windowStart:        windowStart.toISOString(),
+          ipIncludedInDedup,
+          ip,
+          // If ipIncludedInDedup=false, dedup only checks draftId+eventType+window.
+          // This is intentional (avoids blocking different openers behind the same proxy).
+          // If ip is always null here, check trust proxy + NGINX X-Forwarded-For config.
+        }, "[TRACK/OPEN] 7. Running dedup check");
 
         const [recent] = await db
           .select({ id: emailTrackingEventsTable.id })
@@ -246,21 +289,26 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
           .limit(1);
 
         if (recent) {
-          logger.info({ trackingId, draftId: draft.id, ip, ua },
-            "[TRACK/OPEN] 7a. Deduplicated open within 5s window — not recorded");
+          logger.info({
+            trackingId, draftId: draft.id, ip, ua,
+            existingEventId: recent.id,
+          }, "[TRACK/OPEN] 7a. EXIT PATH — Deduplicated open within 5s window — not recorded");
         } else {
+          logger.info({ trackingId, draftId: draft.id, ip },
+            "[TRACK/OPEN] 7b. Dedup check passed — no recent event found — proceeding to insert");
+
           // ── Step 8: Insert tracking event ──────────────────────────────
           logger.info({ trackingId, draftId: draft.id, ip, ua },
             "[TRACK/OPEN] 8. Inserting open event into email_tracking_events");
           try {
-            await db.insert(emailTrackingEventsTable).values({
+            const [insertedRow] = await db.insert(emailTrackingEventsTable).values({
               draftId:   draft.id,
               eventType: "open",
               ipAddress: ip,
               userAgent: ua,
-            });
+            }).returning({ id: emailTrackingEventsTable.id });
 
-            // Step 9: Confirm row count after insert
+            // Step 9: Confirm total open count for this draft
             const [{ openCount }] = await db
               .select({ openCount: count() })
               .from(emailTrackingEventsTable)
@@ -271,25 +319,26 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
 
             logger.info({
               trackingId,
-              draftId:   draft.id,
+              draftId:        draft.id,
+              insertedEventId: insertedRow?.id ?? null,
               openCount,
               ip,
               ua,
-              timestamp: ts.toISOString(),
-              rowsAffected: 1,
-            }, "[TRACK/OPEN] 9. Open recorded successfully — event inserted");
+              timestamp:      ts.toISOString(),
+            }, "[TRACK/OPEN] 9. SUCCESS — Open event inserted and confirmed");
           } catch (insertErr) {
             logger.error({ trackingId, draftId: draft.id, insertErr },
-              "[TRACK/OPEN] 9. FAILED to insert open event — DB error");
+              "[TRACK/OPEN] 9. EXIT PATH — FAILED to insert open event — DB error");
           }
         }
       }
     }
   } catch (err) {
-    logger.error({ trackingId, err }, "[TRACK/OPEN] ERROR — unhandled exception in tracking handler, pixel still served");
+    logger.error({ trackingId, err },
+      "[TRACK/OPEN] ERROR — Unhandled exception in tracking handler, pixel still served");
   }
 
-  // Step 10: Serve pixel (always last, after all DB work is complete)
+  // Step 10: Always serve pixel last, after all DB work
   logger.info({ trackingId }, "[TRACK/OPEN] 10. Serving tracking pixel — request complete");
   sendPixel(res);
 });
