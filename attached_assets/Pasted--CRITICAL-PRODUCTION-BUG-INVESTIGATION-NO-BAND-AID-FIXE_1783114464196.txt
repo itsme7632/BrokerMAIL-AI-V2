@@ -1,0 +1,244 @@
+🚨 CRITICAL PRODUCTION BUG INVESTIGATION (NO BAND-AID FIXES)
+
+We have a production deployment of BrokerMAIL AI running on DigitalOcean (PM2 + Node.js + PostgreSQL + Drizzle + Express).
+
+This is now affecting 100% of users.
+
+Current Production Symptoms
+
+Every user receives:
+
+Failed to create campaign. Please try again.
+
+Previously some users received:
+
+Unexpected token '<', "<html>..." is not valid JSON
+
+Now every campaign creation fails.
+
+This affects BOTH:
+
+Gmail Draft campaigns
+SMTP campaigns
+
+Therefore this is NOT Gmail OAuth related.
+
+IMPORTANT
+
+Do NOT add more try/catch blocks.
+
+Do NOT add frontend workarounds.
+
+Do NOT return generic "Campaign cannot be created" messages.
+
+Do NOT suppress exceptions.
+
+We need the REAL backend failure.
+
+Perform a complete backend audit of the following:
+Authentication
+
+Audit every route:
+
+POST /campaigns
+POST /campaigns/from-upload
+POST /mailbox
+PUT /mailbox
+GET /mailbox
+
+Verify every route resolves the authenticated user IDENTICALLY.
+
+Check for any mismatch between:
+
+req.user.id
+req.user.userId
+req.user.sub
+session.user.id
+auth middleware
+JWT payload
+
+Ensure all queries use the same authenticated user.
+
+Mailbox Persistence
+
+Current production issue:
+
+Mailbox saves.
+
+Refresh page.
+
+Mailbox disappears.
+
+"No mailbox configured"
+
+Audit:
+
+insert
+update
+select
+ownership filtering
+unique constraints
+transactions
+
+Determine whether:
+
+insert never commits
+insert rolls back
+insert writes wrong user_id
+GET filters wrong user
+GET queries wrong table
+wrong schema
+wrong database connection
+
+Immediately after every INSERT perform a SELECT to verify persistence.
+
+Campaign Creation
+
+Audit the complete execution flow.
+
+Find the exact statement where campaign creation fails.
+
+Trace:
+
+Request
+
+↓
+
+Validation
+
+↓
+
+Authentication
+
+↓
+
+Mailbox lookup
+
+↓
+
+Lead processing
+
+↓
+
+Campaign insert
+
+↓
+
+Draft generation
+
+↓
+
+Response
+
+Determine the exact failing step.
+
+Database
+
+Audit:
+
+Drizzle schema
+migrations
+foreign keys
+nullable columns
+indexes
+production schema
+transaction handling
+
+Verify production database matches current schema.
+
+Look for:
+
+Missing columns
+
+Failed migrations
+
+Constraint violations
+
+Wrong database connection
+
+Wrong DATABASE_URL
+
+API Response Investigation
+
+Every API route MUST return JSON.
+
+Determine why any route returns:
+
+text/html
+
+instead of
+
+application/json
+
+Check:
+
+Express error handler
+
+Unhandled promise rejections
+
+Async functions not awaited
+
+Thrown exceptions outside try/catch
+
+Nginx routing
+
+Vite fallback
+
+404 HTML responses
+
+500 HTML responses
+
+Logging
+
+Temporarily enable detailed logging for production.
+
+For every campaign request log:
+
+Authenticated User ID
+
+Organization ID
+
+Mailbox lookup result
+
+SQL executed
+
+Insert result
+
+Returned row
+
+Transaction commit
+
+Campaign ID
+
+Exact exception
+
+Full stack trace
+
+HTTP status
+
+Content-Type
+
+Do NOT log passwords or OAuth tokens.
+
+Root Cause Required
+
+I do NOT want another patch.
+
+I do NOT want more try/catch blocks.
+
+I want the ACTUAL ROOT CAUSE.
+
+Your final report must include:
+
+Exact file
+Exact function
+Exact line causing failure
+Exact SQL/query failing
+Exact exception
+Why mailbox is not persisted
+Why campaign creation fails
+Why every user is affected
+Why frontend previously received HTML
+The proper permanent fix
+
+Do not stop after finding the first issue. Continue auditing until you are confident the underlying production issue has been identified and permanently resolved.

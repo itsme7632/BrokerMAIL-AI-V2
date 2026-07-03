@@ -1187,7 +1187,7 @@ router.post("/campaigns", requireAuth, async (req, res): Promise<void> => {
     const stack   = err instanceof Error ? err.stack   : undefined;
     logger.error({ err, userId: user.id, email: user.email, stack }, `[CREATE_CAMPAIGN] Unhandled exception: ${message}`);
     if (!res.headersSent) {
-      res.status(500).json({ success: false, error: "Failed to create campaign. Please try again." });
+      res.status(500).json({ success: false, error: message });
     }
   }
 });
@@ -1308,7 +1308,7 @@ router.post("/campaigns/from-upload", requireAuth, async (req, res): Promise<voi
     const stack   = err instanceof Error ? err.stack   : undefined;
     logger.error({ err, userId: user.id, email: user.email, stack }, `[CREATE_CAMPAIGN_UPLOAD] Unhandled exception: ${message}`);
     if (!res.headersSent) {
-      res.status(500).json({ success: false, error: "Failed to create campaign. Please try again." });
+      res.status(500).json({ success: false, error: message });
     }
   }
 });
@@ -2628,7 +2628,7 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
       `[GENERATE_DRAFTS] Unhandled exception: ${message}`,
     );
     if (!res.headersSent) {
-      res.status(500).json({ success: false, error: "Failed to generate drafts. Please try again." });
+      res.status(500).json({ success: false, error: message });
     }
   }
 });

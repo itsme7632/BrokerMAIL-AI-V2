@@ -306,7 +306,9 @@ const EXPECTED_SCHEMA: Record<string, string[]> = {
     "id", "user_id", "name", "status", "template_id",
     "total_leads", "drafted_count", "failed_count", "file_name",
     "send_mode", "sent_count", "current_job_id", "email_style",
-    "use_signature", "cooldown_until", "created_at", "updated_at",
+    "use_signature", "cooldown_until", "pause_reason",
+    "booking_url", "quote_url", "website_url", "phone_number",
+    "created_at", "updated_at",
   ],
   leads: [
     "id", "user_id", "campaign_id", "name", "email",
