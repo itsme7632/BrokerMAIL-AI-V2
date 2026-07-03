@@ -300,7 +300,7 @@ const EXPECTED_SCHEMA: Record<string, string[]> = {
     "campaign_id", "lead_id", "email", "subject", "row_data_json",
     "style", "use_signature_builder", "status", "attempts",
     "deferred_count", "last_error", "quote_id", "tracking_id",
-    "first_attempt_at", "retry_after", "sent_at", "bounce_at", "created_at",
+    "first_attempt_at", "retry_after", "sent_at", "bounce_at", "is_test", "created_at",
   ],
   campaigns: [
     "id", "user_id", "name", "status", "template_id",
