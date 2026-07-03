@@ -3,6 +3,7 @@ import { db, usersTable } from "@workspace/db";
 import type { User } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import type { LogoAttachment } from "./email-html";
+import { logger } from "./logger";
 
 const OAUTH_CLIENT_ID = process.env.GMAIL_CLIENT_ID ?? "";
 const OAUTH_CLIENT_SECRET = process.env.GMAIL_CLIENT_SECRET ?? "";
@@ -79,6 +80,17 @@ export async function getGmailClient(user: User) {
   // Persist refreshed tokens automatically — googleapis fires this event
   // whenever the library silently refreshes an expired access token.
   client.on("tokens", (tokens) => {
+    logger.info(
+      {
+        userId:          user.id,
+        gmailAccount:    user.gmailEmail,
+        refreshed:       true,
+        hasNewAccessToken:   !!tokens.access_token,
+        hasNewRefreshToken:  !!tokens.refresh_token,
+        newExpiryDate:   tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null,
+      },
+      "[GMAIL_OAUTH] Token refresh event fired — access token refreshed successfully",
+    );
     db.update(usersTable)
       .set({
         gmailAccessToken: tokens.access_token ?? user.gmailAccessToken,
@@ -87,8 +99,8 @@ export async function getGmailClient(user: User) {
         updatedAt: new Date(),
       })
       .where(eq(usersTable.id, user.id))
-      .catch(() => {
-        // Non-fatal — token refresh still succeeds for this request
+      .catch((dbErr) => {
+        logger.warn({ err: dbErr, userId: user.id }, "[GMAIL_OAUTH] Failed to persist refreshed token to DB (non-fatal)");
       });
   });
 
@@ -214,10 +226,27 @@ export async function createGmailDraft(
         message: { raw: encoded },
       },
     });
+    logger.info(
+      { userId: user.id, gmailAccount: user.gmailEmail, gmailDraftId: draft.data.id, httpStatus: 200 },
+      "[GMAIL_API] drafts.create succeeded",
+    );
     return draft.data.id ?? "";
   } catch (err: any) {
     const status = err?.response?.status ?? err?.status;
     const reason = err?.response?.data?.error?.message ?? err?.message ?? String(err);
+    const errors = err?.response?.data?.error?.errors ?? [];
+
+    logger.error(
+      {
+        userId:       user.id,
+        gmailAccount: user.gmailEmail,
+        httpStatus:   status,
+        errorReason:  reason,
+        errorDetails: errors,
+        rawResponse:  err?.response?.data ?? null,
+      },
+      `[GMAIL_API] drafts.create failed — HTTP ${status ?? "unknown"}: ${reason}`,
+    );
 
     if (status === 401) {
       throw new Error("Gmail authentication expired — please reconnect Gmail in Settings.");

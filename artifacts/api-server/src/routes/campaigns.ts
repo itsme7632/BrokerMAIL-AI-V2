@@ -1158,18 +1158,38 @@ router.get("/campaigns", requireAuth, async (req, res): Promise<void> => {
 // ─── POST /api/campaigns ──────────────────────────────────────────────────────
 router.post("/campaigns", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  const parsed = CreateCampaignBody.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  try {
+    logger.info({ userId: user.id, email: user.email, body: req.body }, "[CREATE_CAMPAIGN] Request received");
 
-  // Fix 3: Enforce campaign limit before creation
-  const campaignLimitErr = await checkCampaignLimit(user.id);
-  if (campaignLimitErr) { res.status(429).json(campaignLimitErr); return; }
+    const parsed = CreateCampaignBody.safeParse(req.body);
+    if (!parsed.success) {
+      logger.warn({ userId: user.id, validationError: parsed.error.message }, "[CREATE_CAMPAIGN] Validation failed");
+      res.status(400).json({ success: false, error: parsed.error.message }); return;
+    }
 
-  const [campaign] = await db.insert(campaignsTable).values({
-    userId: user.id, name: parsed.data.name, templateId: parsed.data.templateId ?? null,
-  }).returning();
-  await db.insert(activityTable).values({ userId: user.id, type: "campaign_created", description: `Campaign "${campaign.name}" created` });
-  res.status(201).json({ ...campaign, createdAt: campaign.createdAt.toISOString(), updatedAt: campaign.updatedAt.toISOString() });
+    // Enforce campaign limit before creation
+    const campaignLimitErr = await checkCampaignLimit(user.id);
+    if (campaignLimitErr) {
+      logger.warn({ userId: user.id, limitError: campaignLimitErr }, "[CREATE_CAMPAIGN] Campaign limit reached");
+      res.status(429).json(campaignLimitErr); return;
+    }
+
+    logger.info({ userId: user.id, name: parsed.data.name }, "[CREATE_CAMPAIGN] Inserting campaign row");
+    const [campaign] = await db.insert(campaignsTable).values({
+      userId: user.id, name: parsed.data.name, templateId: parsed.data.templateId ?? null,
+    }).returning();
+    logger.info({ userId: user.id, campaignId: campaign.id }, "[CREATE_CAMPAIGN] Campaign row inserted successfully");
+
+    await db.insert(activityTable).values({ userId: user.id, type: "campaign_created", description: `Campaign "${campaign.name}" created` });
+    res.status(201).json({ ...campaign, createdAt: campaign.createdAt.toISOString(), updatedAt: campaign.updatedAt.toISOString() });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const stack   = err instanceof Error ? err.stack   : undefined;
+    logger.error({ err, userId: user.id, email: user.email, stack }, `[CREATE_CAMPAIGN] Unhandled exception: ${message}`);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, error: "Failed to create campaign. Please try again." });
+    }
+  }
 });
 
 // ─── POST /api/campaigns/from-upload ─────────────────────────────────────────
@@ -1180,10 +1200,15 @@ router.post("/campaigns", requireAuth, async (req, res): Promise<void> => {
  */
 router.post("/campaigns/from-upload", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
+  try {
+  logger.info({ userId: user.id, email: user.email, sendMode: req.body?.sendMode, rowCount: Array.isArray(req.body?.rows) ? req.body.rows.length : "N/A" }, "[CREATE_CAMPAIGN_UPLOAD] Request received");
 
-  // Fix 3: Enforce campaign limit before creation
+  // Enforce campaign limit before creation
   const campaignLimitErr = await checkCampaignLimit(user.id);
-  if (campaignLimitErr) { res.status(429).json(campaignLimitErr); return; }
+  if (campaignLimitErr) {
+    logger.warn({ userId: user.id, limitError: campaignLimitErr }, "[CREATE_CAMPAIGN_UPLOAD] Campaign limit reached");
+    res.status(429).json(campaignLimitErr); return;
+  }
 
   const {
     name, templateId, sendMode, emailStyle, useSignature, fileName, rows,
@@ -1202,8 +1227,8 @@ router.post("/campaigns/from-upload", requireAuth, async (req, res): Promise<voi
     phoneNumber?: string;
   };
 
-  if (!name?.trim()) { res.status(400).json({ error: "Campaign name is required." }); return; }
-  if (!Array.isArray(rows) || rows.length === 0) { res.status(400).json({ error: "No rows provided." }); return; }
+  if (!name?.trim()) { res.status(400).json({ success: false, error: "Campaign name is required." }); return; }
+  if (!Array.isArray(rows) || rows.length === 0) { res.status(400).json({ success: false, error: "No rows provided." }); return; }
 
   // Create campaign
   const [campaign] = await db.insert(campaignsTable).values({
@@ -1276,7 +1301,16 @@ router.post("/campaigns/from-upload", requireAuth, async (req, res): Promise<voi
     metadata: { campaignId: campaign.id, valid, duplicates, invalid, suppressed },
   });
 
+  logger.info({ userId: user.id, campaignId: campaign.id, valid, duplicates, invalid, suppressed }, "[CREATE_CAMPAIGN_UPLOAD] Campaign created successfully");
   res.status(201).json({ campaignId: campaign.id, total: rows.length, valid, duplicates, invalid, suppressed });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const stack   = err instanceof Error ? err.stack   : undefined;
+    logger.error({ err, userId: user.id, email: user.email, stack }, `[CREATE_CAMPAIGN_UPLOAD] Unhandled exception: ${message}`);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, error: "Failed to create campaign. Please try again." });
+    }
+  }
 });
 
 // ─── GET /api/campaigns/summary ──────────────────────────────────────────────
@@ -2367,27 +2401,85 @@ router.post("/campaigns/remove", requireAuth, async (req, res): Promise<void> =>
 // ─── POST /api/campaigns/:id/generate-drafts ─────────────────────────────────
 router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
+  try {
+  logger.info(
+    { userId: user.id, email: user.email, campaignId: req.params.id, templateId: req.body?.templateId },
+    "[GENERATE_DRAFTS] Request received",
+  );
+
   const params = GenerateCampaignDraftsParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) {
+    logger.warn({ userId: user.id, validationError: params.error.message }, "[GENERATE_DRAFTS] Params validation failed");
+    res.status(400).json({ success: false, error: params.error.message }); return;
+  }
   const body = GenerateCampaignDraftsBody.safeParse(req.body);
-  if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+  if (!body.success) {
+    logger.warn({ userId: user.id, validationError: body.error.message }, "[GENERATE_DRAFTS] Body validation failed");
+    res.status(400).json({ success: false, error: body.error.message }); return;
+  }
 
   const [campaign] = await db.select().from(campaignsTable)
     .where(and(eq(campaignsTable.id, params.data.id), eq(campaignsTable.userId, user.id)));
-  if (!campaign) { res.status(404).json({ error: "Campaign not found" }); return; }
+  if (!campaign) {
+    logger.warn({ userId: user.id, campaignId: params.data.id }, "[GENERATE_DRAFTS] Campaign not found");
+    res.status(404).json({ success: false, error: "Campaign not found" }); return;
+  }
 
   const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+
+  // Log full OAuth state for diagnostics
+  logger.info(
+    {
+      userId:              user.id,
+      gmailAccount:        freshUser?.gmailEmail ?? null,
+      mailboxId:           null, // Gmail mode — no SMTP mailbox
+      oauthAccount:        freshUser?.gmailEmail ?? null,
+      gmailConnected:      freshUser?.gmailConnected ?? false,
+      hasAccessToken:      !!freshUser?.gmailAccessToken,
+      hasRefreshToken:     !!freshUser?.gmailRefreshToken,
+      tokenExpiry:         freshUser?.gmailTokenExpiry?.toISOString() ?? null,
+      campaignId:          params.data.id,
+    },
+    "[GENERATE_DRAFTS] Gmail OAuth state",
+  );
+
   if (!freshUser?.gmailConnected || !freshUser.gmailAccessToken) {
-    res.status(400).json({ error: "Gmail not connected. Please connect Gmail first." });
+    logger.warn({ userId: user.id, gmailConnected: freshUser?.gmailConnected }, "[GENERATE_DRAFTS] Gmail not connected");
+    res.status(400).json({
+      success: false,
+      code: "GMAIL_NOT_CONNECTED",
+      error: "Gmail not connected. Please connect Gmail first.",
+    });
+    return;
+  }
+
+  // A missing refresh token means the OAuth grant was lost (revoked, re-auth without offline access,
+  // or the token was never issued). Access tokens alone expire and cannot be refreshed — draft
+  // creation will fail for every lead. Return a structured error so the frontend can surface it.
+  if (!freshUser.gmailRefreshToken) {
+    logger.warn(
+      { userId: user.id, gmailAccount: freshUser.gmailEmail },
+      "[GENERATE_DRAFTS] Gmail refresh token missing — user must reconnect",
+    );
+    res.status(401).json({
+      success: false,
+      code: "GMAIL_AUTH_EXPIRED",
+      error: "Reconnect your Gmail account.",
+    });
     return;
   }
 
   const [template] = await db.select().from(templatesTable)
     .where(and(eq(templatesTable.id, body.data.templateId), eq(templatesTable.userId, user.id)));
-  if (!template) { res.status(404).json({ error: "Template not found" }); return; }
+  if (!template) {
+    logger.warn({ userId: user.id, templateId: body.data.templateId }, "[GENERATE_DRAFTS] Template not found");
+    res.status(404).json({ success: false, error: "Template not found" }); return;
+  }
 
   const leads = await db.select().from(leadsTable)
     .where(and(eq(leadsTable.campaignId, params.data.id), eq(leadsTable.status, "new")));
+
+  logger.info({ userId: user.id, campaignId: params.data.id, leadCount: leads.length }, "[GENERATE_DRAFTS] Starting draft generation");
 
   const branding   = userBranding(freshUser);
   const useSig     = freshUser.useSignature ?? false;
@@ -2467,7 +2559,9 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
       const gDraftTrackedHtml = gDraftPixelTag
         ? (bodyHtml.includes("</body>") ? bodyHtml.replace(/<\/body>/i, `${gDraftPixelTag}</body>`) : bodyHtml + gDraftPixelTag)
         : bodyHtml;
+      logger.info({ userId: user.id, leadId: lead.id, email: lead.email, campaignId: campaign.id }, "[GENERATE_DRAFTS] Calling Gmail API — createGmailDraft");
       const gmailDraftId = await createGmailDraft(freshUser, lead.email, generated.subject, generated.body, gDraftTrackedHtml, gDraftLogoAttachment);
+      logger.info({ userId: user.id, leadId: lead.id, email: lead.email, gmailDraftId }, "[GENERATE_DRAFTS] Gmail API success — draft created");
 
       // sentAt left null intentionally — broker must "Mark Sent" in BrokerMAIL after
       // sending the draft from Gmail, which activates open tracking.
@@ -2481,7 +2575,23 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
         .where(eq(leadsTable.id, lead.id));
       succeeded++;
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
+      const errMsg  = err instanceof Error ? err.message : String(err);
+      const errStack = err instanceof Error ? err.stack : undefined;
+      // Detect invalid_grant (expired/revoked OAuth grant) for clearer diagnostics
+      const isAuthErr = errMsg.includes("invalid_grant") || errMsg.includes("Invalid Credentials") || errMsg.includes("Token has been expired");
+      logger.error(
+        {
+          err,
+          stack:       errStack,
+          userId:      user.id,
+          gmailAccount: freshUser.gmailEmail,
+          leadId:      lead.id,
+          email:       lead.email,
+          campaignId:  campaign.id,
+          isAuthErr,
+        },
+        `[GENERATE_DRAFTS] Lead failed: ${errMsg}`,
+      );
       await db.insert(draftsTable).values({
         userId: user.id, campaignId: campaign.id, leadId: lead.id,
         email: lead.email, subject: "", body: "", status: "failed", errorMessage: errMsg,
@@ -2508,7 +2618,19 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
     metadata: { campaignId: campaign.id, succeeded, failed },
   });
 
+  logger.info({ userId: user.id, campaignId: campaign.id, total: leads.length, succeeded, failed }, "[GENERATE_DRAFTS] Completed");
   res.json({ total: leads.length, succeeded, failed, errors });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const stack   = err instanceof Error ? err.stack   : undefined;
+    logger.error(
+      { err, userId: user.id, email: user.email, gmailAccount: (user as any).gmailEmail, stack },
+      `[GENERATE_DRAFTS] Unhandled exception: ${message}`,
+    );
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, error: "Failed to generate drafts. Please try again." });
+    }
+  }
 });
 
 // ─── Retry a failed lead (SMTP) ───────────────────────────────────────────────
