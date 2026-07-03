@@ -13,6 +13,7 @@ import {
 } from "../lib/email-html";
 import type { User, Mailbox, Template } from "@workspace/db";
 import { randomUUID } from "crypto";
+import { logger } from "../lib/logger";
 import { getTrackingSettings } from "../lib/tracking-settings";
 import { checkEmailLimit, checkMailboxLimit } from "../lib/plan-limits";
 import { isSuppressed } from "../lib/suppression";
