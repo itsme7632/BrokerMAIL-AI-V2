@@ -1,0 +1,84 @@
+We have a production bug.
+
+Symptoms:
+
+- Some users can create Gmail Draft campaigns successfully.
+- Some users receive:
+
+Unexpected token '<', "<html>..." is not valid JSON
+
+when clicking "Create Campaign".
+
+For affected users:
+
+- The campaign is NOT created.
+- No campaign row exists.
+- The frontend expects JSON but receives an HTML error page.
+- Reconnecting Gmail and logging out/in does not fix it.
+- My own account works correctly.
+
+IMPORTANT:
+
+Do NOT implement new features.
+Do NOT change business logic.
+Do NOT change Gmail Draft behavior.
+
+Your task is ONLY to identify and fix the root cause.
+
+Audit the complete Create Campaign → Gmail Draft creation flow.
+
+Specifically:
+
+1. Find every place where an exception can occur before the campaign is created.
+
+2. Ensure every API endpoint always returns JSON, even on failure.
+Never allow Express/Nginx to return an HTML error page.
+
+3. Add structured logs around the Create Campaign endpoint.
+
+Log:
+
+- User ID
+- Gmail account
+- Mailbox ID
+- OAuth account
+- Whether refresh token exists
+- OAuth refresh result
+- Google API response
+- Campaign payload validation
+- Database insert result
+- Full exception stack
+
+4. Check for:
+
+- Missing Gmail refresh token
+- Expired refresh token (invalid_grant)
+- Missing Gmail scopes
+- Null mailbox
+- Missing mailbox ownership
+- Database constraint errors
+- Duplicate campaign validation
+- Missing required fields
+- Unhandled async promise rejection
+
+5. If Gmail authentication fails, return JSON such as:
+
+{
+  "success": false,
+  "code": "GMAIL_AUTH_EXPIRED",
+  "message": "Reconnect your Gmail account."
+}
+
+instead of throwing.
+
+6. If validation fails, return JSON.
+
+7. If the database insert fails, return JSON.
+
+8. If Google API fails, return JSON.
+
+9. Never allow HTML to be returned to the frontend.
+
+Finally:
+
+Explain exactly why only some users were affected, identify the root cause, and list every code change you made.
