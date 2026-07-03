@@ -183,10 +183,35 @@ async function processJobQueue(jobId: string, box: Mailbox, template: Template, 
         }
 
         // Critical: mark queue item success with trackingId FIRST (idempotency guard)
+        //
+        // [SMTP DIAG] Pre-update checkpoint: if this log appears but the post-update log
+        // does NOT follow, the DB update threw or the process crashed between SMTP 250
+        // acceptance and the DB commit. Status stays "sending", trackingId stays NULL,
+        // no draft row is created → opens can never be recorded for this email.
+        const sentAtTs = new Date();
+        logger.info({
+          queueItemId:    item.id,
+          mailboxId:      box.id,
+          campaignId:     item.campaignId ?? null,
+          previousStatus: "sending",
+          newStatus:      "success",
+          sentAt:         sentAtTs.toISOString(),
+          trackingId,
+          messageId:      info.messageId,
+        }, "[MAILBOX] [SMTP DIAG] Pre-update — SMTP 250 accepted, writing status/sentAt/trackingId to email_queue now");
+
         await db
           .update(emailQueueTable)
-          .set({ status: "success", sentAt: new Date(), trackingId, retryAfter: null })
+          .set({ status: "success", sentAt: sentAtTs, trackingId, retryAfter: null })
           .where(eq(emailQueueTable.id, item.id));
+
+        logger.info({
+          queueItemId: item.id,
+          mailboxId:   box.id,
+          newStatus:   "success",
+          sentAt:      sentAtTs.toISOString(),
+          trackingId,
+        }, "[MAILBOX] [SMTP DIAG] Post-update — email_queue.status=success confirmed, critical DB update succeeded");
 
         // Non-fatal: insert draft record with sentAt set so tracking pixel hits are recorded
         try {
@@ -203,7 +228,11 @@ async function processJobQueue(jobId: string, box: Mailbox, template: Template, 
             sentAt:       new Date(),
           });
         } catch (draftErr) {
-          // Non-fatal — email was delivered, queue already marked success
+          // Non-fatal — email was delivered, queue already marked success.
+          // If this fires repeatedly, opens will use the SMTP fallback path in
+          // tracking.ts (Step 5 lazy-creates a draft from the queue row).
+          logger.warn({ draftErr, queueItemId: item.id, trackingId },
+            "[MAILBOX] Non-fatal: drafts table insert failed — email WAS sent, queue marked success. Tracking will use SMTP fallback.");
         }
 
       } catch (err: any) {

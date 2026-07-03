@@ -673,16 +673,50 @@ router.post("/sent-emails/:id/retry", requireAuth, async (req, res): Promise<voi
   try {
     await sendEmail(mailbox, { to: item.email, subject, text: bodyText, html: trackedHtml });
 
-    await db.insert(draftsTable).values({
-      userId: user.id, campaignId: item.campaignId ?? null, leadId: item.leadId ?? null,
-      email: item.email, subject, body: bodyText, status: "success",
-      trackingId, gmailDraftId: `smtp:retry:${id}`,
-    });
-
+    // ── Critical: queue update FIRST — this is the idempotency guard ───────
+    // If the draft insert below throws, the email was already delivered and
+    // the queue must reflect that. Reversing the order (draft before queue)
+    // caused delivered emails to show "Email queued" permanently: a draft
+    // insert failure would prevent sentAt / trackingId from ever being written.
+    //
+    // [SMTP DIAG] Pre-update checkpoint: if this log appears but the post-update
+    // log does NOT, the DB update threw and sentAt was never written.
     const now = new Date();
+    logger.info({
+      queueItemId:    id,
+      mailboxId:      mailbox.id,
+      campaignId:     item.campaignId ?? null,
+      previousStatus: item.status,
+      newStatus:      "success",
+      sentAt:         now.toISOString(),
+      trackingId,
+    }, "[RETRY] [SMTP DIAG] Pre-update — SMTP 250 accepted, writing status/sentAt/trackingId to email_queue now");
+
     await db.update(emailQueueTable)
       .set({ status: "success", sentAt: now, trackingId, lastError: null, attempts: item.attempts + 1 })
       .where(eq(emailQueueTable.id, id));
+
+    logger.info({
+      queueItemId: id,
+      newStatus:   "success",
+      sentAt:      now.toISOString(),
+      trackingId,
+    }, "[RETRY] [SMTP DIAG] Post-update — email_queue.status=success confirmed, critical DB update succeeded");
+
+    // ── Non-fatal: drafts tracking record ────────────────────────────────────
+    // sentAt set to now so tracking pixel fires record events immediately
+    // without needing the auto-heal path (Step 6a in tracking.ts).
+    try {
+      await db.insert(draftsTable).values({
+        userId: user.id, campaignId: item.campaignId ?? null, leadId: item.leadId ?? null,
+        email: item.email, subject, body: bodyText, status: "success",
+        trackingId, gmailDraftId: `smtp:retry:${id}`,
+        sentAt: now,
+      });
+    } catch (draftErr) {
+      logger.warn({ draftErr, queueItemId: id, trackingId },
+        "[RETRY] Non-fatal: drafts table insert failed — email WAS sent, queue marked success. Tracking will use SMTP fallback.");
+    }
 
     res.json({ ok: true, sentAt: now.toISOString(), trackingId });
   } catch (err: any) {
@@ -787,29 +821,73 @@ router.post("/sent-emails/:id/edit-resend", requireAuth, async (req, res): Promi
   try {
     await sendEmail(mailbox, { to: recipientEmail, subject: finalSubject, text: bodyText, html: trackedHtml });
 
-    await db.insert(draftsTable).values({
-      userId: user.id, campaignId: item.campaignId ?? null, leadId: item.leadId ?? null,
-      email: recipientEmail, subject: finalSubject, body: bodyText, status: "success",
-      trackingId, gmailDraftId: `smtp:edit-resend:${id}`,
-    });
+    // ── Critical: create the new queue row FIRST so a sent email is always
+    // recorded even if the draft insert below throws. Prior ordering (draft
+    // before queue insert) caused delivered emails to have no sentAt record
+    // if the draft insert failed — resulting in "Email queued" forever.
+    //
+    // [SMTP DIAG] Pre-insert checkpoint: if this appears but post-insert does
+    // not, the DB insert threw and the resend is untracked.
+    const now = new Date();
+    logger.info({
+      originalQueueId: id,
+      mailboxId:       mailbox.id,
+      campaignId:      item.campaignId ?? null,
+      newStatus:       "success",
+      sentAt:          now.toISOString(),
+      trackingId,
+    }, "[EDIT-RESEND] [SMTP DIAG] Pre-insert — SMTP 250 accepted, creating new queue entry now");
 
-    // Insert new queue entry to track this resend
     const newEntry = await db.insert(emailQueueTable).values({
-      jobId: `resend-${id}-${Date.now()}`,
-      userId: user.id, mailboxId: item.mailboxId, templateId: item.templateId,
-      campaignId: item.campaignId ?? undefined, leadId: item.leadId ?? undefined,
-      email: recipientEmail, subject: finalSubject,
-      rowDataJson: item.rowDataJson, style: item.style,
+      jobId:               `resend-${id}-${Date.now()}`,
+      userId:              user.id,
+      mailboxId:           item.mailboxId,
+      templateId:          item.templateId,
+      campaignId:          item.campaignId ?? undefined,
+      leadId:              item.leadId     ?? undefined,
+      email:               recipientEmail,
+      subject:             finalSubject,
+      rowDataJson:         item.rowDataJson,
+      style:               item.style,
       useSignatureBuilder: item.useSignatureBuilder,
-      status: "success", sentAt: new Date(), trackingId,
+      status:              "success",
+      sentAt:              now,
+      trackingId,
     }).returning();
 
-    // Mark original as ignored so it doesn't re-appear in failed list
+    logger.info({
+      newQueueId: newEntry[0]?.id ?? null,
+      newStatus:  "success",
+      sentAt:     now.toISOString(),
+      trackingId,
+    }, "[EDIT-RESEND] [SMTP DIAG] Post-insert — new queue entry created with status=success");
+
+    // Mark original as ignored so it doesn't re-appear in the failed list
     await db.update(emailQueueTable)
       .set({ status: "ignored" })
       .where(eq(emailQueueTable.id, id));
 
-    res.json({ ok: true, newId: newEntry[0]?.id ?? null, sentAt: new Date().toISOString() });
+    // ── Non-fatal: drafts tracking record ────────────────────────────────────
+    // sentAt set so opens record immediately without auto-heal.
+    try {
+      await db.insert(draftsTable).values({
+        userId:       user.id,
+        campaignId:   item.campaignId  ?? null,
+        leadId:       item.leadId      ?? null,
+        email:        recipientEmail,
+        subject:      finalSubject,
+        body:         bodyText,
+        status:       "success",
+        trackingId,
+        gmailDraftId: `smtp:edit-resend:${id}`,
+        sentAt:       now,
+      });
+    } catch (draftErr) {
+      logger.warn({ draftErr, originalQueueId: id, newQueueId: newEntry[0]?.id ?? null, trackingId },
+        "[EDIT-RESEND] Non-fatal: drafts table insert failed — email WAS sent, queue entry created. Tracking will use SMTP fallback.");
+    }
+
+    res.json({ ok: true, newId: newEntry[0]?.id ?? null, sentAt: now.toISOString() });
   } catch (err: any) {
     const errMsg = String(err?.message ?? "Send failed");
     res.status(500).json({ error: errMsg, errorLabel: parseSMTPError(errMsg) });

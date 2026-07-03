@@ -346,10 +346,34 @@ export async function processCampaignJobQueue(
         // ── Critical state updates first — these must succeed before anything optional ──
         // Updating the queue item to "success" is the idempotency guard: if the process
         // crashes after this point, the startup recovery will NOT re-send this email.
+        //
+        // [SMTP DIAG] Pre-update checkpoint: confirms SMTP accepted (250) and the DB write is
+        // about to start. If this log appears in PM2 but "[QUEUE] 8" does NOT follow, the DB
+        // update is throwing or the process crashed between 250 acceptance and DB commit.
+        // In that case: email_queue.status stays "sending", email_queue.trackingId stays NULL,
+        // no draft row is created → tracking handler cannot record any opens for this email.
+        const sentAtTs = new Date();
+        logger.info({
+          jobId, campaignId,
+          queueItemId:    item.id,
+          previousStatus: "sending",
+          newStatus:      "success",
+          sentAt:         sentAtTs.toISOString(),
+          trackingId,
+          messageId:      info.messageId,
+        }, "[QUEUE] 7. [SMTP DIAG] Pre-update — SMTP 250 accepted, writing status/sentAt/trackingId to email_queue now");
+
         await db.update(emailQueueTable)
-          .set({ status: "success", sentAt: new Date(), trackingId })
+          .set({ status: "success", sentAt: sentAtTs, trackingId })
           .where(eq(emailQueueTable.id, item.id));
-        logger.info({ jobId, campaignId, queueItemId: item.id }, "[QUEUE] 8. Queue item marked success");
+
+        logger.info({
+          jobId, campaignId,
+          queueItemId:    item.id,
+          newStatus:      "success",
+          sentAt:         sentAtTs.toISOString(),
+          trackingId,
+        }, "[QUEUE] 8. [SMTP DIAG] Post-update — email_queue.status=success confirmed, critical DB update succeeded");
 
         if (item.leadId) {
           await db.update(leadsTable)
@@ -878,10 +902,35 @@ export async function processCampaignFully(
         // ── Critical state updates first — these must succeed before anything optional ──
         // Updating the queue item to "success" is the idempotency guard: if the process
         // crashes after this point, the startup recovery will NOT re-send this email.
+        //
+        // [SMTP DIAG] Pre-update checkpoint: if this log appears but "[CAMPAIGN] 8" does NOT,
+        // the DB update threw (DB down, constraint error) or the process crashed between
+        // SMTP 250 acceptance and the DB commit. Status stays "sending", trackingId stays NULL,
+        // no draft row is created → opens can never be recorded for this email.
+        const sentAtTs = new Date();
+        logger.info({
+          campaignId,
+          queueItemId:    item.id,
+          mailboxId:      box.id,
+          previousStatus: "sending",
+          newStatus:      "success",
+          sentAt:         sentAtTs.toISOString(),
+          trackingId,
+          messageId:      info.messageId,
+        }, "[CAMPAIGN] 7. [SMTP DIAG] Pre-update — SMTP 250 accepted, writing status/sentAt/trackingId to email_queue now");
+
         await db.update(emailQueueTable)
-          .set({ status: "success", sentAt: new Date(), trackingId })
+          .set({ status: "success", sentAt: sentAtTs, trackingId })
           .where(eq(emailQueueTable.id, item.id));
-        logger.info({ campaignId, queueItemId: item.id }, "[CAMPAIGN] 8. Queue item marked success");
+
+        logger.info({
+          campaignId,
+          queueItemId:    item.id,
+          mailboxId:      box.id,
+          newStatus:      "success",
+          sentAt:         sentAtTs.toISOString(),
+          trackingId,
+        }, "[CAMPAIGN] 8. [SMTP DIAG] Post-update — email_queue.status=success confirmed, critical DB update succeeded");
 
         if (item.leadId) {
           await db.update(leadsTable)
