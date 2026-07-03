@@ -24,6 +24,12 @@ import { saveToSent, buildRawMessage } from "../lib/imap";
 import { getTrackingSettings } from "../lib/tracking-settings";
 import { checkEmailLimit, checkCampaignLimit } from "../lib/plan-limits";
 import { isSuppressed, filterSuppressed } from "../lib/suppression";
+import {
+  isQuotaReachedError,
+  handleMailboxQuotaReached,
+  clearMailboxQuotaIfNeeded,
+  runQuotaRecovery,
+} from "../lib/smtp-quota";
 
 const router: IRouter = Router();
 
@@ -412,6 +418,11 @@ export async function processCampaignJobQueue(
             "[QUEUE] Non-fatal: drafts table insert failed — email WAS sent and queue/lead already marked success");
         }
 
+        // Non-fatal: if this was a probe send after SMTP quota, clear the quota state.
+        // The recovery loop detects quota_status=null and exits cleanly.
+        clearMailboxQuotaIfNeeded(box.id, user.id).catch(err2 =>
+          logger.warn({ err: err2 }, "[SMTP-QUOTA] clearMailboxQuotaIfNeeded failed (non-fatal)"));
+
         batchSent++;
       } catch (err: any) {
         const errMsg   = String(err?.message ?? "Send failed");
@@ -427,17 +438,22 @@ export async function processCampaignJobQueue(
           });
         } catch { /* non-fatal */ }
 
-        if (isProviderRateLimitError(errMsg)) {
-          const retryAfter = new Date(Date.now() + 60 * 60_000);
+        if (isQuotaReachedError(err)) {
+          // Leave item queued (not deferred/failed) — it will be retried after the probe succeeds.
+          // Do NOT increment attempts: this is a mailbox quota issue, not an email-level failure.
           await db.update(emailQueueTable)
-            .set({ status: "deferred", attempts, deferredCount: newDeferred, retryAfter, lastError: errorJson })
+            .set({ status: "pending", lastError: errorJson, retryAfter: null })
             .where(eq(emailQueueTable.id, item.id));
           if (item.leadId) {
             await db.update(leadsTable)
               .set({ status: "queued", updatedAt: new Date() })
               .where(eq(leadsTable.id, item.leadId));
           }
-          logger.warn({ jobId, campaignId, queueItemId: item.id }, "[QUEUE] Provider rate limit — deferring and stopping batch");
+          await handleMailboxQuotaReached(box.id, user.id, errMsg);
+          runQuotaRecovery(box.id, user.id, startCampaignProcessor).catch(err2 =>
+            logger.error({ err: err2 }, "[SMTP-QUOTA] Recovery loop error (processCampaignJobQueue)"));
+          logger.warn({ jobId, campaignId, queueItemId: item.id, mailboxId: box.id },
+            "[SMTP-QUOTA] SMTP provider quota — item left queued, mailbox+campaigns paused, recovery started");
           break;
         } else if (attempts >= 3) {
           await db.update(emailQueueTable)
@@ -969,6 +985,11 @@ export async function processCampaignFully(
             "[CAMPAIGN] Non-fatal: drafts table insert failed — email WAS sent and queue/lead already marked success");
         }
 
+        // Non-fatal: if this was a probe send after SMTP quota, clear the quota state.
+        // The recovery loop detects quota_status=null and exits cleanly.
+        clearMailboxQuotaIfNeeded(box.id, user.id).catch(err2 =>
+          logger.warn({ err: err2 }, "[SMTP-QUOTA] clearMailboxQuotaIfNeeded failed (non-fatal)"));
+
       } catch (err: any) {
         const errMsg      = String(err?.message ?? "Send failed");
         const attempts    = item.attempts + 1;
@@ -983,20 +1004,22 @@ export async function processCampaignFully(
           });
         } catch { /* non-fatal */ }
 
-        if (isProviderRateLimitError(errMsg)) {
-          const retryAfter = new Date(Date.now() + 60 * 60_000);
+        if (isQuotaReachedError(err)) {
+          // Leave item queued (not deferred/failed) — it will be retried after the probe succeeds.
+          // Do NOT increment attempts: this is a mailbox quota issue, not an email-level failure.
           await db.update(emailQueueTable)
-            .set({ status: "deferred", attempts, deferredCount: newDeferred, retryAfter, lastError: errorJson })
+            .set({ status: "pending", lastError: errorJson, retryAfter: null })
             .where(eq(emailQueueTable.id, item.id));
           if (item.leadId) {
             await db.update(leadsTable)
               .set({ status: "queued", updatedAt: new Date() })
               .where(eq(leadsTable.id, item.leadId));
           }
-          await db.update(campaignsTable).set({
-            status: "cooling_down", cooldownUntil: retryAfter, updatedAt: new Date(),
-          }).where(eq(campaignsTable.id, campaignId));
-          logger.warn({ campaignId, queueItemId: item.id }, "[CAMPAIGN] Provider rate limit — deferring and cooling down");
+          await handleMailboxQuotaReached(box.id, user.id, errMsg);
+          runQuotaRecovery(box.id, user.id, startCampaignProcessor).catch(err2 =>
+            logger.error({ err: err2 }, "[SMTP-QUOTA] Recovery loop error (processCampaignFully)"));
+          logger.warn({ campaignId, queueItemId: item.id, mailboxId: box.id },
+            "[SMTP-QUOTA] SMTP provider quota — item left queued, mailbox+campaigns paused, recovery started");
           break;
         } else if (attempts >= 3) {
           await db.update(emailQueueTable)
@@ -1109,6 +1132,7 @@ router.get("/campaigns", requireAuth, async (req, res): Promise<void> => {
       emailStyle:   campaignsTable.emailStyle,
       useSignature: campaignsTable.useSignature,
       cooldownUntil: campaignsTable.cooldownUntil,
+      pauseReason:  campaignsTable.pauseReason,
       createdAt:    campaignsTable.createdAt,
       updatedAt:    campaignsTable.updatedAt,
     })
@@ -1123,6 +1147,7 @@ router.get("/campaigns", requireAuth, async (req, res): Promise<void> => {
     data: rows.map(c => ({
       ...c,
       cooldownUntil: c.cooldownUntil?.toISOString() ?? null,
+      pauseReason:   c.pauseReason ?? null,
       createdAt:     c.createdAt.toISOString(),
       updatedAt:     c.updatedAt.toISOString(),
     })),

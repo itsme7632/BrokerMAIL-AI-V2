@@ -1,0 +1,314 @@
+Implement an Adaptive SMTP Quota Recovery System.
+
+IMPORTANT:
+Do NOT rewrite or replace the existing campaign processor, queue engine, mailbox scheduler, cooldown system, retry system, SMTP sender, or Gmail Draft system.
+
+Only extend the existing logic.
+
+==========================
+CURRENT BEHAVIOR
+==========================
+
+Currently we already have:
+
+- SMTP sending
+- Mailbox hourly quota settings
+- Cooldown timer
+- Campaign pause/resume
+- Queue processor
+- Retry logic
+
+The current cooldown is based only on the configured hourly limit.
+
+Example:
+
+Hourly limit = 45
+
+After sending 45 emails:
+
+Pause 1 hour
+
+Resume automatically
+
+This must continue to work.
+
+==========================
+NEW REQUIREMENT
+==========================
+
+Add a second protection layer that works from REAL SMTP responses.
+
+If the SMTP provider returns a quota/rate-limit response before our configured quota is reached, immediately pause the mailbox and all campaigns using that mailbox.
+
+This is NOT a bounce.
+
+This is NOT a failed email.
+
+This is NOT suppression.
+
+It is a temporary provider quota.
+
+==========================
+QUOTA DETECTION
+==========================
+
+Create a reusable helper.
+
+Example:
+
+isQuotaReachedError(error)
+
+It should detect common SMTP quota responses.
+
+Examples include:
+
+"exceeded the max emails per hour"
+
+"hourly limit"
+
+"daily limit"
+
+"rate limit exceeded"
+
+"sending limit exceeded"
+
+"too many emails"
+
+"temporarily deferred"
+
+"quota exceeded"
+
+"mailbox temporarily blocked"
+
+"try again later"
+
+"too many recipients"
+
+Do NOT hardcode only one hosting provider.
+
+Make detection provider-agnostic.
+
+==========================
+WHEN DETECTED
+==========================
+
+Immediately:
+
+1. Stop sending.
+
+2. Pause mailbox.
+
+3. Pause every campaign using this mailbox.
+
+4. Save reason:
+
+SMTP_QUOTA_REACHED
+
+5. Save original SMTP response.
+
+6. Save detection timestamp.
+
+7. Save cooldown expiration.
+
+8. Do NOT continue processing remaining emails.
+
+Do NOT mark remaining emails as failed.
+
+Leave them queued.
+
+==========================
+COOLDOWN
+==========================
+
+Default:
+
+60 minutes
+
+Make configurable later.
+
+==========================
+AFTER COOLDOWN
+==========================
+
+DO NOT resume the campaign immediately.
+
+Instead:
+
+Send ONLY ONE queued email as a probe.
+
+==========================
+IF PROBE SUCCEEDS
+==========================
+
+Resume mailbox.
+
+Resume campaign.
+
+Continue sending normally.
+
+No duplicate emails.
+
+Continue from last queue position.
+
+==========================
+IF PROBE FAILS
+==========================
+
+If the probe returns another quota error:
+
+Pause again.
+
+Increase cooldown.
+
+Default:
+
+10 minutes.
+
+Do NOT send more queued emails.
+
+After cooldown expires:
+
+Repeat another single probe.
+
+Continue until one probe succeeds.
+
+==========================
+STATE MACHINE
+==========================
+
+Mailbox states:
+
+READY
+
+SENDING
+
+QUOTA_REACHED
+
+COOLING_DOWN
+
+PROBE_SEND
+
+READY
+
+Campaign should display:
+
+Paused
+
+Reason:
+
+SMTP provider quota reached
+
+Waiting for cooldown
+
+Next retry:
+
+<countdown>
+
+==========================
+UI
+==========================
+
+Mailbox page:
+
+Status:
+
+Cooling Down
+
+Reason:
+
+SMTP quota reached
+
+Cooldown remaining
+
+Next probe attempt
+
+Campaign page:
+
+Paused automatically
+
+SMTP provider quota reached
+
+Waiting for provider quota reset
+
+Next probe:
+
+<countdown>
+
+==========================
+LOGGING
+==========================
+
+Add structured logs.
+
+Example:
+
+[SMTP-QUOTA]
+Quota detected
+
+Mailbox:
+
+Campaign:
+
+SMTP response:
+
+Cooldown:
+
+Next probe:
+
+When probe starts:
+
+[SMTP-PROBE]
+
+When probe succeeds:
+
+[SMTP-QUOTA]
+Recovered
+
+When probe fails:
+
+[SMTP-QUOTA]
+Still rate limited
+
+==========================
+VERY IMPORTANT
+==========================
+
+This feature must NOT affect:
+
+- Gmail Draft creation
+- Gmail OAuth
+- Gmail API
+- Open Tracking
+- SMTP tracking
+- Bounce processing
+- Suppression list
+- Existing retry system
+- Existing hourly quota scheduler
+
+This feature is ONLY for SMTP provider quota/rate-limit detection.
+
+==========================
+TESTING
+==========================
+
+Ensure:
+
+✓ Existing quota scheduler still works.
+
+✓ Existing cooldown still works.
+
+✓ Existing retries still work.
+
+✓ Existing bounce detection still works.
+
+✓ SMTP quota pause works.
+
+✓ Probe email works.
+
+✓ Campaign resumes only after successful probe.
+
+✓ No duplicate emails.
+
+✓ Queue position preserved.
+
+Implement with clean reusable code, minimal changes to the current architecture, and production-quality error handling.

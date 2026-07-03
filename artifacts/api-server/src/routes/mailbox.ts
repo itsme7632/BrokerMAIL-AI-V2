@@ -17,6 +17,13 @@ import { logger } from "../lib/logger";
 import { getTrackingSettings } from "../lib/tracking-settings";
 import { checkEmailLimit, checkMailboxLimit } from "../lib/plan-limits";
 import { isSuppressed } from "../lib/suppression";
+import {
+  isQuotaReachedError,
+  handleMailboxQuotaReached,
+  clearMailboxQuotaIfNeeded,
+  runQuotaRecovery,
+} from "../lib/smtp-quota";
+import { startCampaignProcessor } from "./campaigns";
 
 const router: IRouter = Router();
 
@@ -236,6 +243,10 @@ async function processJobQueue(jobId: string, box: Mailbox, template: Template, 
             "[MAILBOX] Non-fatal: drafts table insert failed — email WAS sent, queue marked success. Tracking will use SMTP fallback.");
         }
 
+        // Non-fatal: if this was a probe send after SMTP quota, clear the quota state.
+        clearMailboxQuotaIfNeeded(box.id, user.id).catch(err2 =>
+          logger.warn({ err: err2 }, "[SMTP-QUOTA] clearMailboxQuotaIfNeeded failed (non-fatal)"));
+
       } catch (err: any) {
         const errMsg        = String(err?.message ?? "Send failed");
         const attempts      = item.attempts + 1;
@@ -249,14 +260,18 @@ async function processJobQueue(jobId: string, box: Mailbox, template: Template, 
           });
         } catch { /* non-fatal */ }
 
-        if (isProviderRateLimitError(errMsg)) {
-          // Provider hit its own hourly cap — defer for a full hour and stop sending
-          const retryAfter = new Date(Date.now() + 60 * 60_000);
-          await db
-            .update(emailQueueTable)
-            .set({ status: "deferred", attempts, deferredCount: newDeferred, retryAfter, lastError: errMsg })
+        if (isQuotaReachedError(err)) {
+          // Leave item queued (not deferred/failed) — it will be retried after the probe succeeds.
+          // Do NOT increment attempts: this is a mailbox quota issue, not an email-level failure.
+          await db.update(emailQueueTable)
+            .set({ status: "pending", lastError: errMsg, retryAfter: null })
             .where(eq(emailQueueTable.id, item.id));
-          break; // Stop loop — provider quota exceeded; retry queue will pick up later
+          await handleMailboxQuotaReached(box.id, user.id, errMsg);
+          runQuotaRecovery(box.id, user.id, startCampaignProcessor).catch(err2 =>
+            logger.error({ err: err2 }, "[SMTP-QUOTA] Recovery loop error (processJobQueue)"));
+          logger.warn({ jobId, mailboxId: box.id },
+            "[SMTP-QUOTA] SMTP provider quota — item left queued, mailbox+campaigns paused, recovery started");
+          break; // Stop loop — provider quota exceeded; recovery loop handles resumption
         } else if (attempts >= 3) {
           await db
             .update(emailQueueTable)
@@ -391,6 +406,12 @@ router.get("/mailbox/quota", requireAuth, async (req, res): Promise<void> => {
     deferredCount,
     retryQueueCount: deferredCount,
     nextReleaseAt,
+    // SMTP provider quota recovery state
+    quotaStatus:        box.quotaStatus        ?? null,
+    quotaReachedAt:     box.quotaReachedAt?.toISOString()     ?? null,
+    quotaCooldownUntil: box.quotaCooldownUntil?.toISOString() ?? null,
+    quotaSmtpResponse:  box.quotaSmtpResponse  ?? null,
+    quotaProbeCount:    box.quotaProbeCount     ?? 0,
   });
 });
 

@@ -22,6 +22,14 @@ export const mailboxesTable = pgTable("mailboxes", {
   batchSize: integer("batch_size").notNull().default(10),
   delaySeconds: integer("delay_seconds").notNull().default(15),
   maxPerHour: integer("max_per_hour").notNull().default(100),
+  // ── SMTP provider quota recovery state ──────────────────────────────────────
+  // Set when the SMTP server rejects a send with a quota/rate-limit error.
+  // Cleared automatically once a probe email sends successfully.
+  quotaStatus:       text("quota_status"),           // null | 'quota_reached'
+  quotaReachedAt:    timestamp("quota_reached_at"),  // first detection timestamp
+  quotaCooldownUntil: timestamp("quota_cooldown_until"), // next probe attempt time
+  quotaSmtpResponse: text("quota_smtp_response"),    // original SMTP error message
+  quotaProbeCount:   integer("quota_probe_count").default(0), // consecutive failed probes
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

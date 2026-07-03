@@ -38,6 +38,7 @@ type EnrichedCampaign = {
   sendMode: string;
   fileName?: string | null;
   cooldownUntil?: string | null;
+  pauseReason?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -66,6 +67,10 @@ function getStatusInfo(c: EnrichedCampaign) {
   const isCooling = c.status === "cooling_down" ||
     (c.status === "sending" && !!c.cooldownUntil && new Date(c.cooldownUntil) > new Date());
   if (isCooling) return { label: "Cooling Down", cls: "bg-orange-50 text-orange-700 ring-orange-200", dot: "solid" as const };
+  // SMTP provider quota — special paused state
+  if (c.status === "paused" && c.pauseReason === "SMTP_QUOTA_REACHED") {
+    return { label: "Quota Pause", cls: "bg-red-50 text-red-700 ring-red-200", dot: "solid" as const };
+  }
   switch (c.status) {
     case "pending":   return { label: "Pending",    cls: "bg-slate-50    text-slate-600   ring-slate-200",   dot: undefined };
     case "sending":   return { label: "Sending",    cls: "bg-blue-50     text-blue-700    ring-blue-200",    dot: "pulse" as const };
@@ -78,6 +83,9 @@ function getStatusInfo(c: EnrichedCampaign) {
 }
 
 function lastActivityLabel(c: EnrichedCampaign): string {
+  if (c.status === "paused" && c.pauseReason === "SMTP_QUOTA_REACHED") {
+    return `Paused · SMTP quota reached ${timeAgo(c.updatedAt)}`;
+  }
   switch (c.status) {
     case "sending":      return `Active · ${timeAgo(c.updatedAt)}`;
     case "cooling_down": return `Cooling down · ${timeAgo(c.updatedAt)}`;
@@ -411,6 +419,7 @@ export default function Campaigns() {
               const isActive  = campaign.status === "sending";
               const isCooling = campaign.status === "cooling_down" ||
                 (campaign.status === "sending" && !!campaign.cooldownUntil && new Date(campaign.cooldownUntil) > new Date());
+              const isSmtpQuotaPaused = campaign.status === "paused" && campaign.pauseReason === "SMTP_QUOTA_REACHED";
               const isPaused  = campaign.status === "paused";
               const isDone    = ["completed", "cancelled", "failed"].includes(campaign.status);
               const canCancel = !isDone;
@@ -563,6 +572,21 @@ export default function Campaigns() {
                         <Timer className="h-3 w-3 text-orange-500 flex-shrink-0" />
                         <span className="text-xs text-orange-600 dark:text-orange-400">Quota window resets in</span>
                         <CooldownCountdown cooldownUntil={campaign.cooldownUntil ?? null} />
+                      </div>
+                    )}
+                    {/* SMTP provider quota pause indicator */}
+                    {isSmtpQuotaPaused && (
+                      <div className="flex flex-col gap-1 px-2.5 py-2 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/40 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <Timer className="h-3 w-3 text-red-500 flex-shrink-0" />
+                          <span className="text-xs font-medium text-red-700 dark:text-red-400">
+                            Paused automatically — SMTP provider quota reached
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 pl-5">
+                          <span className="text-xs text-red-500 dark:text-red-400">Waiting for provider quota reset · Next probe:</span>
+                          <CooldownCountdown cooldownUntil={campaign.cooldownUntil ?? null} />
+                        </div>
                       </div>
                     )}
 

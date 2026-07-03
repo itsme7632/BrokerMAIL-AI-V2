@@ -20,6 +20,9 @@ export const campaignsTable = pgTable("campaigns", {
   emailStyle: text("email_style").notNull().default("clean"),
   useSignature: boolean("use_signature").notNull().default(false),
   cooldownUntil: timestamp("cooldown_until"),
+  // Set when campaign is paused automatically by the SMTP quota recovery system.
+  // Value: 'SMTP_QUOTA_REACHED' | null
+  pauseReason: text("pause_reason"),
   // CTA / campaign link URLs
   bookingUrl: text("booking_url"),
   quoteUrl: text("quote_url"),

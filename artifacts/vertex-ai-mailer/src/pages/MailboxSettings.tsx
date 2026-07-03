@@ -15,6 +15,12 @@ interface QuotaStats {
   deferredCount: number;
   retryQueueCount: number;
   nextReleaseAt: string | null;
+  // SMTP provider quota recovery state
+  quotaStatus:        string | null;
+  quotaReachedAt:     string | null;
+  quotaCooldownUntil: string | null;
+  quotaSmtpResponse:  string | null;
+  quotaProbeCount:    number;
 }
 
 function QuotaWidget({ visible }: { visible: boolean }) {
@@ -44,6 +50,27 @@ function QuotaWidget({ visible }: { visible: boolean }) {
   const pct = quota ? Math.round((quota.usedThisHour / Math.max(quota.hourlyLimit, 1)) * 100) : 0;
   const barColor = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-400" : "bg-emerald-500";
 
+  // Live countdown for quota cooldown — ticks every second
+  function QuotaCooldown({ until }: { until: string | null }) {
+    const calc = (iso: string | null) =>
+      Math.max(0, Math.ceil((new Date(iso ?? 0).getTime() - Date.now()) / 1000));
+    const [secs, setSecs] = useState(() => calc(until));
+    useEffect(() => {
+      setSecs(calc(until));
+      if (!until) return;
+      const id = setInterval(() => setSecs(calc(until)), 1_000);
+      return () => clearInterval(id);
+    }, [until]);
+    if (!until || secs <= 0) return <span className="font-semibold">Checking…</span>;
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return (
+      <span className="font-mono font-semibold">
+        {String(m).padStart(2, "0")}m {String(s).padStart(2, "0")}s
+      </span>
+    );
+  }
+
   function formatRelease(iso: string | null): string {
     if (!iso) return "—";
     const diff = new Date(iso).getTime() - Date.now();
@@ -66,6 +93,50 @@ function QuotaWidget({ visible }: { visible: boolean }) {
           <p className="text-xs text-slate-400 text-center py-2">Loading…</p>
         ) : (
           <>
+            {/* ── SMTP provider quota cooling-down banner ── */}
+            {quota.quotaStatus === "quota_reached" && (
+              <div className="rounded-xl border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0" />
+                  <p className="text-sm font-semibold text-red-800 dark:text-red-300">
+                    Cooling Down — SMTP quota reached
+                  </p>
+                </div>
+                <p className="text-xs text-red-700 dark:text-red-400 leading-relaxed">
+                  Your SMTP provider returned a quota/rate-limit error. Campaigns are paused. A
+                  probe email will be sent automatically after the cooldown to check if sending
+                  can resume.
+                </p>
+                {quota.quotaSmtpResponse && (
+                  <p className="text-xs text-red-600 dark:text-red-400 font-mono bg-red-100 dark:bg-red-900/40 rounded px-2 py-1 break-all">
+                    {quota.quotaSmtpResponse.slice(0, 200)}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-4 pt-1">
+                  <div>
+                    <p className="text-xs text-red-500 dark:text-red-400">Cooldown remaining</p>
+                    <p className="text-sm text-red-800 dark:text-red-300">
+                      <QuotaCooldown until={quota.quotaCooldownUntil} />
+                    </p>
+                  </div>
+                  {quota.quotaCooldownUntil && (
+                    <div>
+                      <p className="text-xs text-red-500 dark:text-red-400">Next probe attempt</p>
+                      <p className="text-xs font-medium text-red-800 dark:text-red-300">
+                        {new Date(quota.quotaCooldownUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    </div>
+                  )}
+                  {quota.quotaProbeCount > 0 && (
+                    <div>
+                      <p className="text-xs text-red-500 dark:text-red-400">Failed probes</p>
+                      <p className="text-xs font-medium text-red-800 dark:text-red-300">{quota.quotaProbeCount}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Progress bar */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs">

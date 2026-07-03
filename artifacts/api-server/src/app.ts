@@ -7,6 +7,7 @@ import { logger } from "./lib/logger";
 import { db, pool, usersTable, plansTable, campaignsTable, emailQueueTable, leadsTable } from "@workspace/db";
 import { eq, and, inArray, isNotNull } from "drizzle-orm";
 import { startCampaignProcessor } from "./routes/campaigns";
+import { resumeMailboxQuotaRecovery } from "./lib/smtp-quota";
 import { runBounceScanner } from "./lib/bounce-scanner";
 import { runGmailDraftSync } from "./lib/gmail-draft-sync";
 import { hashPassword } from "./lib/auth";
@@ -230,6 +231,14 @@ async function startupRecovery(): Promise<void> {
 
 startupRecovery().catch(() => {});
 
+// Resume quota recovery loops for any mailboxes that were in quota_reached state
+// when the server last shut down (e.g. Replit reboot, deployment restart).
+setTimeout(() => {
+  resumeMailboxQuotaRecovery(startCampaignProcessor).catch(err =>
+    logger.warn({ err }, "[SMTP-QUOTA] Startup quota recovery skipped (non-fatal)"),
+  );
+}, 3_000);
+
 // ---------------------------------------------------------------------------
 // Periodic watchdog — every 60 s find campaigns in 'sending' or 'cooling_down'
 // that have no active worker and restart their processors automatically.
@@ -311,6 +320,8 @@ const EXPECTED_SCHEMA: Record<string, string[]> = {
     "imap_host", "imap_port", "imap_user", "imap_pass_encrypted",
     "from_name", "reply_to", "is_active",
     "batch_size", "delay_seconds", "max_per_hour",
+    "quota_status", "quota_reached_at", "quota_cooldown_until",
+    "quota_smtp_response", "quota_probe_count",
     "created_at", "updated_at",
   ],
 };
