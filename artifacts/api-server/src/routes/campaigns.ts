@@ -1201,7 +1201,20 @@ router.post("/campaigns", requireAuth, async (req, res): Promise<void> => {
 router.post("/campaigns/from-upload", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
   try {
-  logger.info({ userId: user.id, email: user.email, sendMode: req.body?.sendMode, rowCount: Array.isArray(req.body?.rows) ? req.body.rows.length : "N/A" }, "[CREATE_CAMPAIGN_UPLOAD] Request received");
+  const contentLength = req.headers["content-length"];
+  const bodyBytes     = Buffer.byteLength(JSON.stringify(req.body));
+  logger.info(
+    {
+      userId: user.id,
+      email:  user.email,
+      sendMode: req.body?.sendMode,
+      rowCount: Array.isArray(req.body?.rows) ? req.body.rows.length : "N/A",
+      contentLengthHeader: contentLength ?? "(none)",
+      parsedBodyBytes: bodyBytes,
+      parsedBodyKB: (bodyBytes / 1024).toFixed(1),
+    },
+    "[CREATE_CAMPAIGN_UPLOAD] Request received",
+  );
 
   // Enforce campaign limit before creation
   const campaignLimitErr = await checkCampaignLimit(user.id);

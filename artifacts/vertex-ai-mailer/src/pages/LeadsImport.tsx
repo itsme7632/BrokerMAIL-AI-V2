@@ -609,18 +609,28 @@ export default function LeadsImport() {
     setIsCreating(true);
     try {
       const token = localStorage.getItem("auth_token");
+      const strippedRows = readyRows.map(rowToRecord);
+      const payload = {
+        name:        campaignName.trim(),
+        templateId:  selectedTemplate.id,
+        sendMode,
+        emailStyle,
+        useSignature: useSignatureBuilder,
+        fileName:    file?.name ?? "",
+        rows:        strippedRows,
+      };
+      const payloadJson = JSON.stringify(payload);
+      console.log(
+        `[from-upload] payload size: ${payloadJson.length} bytes` +
+        ` (${(payloadJson.length / 1024).toFixed(1)} KB),` +
+        ` leads: ${strippedRows.length},` +
+        ` bytes/lead: ${strippedRows.length > 0 ? (payloadJson.length / strippedRows.length).toFixed(0) : "n/a"},` +
+        ` sample lead keys: [${strippedRows[0] ? Object.keys(strippedRows[0]).join(", ") : "none"}]`,
+      );
       const res = await fetch("/api/campaigns/from-upload", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name:        campaignName.trim(),
-          templateId:  selectedTemplate.id,
-          sendMode,
-          emailStyle,
-          useSignature: useSignatureBuilder,
-          fileName:    file?.name ?? "",
-          rows:        readyRows,
-        }),
+        body: payloadJson,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to create campaign");
