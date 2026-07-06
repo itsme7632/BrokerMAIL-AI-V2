@@ -89,7 +89,10 @@ router.get("/composer/mailboxes", requireAuth, async (req, res) => {
       .orderBy(mailboxesTable.id);
 
     const gmailConnected = !!(user.gmailAccessToken && user.gmailRefreshToken);
-    res.json({ mailboxes, gmailConnected, userEmail: user.email, userName: user.name });
+    // Use the connected Gmail address (gmailEmail) for the Gmail sender option, not the
+    // account registration email (email) which may be an SMTP/company address.
+    const userEmail = gmailConnected ? (user.gmailEmail ?? user.email) : user.email;
+    res.json({ mailboxes, gmailConnected, userEmail, userName: user.name });
   } catch (err: any) {
     logger.error({ err }, "[COMPOSER] Failed to load mailboxes");
     res.status(500).json({ error: "Failed to load mailboxes" });

@@ -1838,13 +1838,41 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
       }
     }
 
-    const newStatus = failed === nextLeads.length ? "failed" : succeeded > 0 ? "drafted" : "pending";
+    const batchStatus = failed === nextLeads.length ? "failed" : succeeded > 0 ? "drafted" : "pending";
     await db.update(campaignsTable).set({
-      status: newStatus,
+      status: batchStatus,
       draftedCount: sql`${campaignsTable.draftedCount} + ${succeeded}`,
       failedCount:  sql`${campaignsTable.failedCount}  + ${failed}`,
       updatedAt: new Date(),
     }).where(eq(campaignsTable.id, campaignId));
+
+    // Mirror the SMTP processor's terminal-count check: if every lead in the campaign
+    // is now in a terminal state (drafted/failed/sent), mark the campaign completed.
+    // Run unconditionally — even a fully-failed batch may complete a campaign that had
+    // prior successful drafts, and skipping the check would leave it stuck in "failed".
+    {
+      const [campCheck] = await db
+        .select({ totalLeads: campaignsTable.totalLeads })
+        .from(campaignsTable)
+        .where(eq(campaignsTable.id, campaignId));
+      const total = campCheck?.totalLeads ?? 0;
+      if (total > 0) {
+        const [termRow] = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(leadsTable)
+          .where(and(
+            eq(leadsTable.campaignId, campaignId),
+            inArray(leadsTable.status, ["sent", "drafted", "failed"]),
+          ));
+        const termCount = termRow?.count ?? 0;
+        if (termCount >= total) {
+          logger.info({ campaignId, termCount, total }, "[GMAIL_BATCH] All leads terminal — marking campaign completed");
+          await db.update(campaignsTable)
+            .set({ status: "completed", updatedAt: new Date() })
+            .where(eq(campaignsTable.id, campaignId));
+        }
+      }
+    }
 
     await db.update(campaignBatchesTable).set({ sentCount: succeeded, failedCount: failed })
       .where(eq(campaignBatchesTable.id, batchRecord.id));
@@ -2617,13 +2645,37 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
     }
   }
 
-  const newStatus = failed === leads.length ? "failed" : succeeded > 0 ? "drafted" : "pending";
+  const batchStatus = failed === leads.length ? "failed" : succeeded > 0 ? "drafted" : "pending";
   await db.update(campaignsTable).set({
-    status: newStatus,
+    status: batchStatus,
     draftedCount: sql`${campaignsTable.draftedCount} + ${succeeded}`,
     failedCount:  sql`${campaignsTable.failedCount}  + ${failed}`,
     updatedAt: new Date(),
   }).where(eq(campaignsTable.id, campaign.id));
+
+  // Mirror the SMTP processor's terminal-count check: if every lead in the campaign
+  // is now in a terminal state (drafted/failed/sent), mark the campaign completed.
+  // Run unconditionally — even a fully-failed batch may complete a campaign that had
+  // prior successful drafts, and skipping the check would leave it stuck in "failed".
+  {
+    const total = campaign.totalLeads ?? 0;
+    if (total > 0) {
+      const [termRow] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(leadsTable)
+        .where(and(
+          eq(leadsTable.campaignId, campaign.id),
+          inArray(leadsTable.status, ["sent", "drafted", "failed"]),
+        ));
+      const termCount = termRow?.count ?? 0;
+      if (termCount >= total) {
+        logger.info({ userId: user.id, campaignId: campaign.id, termCount, total }, "[GENERATE_DRAFTS] All leads terminal — marking campaign completed");
+        await db.update(campaignsTable)
+          .set({ status: "completed", updatedAt: new Date() })
+          .where(eq(campaignsTable.id, campaign.id));
+      }
+    }
+  }
 
   await db.insert(activityTable).values({
     userId: user.id, type: "drafts_generated",

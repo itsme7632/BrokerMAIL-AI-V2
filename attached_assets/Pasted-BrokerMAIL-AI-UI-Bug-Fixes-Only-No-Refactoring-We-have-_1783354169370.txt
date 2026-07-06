@@ -1,0 +1,143 @@
+BrokerMAIL AI – UI Bug Fixes Only (No Refactoring)
+
+We have three small UI/logic bugs that need to be fixed. These are targeted fixes only. Do not refactor unrelated code, do not redesign other pages, do not modify APIs, database schema, campaign logic, Gmail logic, SMTP logic, authentication, or routing.
+
+Before making any change:
+
+Trace the data flow to find the actual root cause.
+Fix only the affected components.
+Preserve all existing functionality.
+If a value is already correct in the backend, fix the frontend mapping instead of changing backend logic.
+Do not introduce any new dependencies or redesign unrelated pages.
+1. Compose Email – Gmail shows SMTP email
+Current issue
+
+When Gmail is connected, the From dropdown shows:
+
+Frank Miller <miller@vertexcarship.com>
+Gmail — miller@vertexcarship.com
+
+The first option is incorrectly showing the SMTP/company email even when Gmail is selected.
+
+Expected behavior
+
+If Gmail is connected, it should display the actual connected Gmail account, for example:
+
+Frank Miller <frank.vertexcarship1@gmail.com>
+
+or
+
+Gmail — frank.vertexcarship1@gmail.com
+
+It should never display the SMTP mailbox email as the Gmail sender.
+
+The dropdown must correctly distinguish:
+
+Gmail connected account
+SMTP mailbox account
+
+and never mix the two.
+
+2. Gmail campaign status
+Current issue
+
+Dashboard → Campaign Status
+
+Campaigns page
+
+Gmail Draft campaigns remain stuck as:
+
+Drafted
+
+even after all Gmail drafts have been successfully created.
+
+SMTP campaigns correctly become:
+
+Completed
+Expected behavior
+
+When Gmail Draft creation reaches:
+
+drafted_count == total_leads
+
+the campaign status should automatically become:
+
+Completed
+
+The Dashboard and Campaigns page should both display:
+
+Completed
+
+instead of
+
+Drafted
+
+This should only happen after every draft has been successfully created.
+
+Do not change SMTP logic.
+
+Do not change campaign processing.
+
+Only correct the completion status logic for Gmail draft campaigns.
+
+3. Settings page redesign
+
+The current Settings page looks unfinished and too plain.
+
+Keep all existing functionality, but improve the UI.
+
+Requirements
+
+Do NOT remove any existing fields.
+
+Keep every current setting.
+
+Improve only the presentation.
+
+Suggested improvements:
+
+Better section cards
+Better spacing
+Better typography
+Icons beside section titles
+Better grouping
+Professional enterprise SaaS appearance
+Cleaner signature preview
+Better branding section
+Better Gmail integration card
+Better Save button styling
+More consistent card borders
+Better responsive layout
+
+Make it feel like Linear, Stripe Dashboard, Clerk, Vercel, or Notion—not a basic admin form.
+
+Do not change functionality.
+
+Do not rename settings.
+
+Do not modify APIs.
+
+Critical Requirements
+No backend refactoring.
+No database changes.
+No schema changes.
+No authentication changes.
+No campaign creation changes.
+No Gmail OAuth changes.
+No SMTP changes.
+No upload/import changes.
+No routing changes.
+No API contract changes.
+No performance optimizations unrelated to these fixes.
+
+Only fix these three issues.
+
+Before committing, verify:
+
+Gmail sender displays the correct connected Gmail account.
+SMTP sender displays the SMTP mailbox.
+Gmail campaigns show Completed after all drafts are created.
+SMTP campaigns still work exactly as before.
+Settings page is visually improved without changing functionality.
+
+If any change risks affecting existing working features, stop and use the smallest possible fix instead.
