@@ -1,0 +1,286 @@
+BrokerMAIL AI — Continue Settings Page Redesign (Continue Existing Work)
+
+IMPORTANT
+
+This project was already partially redesigned in another Replit workspace before credits ran out.
+
+DO NOT redesign the page from scratch.
+
+First, inspect the current Settings.tsx and continue from the existing implementation.
+
+Preserve all existing backend logic, API calls, state variables, handlers, routes, and authentication.
+
+Only improve the UI.
+
+Current Status
+
+The page already has:
+
+Premium top overview cards
+Profile card
+Gmail Integration card
+Branding section
+Signature Preview
+Email Preferences section
+Danger Zone
+Premium styling
+
+The remaining work is polishing and completing the UI.
+
+1. Premium Plan Card (REAL DATA ONLY)
+
+The sidebar currently needs a proper Premium Plan card.
+
+DO NOT use fake values.
+
+Do NOT hardcode:
+
+10,000 emails
+2,450 used
+24%
+
+Instead use whatever data already exists in the application.
+
+Search the project for:
+
+dashboard statistics
+usage
+quota
+monthly emails
+billing usage
+email usage
+campaign statistics
+
+Reuse the same API already powering Dashboard or Plans & Billing.
+
+If there is already an endpoint returning usage data, use it.
+
+Do NOT create new backend APIs.
+
+If there is absolutely no endpoint available, then gracefully hide unavailable values instead of showing fake numbers.
+
+Example:
+
+Premium Plan
+
+Business Plan
+
+7,845 / 10,000 emails
+
+Progress Bar
+
+Manage Plan
+
+Manage Plan button must navigate to:
+
+/plans
+
+or
+
+/plans-billing
+
+whichever route already exists.
+
+Do NOT create a new page.
+
+2. Need Help Card
+
+Under Premium Plan add
+
+Need Help?
+
+Our support team is here.
+
+Contact Support
+
+The button should navigate to the existing Support page.
+
+3. Email Preferences Cleanup
+
+The Email Preferences section still contains placeholder rows.
+
+Delete these completely.
+
+Remove:
+
+Default From
+
+Default Reply-To
+
+Default BCC
+
+Track Email Opens
+
+Track Link Clicks
+
+Save Sent Emails
+
+All "Soon" badges
+
+All fake disabled settings
+
+These features already work globally and should not appear in Settings.
+
+Replace this section with only useful information.
+
+Example:
+
+Current Sending Account
+
+Connected Gmail
+
+Connected SMTP
+
+Automatic Signature
+
+Current Sender
+
+Information only.
+
+No fake settings.
+
+No placeholders.
+
+4. Better Branding Section
+
+Improve spacing.
+
+Increase whitespace.
+
+Increase logo upload size.
+
+Improve Signature Preview styling.
+
+Make it look like a real email signature.
+
+Improve Company Details alignment.
+
+5. Gmail Card
+
+Polish the Gmail card.
+
+Show:
+
+Connected email
+
+OAuth secured
+
+Connection status
+
+Reconnect
+
+Disconnect
+
+Feature checklist
+
+Better spacing
+
+Professional Google branding.
+
+6. Profile Card
+
+Improve layout.
+
+Include:
+
+Avatar
+
+Role badge
+
+Email
+
+Company
+
+Phone
+
+Member Since
+
+Status indicator
+
+Better spacing.
+
+7. Overview Cards
+
+Improve typography.
+
+Hover animation.
+
+Icons.
+
+Spacing.
+
+Better responsive layout.
+
+8. Danger Zone
+
+Only keep
+
+Sign Out
+
+Remove every other dangerous action.
+
+9. Better Empty States
+
+If company isn't configured
+
+Show:
+
+Not configured
+
+instead of "-"
+
+If logo missing
+
+Show upload illustration.
+
+If Gmail disconnected
+
+Show proper empty state.
+
+10. Animations
+
+Add subtle hover animations.
+
+Card hover
+
+Button hover
+
+Input focus
+
+Fade in
+
+Professional SaaS quality.
+
+11. IMPORTANT
+
+DO NOT
+
+❌ Hardcode fake plan usage
+
+❌ Hardcode email limits
+
+❌ Create fake APIs
+
+❌ Create placeholder values
+
+❌ Change backend logic
+
+❌ Change authentication
+
+❌ Change existing handlers
+
+❌ Rewrite Settings.tsx from scratch
+
+Always reuse existing project APIs and data wherever possible.
+
+Goal
+
+The Settings page should feel like a polished enterprise SaaS product similar to Stripe, Linear, Vercel, Clerk, or Resend.
+
+Every piece of information shown should either:
+
+come from the existing backend,
+come from existing project state,
+or be hidden if no real data exists.
+
+Never display fake statistics or placeholder business data.
