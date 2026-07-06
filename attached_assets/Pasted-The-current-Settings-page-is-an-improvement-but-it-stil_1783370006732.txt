@@ -1,0 +1,331 @@
+The current Settings page is an improvement, but it still feels incomplete and does not match the premium SaaS experience shown in the attached reference image.
+
+IMPORTANT RULES
+
+• DO NOT change any backend logic.
+• DO NOT change any API endpoints.
+• DO NOT rename state variables.
+• DO NOT modify event handlers.
+• DO NOT change database schemas.
+• DO NOT add fake data.
+• Only redesign the UI/UX using the existing data and functionality.
+• Preserve all existing functionality.
+
+====================================================
+OVERALL GOAL
+====================================================
+
+Redesign the Settings page into a premium enterprise SaaS experience similar to HubSpot, Instantly, Apollo, Linear and modern Vercel dashboards.
+
+The page should feel complete, balanced, spacious, and professional.
+
+The attached reference image is the design direction.
+
+Do NOT copy it exactly.
+Improve upon it while keeping BrokerMAIL AI branding.
+
+====================================================
+REMOVE TEMPLATE VARIABLES
+====================================================
+
+Remove the entire "Template Variables" section.
+
+These variables belong inside:
+
+• Template Editor
+• Template Gallery
+• Compose Email
+
+They do NOT belong inside Settings.
+
+Delete this card completely.
+
+====================================================
+PAGE STRUCTURE
+====================================================
+
+Organize the page into only these sections:
+
+1. Overview Cards
+2. Profile
+3. Gmail Integration
+4. Branding
+5. Email Preferences
+6. Danger Zone
+
+No unnecessary sections.
+
+====================================================
+OVERVIEW CARDS
+====================================================
+
+Replace the current summary cards with useful information.
+
+Cards should show:
+
+• Gmail Status
+• Company Name
+• Accent Color
+• Member Since
+
+If plan or usage data actually exists in the backend, display it.
+
+If it does NOT exist, DO NOT invent it.
+
+Never display fake Premium plans or fake email usage.
+
+====================================================
+PROFILE CARD
+====================================================
+
+The Profile card currently has too much empty space.
+
+Expand it using existing information.
+
+Include:
+
+• Avatar
+• Full Name
+• Email
+• Phone (if available)
+• User Role
+• Company
+• Member Since
+• Gmail Status
+
+Add an Edit Profile button if functionality already exists.
+
+Otherwise leave it as display only.
+
+====================================================
+GMAIL INTEGRATION
+====================================================
+
+Completely redesign this card.
+
+Show:
+
+Google Account
+
+Connected Gmail Address
+
+Connection Status
+
+OAuth Security
+
+Feature checklist:
+
+✔ Send Emails
+
+✔ Create Gmail Drafts
+
+✔ Track Opens
+
+✔ Track Clicks
+
+✔ Secure OAuth Connection
+
+Buttons:
+
+Reconnect
+
+Disconnect
+
+Show Gmail account using the connected gmailEmail.
+
+Never use SMTP email here.
+
+====================================================
+BRANDING
+====================================================
+
+This should become the biggest section.
+
+Divide into three columns.
+
+COLUMN 1
+
+Company Logo
+
+Large preview
+
+Upload button
+
+Change Logo
+
+Remove Logo
+
+Logo requirements
+
+Image preview
+
+COLUMN 2
+
+Company Details
+
+Company Name
+
+Tagline
+
+Website
+
+Phone
+
+USDOT
+
+MC Number
+
+Accent Color
+
+Email From Name
+
+COLUMN 3
+
+Live Signature Preview
+
+Show exactly how outgoing emails will look.
+
+Update instantly as fields change.
+
+Do NOT move this preview outside the Branding section.
+
+It should remain inside the same card.
+
+Fix the current layout issue where the Signature Preview stretches outside the Branding card.
+
+====================================================
+EMAIL PREFERENCES
+====================================================
+
+Create a dedicated section.
+
+Only use existing functionality.
+
+Include settings such as:
+
+Default Sending Method
+
+Default Reply-To
+
+Default BCC
+
+Track Opens
+
+Track Clicks
+
+Save Sent Emails
+
+Automatic Signature
+
+If any option is not implemented in the backend,
+
+DO NOT create fake toggles.
+
+Either hide it or mark it as Coming Soon.
+
+====================================================
+DANGER ZONE
+====================================================
+
+Redesign this section.
+
+Current logout card feels empty.
+
+Create a professional danger area.
+
+Include:
+
+Sign Out
+
+Disconnect Gmail
+
+Reset Branding
+
+ONLY show buttons that already exist in the application.
+
+If Reset Branding does not exist,
+
+DO NOT create a fake button.
+
+Never invent backend functionality.
+
+====================================================
+VISUAL DESIGN
+====================================================
+
+Use:
+
+Rounded-xl cards
+
+Soft shadows
+
+Consistent spacing
+
+Professional icons
+
+Status badges
+
+Better typography
+
+Balanced white space
+
+Smooth hover animations
+
+Professional borders
+
+Proper alignment
+
+Responsive grid layout
+
+Avoid large empty areas.
+
+====================================================
+RESPONSIVENESS
+====================================================
+
+Desktop:
+
+2-column layout
+
+Branding section:
+
+3-column layout
+
+Tablet:
+
+2 columns
+
+Mobile:
+
+Single column
+
+====================================================
+FINAL REQUIREMENTS
+====================================================
+
+Do not change any API logic.
+
+Do not change any handlers.
+
+Do not modify business logic.
+
+Do not add mock data.
+
+Do not add fake statistics.
+
+Only improve the UI using real existing data.
+
+Fix the Signature Preview so it stays inside the Branding card.
+
+Remove the Template Variables section completely.
+
+Make the page look like a polished enterprise SaaS settings page that could belong to HubSpot, Apollo, or Instantly while keeping BrokerMAIL AI branding.
+
+After implementation, verify:
+
+✓ No TypeScript errors
+✓ No console errors
+✓ Responsive layout
+✓ Signature Preview remains inside Branding
+✓ Existing functionality works exactly as before
+✓ No backend changes were introduced

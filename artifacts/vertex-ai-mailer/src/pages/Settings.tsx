@@ -7,7 +7,7 @@ import {
   Loader2, CheckCircle2, Mail, AlertCircle,
   Building2, Globe, Phone, Hash, Palette, User,
   ImagePlus, Trash2, Eye, LogOut, Sparkles, Shield,
-  Zap, Calendar,
+  Zap, Calendar, Lock, Settings2, Unlink,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -38,34 +38,12 @@ interface BrandingData {
   useSignature: boolean; logoUrl: string | null;
 }
 
-const TEMPLATE_VARIABLES: { var: string; label: string; desc: string; color: string }[] = [
-  { var: "{name}",       label: "Recipient Name",  desc: "Contact's full name",                color: "blue"   },
-  { var: "{vehicle}",    label: "Vehicle",          desc: "Year / make / model",                color: "violet" },
-  { var: "{pickup}",     label: "Pickup",           desc: "Origin city & state",                color: "emerald"},
-  { var: "{delivery}",   label: "Delivery",         desc: "Destination city & state",           color: "cyan"   },
-  { var: "{route}",      label: "Route",            desc: "Full route summary",                 color: "amber"  },
-  { var: "{price}",      label: "Price",            desc: "Transport quote (auto-formats)",     color: "green"  },
-  { var: "{quote_id}",   label: "Quote ID",         desc: "Order / quote ID from CSV",          color: "pink"   },
-  { var: "{agent_name}", label: "Agent Name",       desc: "Sending agent (CSV column)",         color: "orange" },
-];
-
-const VAR_COLORS: Record<string, string> = {
-  blue:    "bg-blue-500/10 border-blue-500/20 text-blue-400 hover:bg-blue-500/20 hover:border-blue-500/40",
-  violet:  "bg-violet-500/10 border-violet-500/20 text-violet-400 hover:bg-violet-500/20 hover:border-violet-500/40",
-  emerald: "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/40",
-  cyan:    "bg-cyan-500/10 border-cyan-500/20 text-cyan-400 hover:bg-cyan-500/20 hover:border-cyan-500/40",
-  amber:   "bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20 hover:border-amber-500/40",
-  green:   "bg-green-500/10 border-green-500/20 text-green-400 hover:bg-green-500/20 hover:border-green-500/40",
-  pink:    "bg-pink-500/10 border-pink-500/20 text-pink-400 hover:bg-pink-500/20 hover:border-pink-500/40",
-  orange:  "bg-orange-500/10 border-orange-500/20 text-orange-400 hover:bg-orange-500/20 hover:border-orange-500/40",
-};
-
 function getAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem("auth_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-/** Live signature preview rendered inline using branding state */
+// ── Signature Preview ────────────────────────────────────────────────────────
 function SignaturePreview({ branding }: { branding: BrandingData }) {
   const accent    = branding.accentColor || "#1d4ed8";
   const agentName = branding.agentName   || "";
@@ -75,27 +53,26 @@ function SignaturePreview({ branding }: { branding: BrandingData }) {
   const website   = branding.companyWebsite || "";
   const usdot     = branding.usdot || "";
   const mc        = branding.mcNumber || "";
-
-  const hasAny = agentName || company || phone || website || usdot || mc;
+  const hasAny    = agentName || company || phone || website || usdot || mc;
 
   return (
-    <div className="rounded-xl border border-slate-700/60 bg-slate-800/40 overflow-hidden h-full">
-      <div className="px-4 py-2.5 border-b border-slate-700/60 flex items-center gap-1.5 bg-slate-800/60">
-        <Eye className="h-3.5 w-3.5 text-slate-400" />
-        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Signature Preview</span>
+    <div className="rounded-xl border border-slate-700/60 bg-slate-800/50 overflow-hidden">
+      <div className="px-3 py-2 border-b border-slate-700/60 flex items-center gap-1.5 bg-slate-800/80">
+        <Eye className="h-3 w-3 text-slate-400 flex-shrink-0" />
+        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Live Preview</span>
       </div>
-      <div className="px-4 py-4">
+      <div className="px-4 py-3 text-sm font-sans leading-relaxed">
         {!hasAny ? (
-          <p className="text-xs text-slate-500 italic leading-relaxed">Fill in your company details to preview how your signature will appear in outgoing emails.</p>
+          <p className="text-xs text-slate-500 italic">Fill in company details to preview your email signature.</p>
         ) : (
-          <div className="text-sm leading-relaxed font-sans">
+          <>
             <p className="text-slate-500 text-xs mb-2">Best regards,</p>
-            <div className="border-t border-slate-700/60 pt-3 space-y-1">
+            <div className="border-t border-slate-700/50 pt-2.5 space-y-0.5">
               {agentName && <p className="font-semibold text-slate-100 text-sm">{agentName}</p>}
               {company && (
-                <p className="text-slate-400 text-sm">
+                <p className="text-slate-400 text-xs">
                   {company}
-                  {tagline && <span className="text-slate-500 font-normal text-xs ml-1.5">— {tagline}</span>}
+                  {tagline && <span className="text-slate-500 ml-1">— {tagline}</span>}
                 </p>
               )}
               {phone && <p className="text-slate-500 text-xs">{phone}</p>}
@@ -115,29 +92,24 @@ function SignaturePreview({ branding }: { branding: BrandingData }) {
                 </p>
               )}
               {branding.logoUrl && (
-                <div className="pt-3 border-t border-slate-700/40 mt-2">
-                  <img src={branding.logoUrl} alt="Company logo" className="h-7 object-contain opacity-90" />
+                <div className="pt-2.5 border-t border-slate-700/40 mt-1.5">
+                  <img src={branding.logoUrl} alt="Logo" className="h-6 object-contain opacity-90" />
                 </div>
               )}
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>
   );
 }
 
-/** Toggle switch — same logic as original, premium look */
-function Toggle({
-  checked, onChange, label, description,
-}: {
-  checked: boolean;
-  onChange: () => void;
-  label: string;
-  description?: string;
+// ── Toggle switch ────────────────────────────────────────────────────────────
+function Toggle({ checked, onChange, label, description }: {
+  checked: boolean; onChange: () => void; label: string; description?: string;
 }) {
   return (
-    <div className="flex items-center justify-between py-3 group">
+    <div className="flex items-center justify-between py-3">
       <div className="min-w-0 pr-4">
         <p className="text-sm font-medium text-slate-200">{label}</p>
         {description && <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{description}</p>}
@@ -146,17 +118,28 @@ function Toggle({
         type="button"
         onClick={onChange}
         className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${
-          checked ? "bg-blue-600 shadow-[0_0_10px_rgba(37,99,235,0.4)]" : "bg-slate-700"
+          checked ? "bg-blue-600 shadow-[0_0_8px_rgba(37,99,235,0.35)]" : "bg-slate-700"
         }`}
         role="switch"
         aria-checked={checked}
       >
-        <span
-          className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ${
-            checked ? "translate-x-4" : "translate-x-0"
-          }`}
-        />
+        <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-md ring-0 transition-transform duration-200 ${checked ? "translate-x-4" : "translate-x-0"}`} />
       </button>
+    </div>
+  );
+}
+
+// ── "Coming Soon" preference row ─────────────────────────────────────────────
+function ComingSoonRow({ label, description }: { label: string; description?: string }) {
+  return (
+    <div className="flex items-center justify-between py-3 opacity-50">
+      <div className="min-w-0 pr-4">
+        <p className="text-sm font-medium text-slate-300">{label}</p>
+        {description && <p className="text-xs text-slate-500 mt-0.5">{description}</p>}
+      </div>
+      <span className="flex-shrink-0 px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider bg-slate-700/80 border border-slate-600/60 text-slate-400">
+        Soon
+      </span>
     </div>
   );
 }
@@ -308,8 +291,8 @@ export default function Settings() {
     ? user.name.split(" ").map((w: string) => w[0]).slice(0, 2).join("").toUpperCase()
     : "?";
 
-  // ── Field label component ────────────────────────────────────────────────────
-  function FieldLabel({ icon: Icon, children }: { icon: React.ElementType; children: React.ReactNode }) {
+  // ── Shared field label ───────────────────────────────────────────────────────
+  function FL({ icon: Icon, children }: { icon: React.ElementType; children: React.ReactNode }) {
     return (
       <label className="flex items-center gap-1.5 text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">
         <Icon className="h-3 w-3 text-slate-500" />
@@ -318,20 +301,37 @@ export default function Settings() {
     );
   }
 
+  // ── Shared card header ───────────────────────────────────────────────────────
+  function CardHeader({
+    icon: Icon, iconColor, label, subtitle,
+  }: {
+    icon: React.ElementType; iconColor: string; label: string; subtitle?: string;
+  }) {
+    return (
+      <div className="px-6 py-4 border-b border-slate-800 flex items-center gap-3">
+        <div className={`flex h-7 w-7 items-center justify-center rounded-lg flex-shrink-0 ${iconColor}`}>
+          <Icon className="h-3.5 w-3.5" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-100">{label}</p>
+          {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-5xl space-y-6 pb-16">
 
       {/* ── Page header ──────────────────────────────────────────────────────── */}
-      <div className="pb-6 border-b border-slate-800">
+      <div className="pb-5 border-b border-slate-800">
         <h1 className="text-3xl font-bold tracking-tight text-white">Settings</h1>
-        <p className="text-slate-400 mt-1.5 text-sm">
-          Manage your account, branding, preferences, and integrations.
-        </p>
+        <p className="text-slate-400 mt-1.5 text-sm">Manage your account, branding, preferences, and integrations.</p>
       </div>
 
       {/* ── Overview stats row ───────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {/* Gmail Status */}
+
         <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 flex items-start gap-3">
           <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-green-500/10 border border-green-500/20 flex-shrink-0">
             <Mail className="h-4 w-4 text-green-400" />
@@ -349,7 +349,6 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Company */}
         <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 flex items-start gap-3">
           <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 border border-blue-500/20 flex-shrink-0">
             <Building2 className="h-4 w-4 text-blue-400" />
@@ -357,12 +356,11 @@ export default function Settings() {
           <div className="min-w-0">
             <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Company</p>
             <p className="text-sm font-semibold text-slate-200 mt-0.5 truncate">
-              {branding.companyName || "Not set"}
+              {branding.companyName || "—"}
             </p>
           </div>
         </div>
 
-        {/* Brand Color */}
         <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 flex items-start gap-3">
           <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/10 border border-violet-500/20 flex-shrink-0">
             <Palette className="h-4 w-4 text-violet-400" />
@@ -371,17 +369,16 @@ export default function Settings() {
             <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Accent Color</p>
             <div className="flex items-center gap-2 mt-0.5">
               <div
-                className="h-4 w-4 rounded-full border-2 border-slate-600 flex-shrink-0 shadow-sm"
+                className="h-4 w-4 rounded-full border-2 border-slate-600 flex-shrink-0"
                 style={{ backgroundColor: branding.accentColor || "#1d4ed8" }}
               />
-              <span className="text-sm font-mono font-semibold text-slate-200">
+              <span className="text-sm font-mono font-semibold text-slate-200 truncate">
                 {branding.accentColor || "#1d4ed8"}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Member Since */}
         <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 flex items-start gap-3">
           <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 border border-amber-500/20 flex-shrink-0">
             <Calendar className="h-4 w-4 text-amber-400" />
@@ -391,57 +388,74 @@ export default function Settings() {
             <p className="text-sm font-semibold text-slate-200 mt-0.5">{memberSince}</p>
           </div>
         </div>
+
       </div>
 
-      {/* ── Profile + Gmail Integration 2-column ────────────────────────────── */}
+      {/* ── Profile + Gmail 2-column ─────────────────────────────────────────── */}
       <div className="grid lg:grid-cols-2 gap-6">
 
-        {/* Profile Information */}
+        {/* ── Profile ─────────────────────────────────────────────────────────── */}
         <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-800 flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-700/80 flex-shrink-0">
-              <User className="h-3.5 w-3.5 text-slate-300" />
-            </div>
-            <span className="text-sm font-semibold text-slate-100">Profile Information</span>
-          </div>
-          <div className="p-6">
-            <div className="flex items-start gap-4">
+          <CardHeader icon={User} iconColor="bg-slate-700/80 text-slate-300" label="Profile Information" />
+          <div className="p-6 space-y-5">
+            {/* Avatar + identity */}
+            <div className="flex items-center gap-4">
               <div className="relative flex-shrink-0">
                 {user?.avatarUrl ? (
-                  <img
-                    src={user.avatarUrl}
-                    alt={user.name}
-                    className="h-16 w-16 rounded-full object-cover ring-2 ring-slate-700"
-                  />
+                  <img src={user.avatarUrl} alt={user.name} className="h-14 w-14 rounded-full object-cover ring-2 ring-slate-700" />
                 ) : (
-                  <div className="h-16 w-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-xl ring-2 ring-slate-700 shadow-lg">
+                  <div className="h-14 w-14 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-lg ring-2 ring-slate-700 shadow-lg">
                     {initials}
                   </div>
                 )}
-                <span className="absolute bottom-0 right-0 h-4 w-4 rounded-full bg-green-500 border-2 border-slate-900 shadow-sm" />
+                <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-green-500 border-2 border-slate-900" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-lg font-semibold text-white leading-tight">{user?.name}</p>
+                <p className="font-semibold text-white text-base leading-tight">{user?.name}</p>
                 <p className="text-sm text-slate-400 mt-0.5 truncate">{user?.email}</p>
-                {branding.companyPhone && (
-                  <p className="text-sm text-slate-500 mt-0.5">{branding.companyPhone}</p>
-                )}
-                <div className="mt-3">
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-500/10 border border-blue-500/20 text-blue-400">
-                    <Zap className="h-3 w-3" />
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-500/10 border border-blue-500/20 text-blue-400">
+                    <Zap className="h-2.5 w-2.5" />
                     {user?.role === "admin" ? "Admin" : "Agent"}
                   </span>
+                  {user?.gmailConnected && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-500/10 border border-green-500/20 text-green-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+                      Gmail
+                    </span>
+                  )}
                 </div>
+              </div>
+            </div>
+
+            {/* Detail grid */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl bg-slate-800/50 border border-slate-700/60 px-3.5 py-3">
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Company</p>
+                <p className="text-sm text-slate-200 font-medium truncate">{branding.companyName || "—"}</p>
+              </div>
+              <div className="rounded-xl bg-slate-800/50 border border-slate-700/60 px-3.5 py-3">
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Phone</p>
+                <p className="text-sm text-slate-200 font-medium truncate">{branding.companyPhone || "—"}</p>
+              </div>
+              <div className="rounded-xl bg-slate-800/50 border border-slate-700/60 px-3.5 py-3">
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Member Since</p>
+                <p className="text-sm text-slate-200 font-medium">{memberSince}</p>
+              </div>
+              <div className="rounded-xl bg-slate-800/50 border border-slate-700/60 px-3.5 py-3">
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Gmail</p>
+                <p className="text-sm font-medium truncate" style={{ color: user?.gmailConnected ? "#4ade80" : "#94a3b8" }}>
+                  {user?.gmailConnected ? "Connected" : "Not connected"}
+                </p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Gmail Integration */}
+        {/* ── Gmail Integration ────────────────────────────────────────────────── */}
         <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {/* Google "G" logo */}
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/5 border border-slate-700 flex-shrink-0">
                 <svg viewBox="0 0 24 24" className="h-[15px] w-[15px]" aria-hidden="true">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -450,15 +464,18 @@ export default function Settings() {
                   <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                 </svg>
               </div>
-              <span className="text-sm font-semibold text-slate-100">Gmail Integration</span>
+              <div>
+                <p className="text-sm font-semibold text-slate-100">Gmail Integration</p>
+                <p className="text-xs text-slate-500 mt-0.5">Connect your Google account to send emails.</p>
+              </div>
             </div>
             {user?.gmailConnected ? (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-500/10 border border-green-500/25 text-green-400">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-500/10 border border-green-500/25 text-green-400 flex-shrink-0">
                 <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
                 Connected
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-700/60 border border-slate-600 text-slate-400">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-700/60 border border-slate-600 text-slate-400 flex-shrink-0">
                 <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
                 Not connected
               </span>
@@ -466,18 +483,33 @@ export default function Settings() {
           </div>
 
           <div className="p-6 space-y-4">
-            {/* Gmail account info */}
-            <div className="rounded-xl border border-slate-700/60 bg-slate-800/40 px-4 py-3">
-              <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-1">Gmail Account</p>
-              <p className="text-sm font-medium text-slate-200">
-                {user?.gmailConnected
-                  ? (user.gmailEmail ?? "Connected")
-                  : "No account connected"}
-              </p>
+
+            {/* Account + OAuth rows */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between rounded-xl border border-slate-700/60 bg-slate-800/40 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Google Account</p>
+                  <p className="text-sm font-medium text-slate-200 truncate">
+                    {user?.gmailConnected ? (user.gmailEmail ?? "Connected") : "No account connected"}
+                  </p>
+                </div>
+                {user?.gmailConnected && (
+                  <span className="ml-3 flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-500/10 border border-green-500/20 text-green-400">
+                    <CheckCircle2 className="h-2.5 w-2.5" /> Active
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2.5 rounded-xl border border-slate-700/60 bg-slate-800/40 px-4 py-3">
+                <Lock className="h-3.5 w-3.5 text-slate-500 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-slate-300">OAuth 2.0 Secured</p>
+                  <p className="text-[10px] text-slate-500">Credentials are never stored — Google handles authentication directly.</p>
+                </div>
+              </div>
             </div>
 
             {/* Action buttons */}
-            <div className="flex gap-2.5">
+            <div className="flex gap-2">
               {user?.gmailConnected && (
                 <Button
                   variant="outline"
@@ -494,7 +526,7 @@ export default function Settings() {
                 size="sm"
                 onClick={handleConnectGmail}
                 disabled={connectingGmail}
-                className={`h-9 text-xs rounded-xl ${user?.gmailConnected ? "flex-1 bg-transparent border-slate-700 hover:bg-slate-800 text-slate-200" : "flex-1"}`}
+                className={`h-9 text-xs rounded-xl flex-1 ${user?.gmailConnected ? "bg-transparent border-slate-700 hover:bg-slate-800 text-slate-200" : ""}`}
               >
                 {connectingGmail
                   ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />Connecting…</>
@@ -502,32 +534,33 @@ export default function Settings() {
               </Button>
             </div>
 
-            {/* Feature badges */}
-            <div className="space-y-2 pt-1">
+            {/* Feature checklist */}
+            <div className="space-y-1.5 pt-1">
               {[
                 "Send emails directly from Gmail",
                 "Create drafts in your Gmail account",
                 "Track opens and clicks",
-                "Secure & encrypted connection",
-              ].map(feature => (
-                <div key={feature} className="flex items-center gap-2.5">
-                  <div className="flex h-4 w-4 items-center justify-center rounded-full bg-green-500/15 border border-green-500/30 flex-shrink-0">
-                    <CheckCircle2 className="h-3 w-3 text-green-400" />
+                "Secure OAuth connection",
+                "Works with all Google Workspace accounts",
+              ].map(f => (
+                <div key={f} className="flex items-center gap-2.5">
+                  <div className="h-4 w-4 rounded-full bg-green-500/15 border border-green-500/25 flex items-center justify-center flex-shrink-0">
+                    <CheckCircle2 className="h-2.5 w-2.5 text-green-400" />
                   </div>
-                  <span className="text-xs text-slate-400">{feature}</span>
+                  <span className="text-xs text-slate-400">{f}</span>
                 </div>
               ))}
             </div>
 
             {/* Status banners */}
             {gmailConnectedParam && (
-              <div className="flex items-center gap-2.5 p-3 rounded-xl bg-green-950/40 border border-green-900/50 text-green-400 text-xs font-medium">
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-green-950/40 border border-green-900/50 text-green-400 text-xs font-medium">
                 <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />
                 Gmail connected successfully.
               </div>
             )}
             {(gmailError || oauthError) && (
-              <div className="flex items-center gap-2.5 p-3 rounded-xl bg-red-950/30 border border-red-900/50 text-red-400 text-xs font-medium">
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-red-950/30 border border-red-900/50 text-red-400 text-xs font-medium">
                 <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
                 {gmailError ?? (oauthError === "oauth_denied"
                   ? "You denied access. Please try again."
@@ -536,232 +569,159 @@ export default function Settings() {
             )}
           </div>
         </div>
+
       </div>
 
       {/* ── Branding ─────────────────────────────────────────────────────────── */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/15 border border-blue-500/20 flex-shrink-0">
-              <Building2 className="h-3.5 w-3.5 text-blue-400" />
-            </div>
-            <div>
-              <span className="text-sm font-semibold text-slate-100">Branding</span>
-              <p className="text-xs text-slate-500 mt-0.5">Customize how your brand appears in outgoing emails.</p>
-            </div>
-          </div>
-        </div>
+        <CardHeader
+          icon={Building2}
+          iconColor="bg-blue-500/15 border border-blue-500/20 text-blue-400"
+          label="Branding"
+          subtitle="Customize how your brand appears in every outgoing email."
+        />
 
         <form onSubmit={handleSaveBranding}>
           <div className="p-6">
             <div className="grid lg:grid-cols-3 gap-6">
 
-              {/* LEFT — Company Logo */}
+              {/* COL 1 — Logo ─────────────────────────────────────────────────── */}
               <div className="space-y-4">
-                <div>
-                  <p className="text-sm font-semibold text-slate-200 flex items-center gap-2 mb-1">
-                    <ImagePlus className="h-4 w-4 text-violet-400" />
-                    Company Logo
-                  </p>
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    Appears in email headers. PNG, JPG, or SVG — max 600 KB.
-                  </p>
-                </div>
+                <p className="text-xs font-semibold text-slate-300 flex items-center gap-1.5 uppercase tracking-wider">
+                  <ImagePlus className="h-3.5 w-3.5 text-violet-400" /> Company Logo
+                </p>
 
-                {/* Upload area */}
-                <div
-                  className="relative rounded-2xl border-2 border-dashed border-slate-700 bg-slate-800/40 overflow-hidden flex items-center justify-center cursor-pointer hover:border-slate-600 hover:bg-slate-800/60 transition-all duration-200 group"
-                  style={{ minHeight: "140px" }}
-                  onClick={() => fileInputRef.current?.click()}
+                {/* Drop zone */}
+                <label
+                  className="relative rounded-2xl border-2 border-dashed border-slate-700 bg-slate-800/40 flex items-center justify-center cursor-pointer hover:border-slate-600 hover:bg-slate-800/60 transition-all duration-200 group"
+                  style={{ minHeight: "148px" }}
                 >
+                  <input ref={fileInputRef} type="file" accept="image/*" className="sr-only" onChange={handleLogoFileChange} />
                   {isUploadingLogo && (
                     <div className="absolute inset-0 bg-slate-900/80 flex items-center justify-center z-10 rounded-2xl">
                       <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
                     </div>
                   )}
                   {logoPreview ? (
-                    <img
-                      src={logoPreview}
-                      alt="Company logo"
-                      className="max-h-24 max-w-[160px] object-contain p-3"
-                    />
+                    <img src={logoPreview} alt="Logo" className="max-h-24 max-w-[160px] object-contain p-3" />
                   ) : (
                     <div className="flex flex-col items-center gap-2 text-slate-600 group-hover:text-slate-500 transition-colors p-6">
-                      <div className="h-12 w-12 rounded-xl bg-slate-700/60 border border-slate-600/60 flex items-center justify-center">
-                        <ImagePlus className="h-5 w-5" />
+                      <div className="h-10 w-10 rounded-xl bg-slate-700/60 border border-slate-600/60 flex items-center justify-center">
+                        <ImagePlus className="h-4.5 w-4.5 h-[18px] w-[18px]" />
                       </div>
-                      <p className="text-xs font-medium text-center">Click to upload logo</p>
+                      <p className="text-xs font-medium text-center">Click to upload</p>
+                      <p className="text-[10px] text-slate-600">PNG, JPG, or SVG</p>
                     </div>
                   )}
-                </div>
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleLogoFileChange}
-                />
+                </label>
 
                 <div className="flex gap-2">
                   <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
+                    type="button" variant="outline" size="sm"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isUploadingLogo}
                     className="flex-1 h-8 text-xs rounded-xl bg-transparent border-slate-700 hover:bg-slate-800 text-slate-300"
                   >
                     {isUploadingLogo
-                      ? <><Loader2 className="h-3 w-3 animate-spin mr-1.5" />Uploading…</>
-                      : <><ImagePlus className="h-3 w-3 mr-1.5" />{logoPreview ? "Change" : "Upload"}</>}
+                      ? <><Loader2 className="h-3 w-3 animate-spin mr-1" />Uploading…</>
+                      : <><ImagePlus className="h-3 w-3 mr-1" />{logoPreview ? "Change Logo" : "Upload Logo"}</>}
                   </Button>
                   {logoPreview && (
                     <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
+                      type="button" variant="ghost" size="sm"
                       onClick={handleRemoveLogo}
                       disabled={isRemovingLogo || isUploadingLogo}
-                      className="h-8 text-xs rounded-xl text-red-400 hover:bg-red-950/30 hover:text-red-300 px-3"
+                      className="h-8 w-8 p-0 rounded-xl text-red-400 hover:bg-red-950/30 hover:text-red-300"
                     >
                       {isRemovingLogo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
                     </Button>
                   )}
                 </div>
 
-                <p className="text-xs text-amber-500/80 leading-relaxed">
-                  Gmail may not display inline images in some cases.
-                </p>
+                <p className="text-[11px] text-slate-500 leading-relaxed">Max 600 KB. Appears in your email headers and signature.</p>
+                <p className="text-[11px] text-amber-500/80">Gmail may not display inline images in all cases.</p>
               </div>
 
-              {/* CENTER — Company Details */}
-              <div className="space-y-4">
-                <p className="text-sm font-semibold text-slate-200 flex items-center gap-2 mb-1">
-                  <Building2 className="h-4 w-4 text-blue-400" />
-                  Company Details
+              {/* COL 2 — Company Details ──────────────────────────────────────── */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-slate-300 flex items-center gap-1.5 uppercase tracking-wider">
+                  <Building2 className="h-3.5 w-3.5 text-blue-400" /> Company Details
                 </p>
 
-                <div className="space-y-3">
-                  <div>
-                    <FieldLabel icon={Building2}>Company Name</FieldLabel>
-                    <Input
-                      value={branding.companyName}
-                      onChange={e => setBranding(b => ({ ...b, companyName: e.target.value }))}
-                      placeholder="e.g. Vertex Car Shipping"
-                      className="rounded-xl h-9 text-sm bg-slate-800/60 border-slate-700 focus:border-blue-500/60 focus:bg-slate-800"
-                    />
-                  </div>
-
-                  <div>
-                    <FieldLabel icon={Sparkles}>Tagline / Slogan</FieldLabel>
-                    <Input
-                      value={branding.companyTagline}
-                      onChange={e => setBranding(b => ({ ...b, companyTagline: e.target.value }))}
-                      placeholder="e.g. Nationwide Vehicle Shipping"
-                      className="rounded-xl h-9 text-sm bg-slate-800/60 border-slate-700 focus:border-blue-500/60 focus:bg-slate-800"
-                    />
-                  </div>
-
-                  <div>
-                    <FieldLabel icon={Globe}>Website</FieldLabel>
-                    <Input
-                      value={branding.companyWebsite}
-                      onChange={e => setBranding(b => ({ ...b, companyWebsite: e.target.value }))}
-                      placeholder="e.g. www.yourcompany.com"
-                      className="rounded-xl h-9 text-sm bg-slate-800/60 border-slate-700 focus:border-blue-500/60 focus:bg-slate-800"
-                    />
-                  </div>
-
-                  <div>
-                    <FieldLabel icon={Phone}>Phone</FieldLabel>
-                    <Input
-                      value={branding.companyPhone}
-                      onChange={e => setBranding(b => ({ ...b, companyPhone: e.target.value }))}
-                      placeholder="e.g. (555) 123-4567"
-                      className="rounded-xl h-9 text-sm bg-slate-800/60 border-slate-700 focus:border-blue-500/60 focus:bg-slate-800"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <FieldLabel icon={Shield}>USDOT #</FieldLabel>
-                      <Input
-                        value={branding.usdot}
-                        onChange={e => setBranding(b => ({ ...b, usdot: e.target.value }))}
-                        placeholder="1234567"
-                        className="rounded-xl h-9 text-sm font-mono bg-slate-800/60 border-slate-700 focus:border-blue-500/60 focus:bg-slate-800"
-                      />
-                    </div>
-                    <div>
-                      <FieldLabel icon={Hash}>MC #</FieldLabel>
-                      <Input
-                        value={branding.mcNumber}
-                        onChange={e => setBranding(b => ({ ...b, mcNumber: e.target.value }))}
-                        placeholder="987654"
-                        className="rounded-xl h-9 text-sm font-mono bg-slate-800/60 border-slate-700 focus:border-blue-500/60 focus:bg-slate-800"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <FieldLabel icon={Palette}>Accent Color</FieldLabel>
-                    <div className="flex gap-2">
-                      <input
-                        type="color"
-                        value={branding.accentColor || "#1d4ed8"}
-                        onChange={e => setBranding(b => ({ ...b, accentColor: e.target.value }))}
-                        className="h-9 w-10 rounded-xl border border-slate-700 cursor-pointer bg-slate-800/60 p-1 flex-shrink-0"
-                      />
-                      <Input
-                        value={branding.accentColor}
-                        onChange={e => setBranding(b => ({ ...b, accentColor: e.target.value }))}
-                        placeholder="#1d4ed8"
-                        className="rounded-xl h-9 text-sm font-mono bg-slate-800/60 border-slate-700 focus:border-blue-500/60 focus:bg-slate-800"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* RIGHT — Agent Name + Signature */}
-              <div className="space-y-4">
-                <p className="text-sm font-semibold text-slate-200 flex items-center gap-2 mb-1">
-                  <Eye className="h-4 w-4 text-emerald-400" />
-                  Signature Preview
-                </p>
-
-                {/* Agent name lives here since it's signature-specific */}
                 <div>
-                  <FieldLabel icon={User}>Agent Name</FieldLabel>
-                  <Input
-                    value={branding.agentName}
-                    onChange={e => setBranding(b => ({ ...b, agentName: e.target.value }))}
-                    placeholder="e.g. Sarah Mitchell"
-                    className="rounded-xl h-9 text-sm bg-slate-800/60 border-slate-700 focus:border-blue-500/60 focus:bg-slate-800"
-                  />
-                  <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                    Used when no agent_name column is in your CSV.
-                  </p>
+                  <FL icon={Building2}>Company Name</FL>
+                  <Input value={branding.companyName} onChange={e => setBranding(b => ({ ...b, companyName: e.target.value }))}
+                    placeholder="e.g. Vertex Car Shipping"
+                    className="rounded-xl h-9 text-sm bg-slate-800/60 border-slate-700 focus:border-blue-500/60" />
                 </div>
-
-                {/* Live signature preview — only shown when toggle is on, matching original behavior */}
-                {branding.useSignature && <SignaturePreview branding={branding} />}
-
-                {/* Automatic Signature toggle */}
-                <div className="rounded-xl border border-slate-700/60 bg-slate-800/40 px-4 divide-y divide-slate-700/60">
-                  <Toggle
-                    checked={branding.useSignature}
-                    onChange={() => setBranding(b => ({ ...b, useSignature: !b.useSignature }))}
-                    label="Automatic Signature"
-                    description={branding.useSignature
-                      ? "Appended to every email automatically"
-                      : "Template sent exactly as written"}
-                  />
+                <div>
+                  <FL icon={Sparkles}>Tagline / Slogan</FL>
+                  <Input value={branding.companyTagline} onChange={e => setBranding(b => ({ ...b, companyTagline: e.target.value }))}
+                    placeholder="e.g. Nationwide Vehicle Shipping"
+                    className="rounded-xl h-9 text-sm bg-slate-800/60 border-slate-700 focus:border-blue-500/60" />
+                </div>
+                <div>
+                  <FL icon={Globe}>Website</FL>
+                  <Input value={branding.companyWebsite} onChange={e => setBranding(b => ({ ...b, companyWebsite: e.target.value }))}
+                    placeholder="e.g. www.yourcompany.com"
+                    className="rounded-xl h-9 text-sm bg-slate-800/60 border-slate-700 focus:border-blue-500/60" />
+                </div>
+                <div>
+                  <FL icon={Phone}>Phone</FL>
+                  <Input value={branding.companyPhone} onChange={e => setBranding(b => ({ ...b, companyPhone: e.target.value }))}
+                    placeholder="e.g. (555) 123-4567"
+                    className="rounded-xl h-9 text-sm bg-slate-800/60 border-slate-700 focus:border-blue-500/60" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <FL icon={Shield}>USDOT #</FL>
+                    <Input value={branding.usdot} onChange={e => setBranding(b => ({ ...b, usdot: e.target.value }))}
+                      placeholder="1234567"
+                      className="rounded-xl h-9 text-sm font-mono bg-slate-800/60 border-slate-700 focus:border-blue-500/60" />
+                  </div>
+                  <div>
+                    <FL icon={Hash}>MC #</FL>
+                    <Input value={branding.mcNumber} onChange={e => setBranding(b => ({ ...b, mcNumber: e.target.value }))}
+                      placeholder="987654"
+                      className="rounded-xl h-9 text-sm font-mono bg-slate-800/60 border-slate-700 focus:border-blue-500/60" />
+                  </div>
+                </div>
+                <div>
+                  <FL icon={Palette}>Accent Color</FL>
+                  <div className="flex gap-2">
+                    <input type="color"
+                      value={branding.accentColor || "#1d4ed8"}
+                      onChange={e => setBranding(b => ({ ...b, accentColor: e.target.value }))}
+                      className="h-9 w-10 rounded-xl border border-slate-700 cursor-pointer bg-slate-800/60 p-1 flex-shrink-0" />
+                    <Input value={branding.accentColor}
+                      onChange={e => setBranding(b => ({ ...b, accentColor: e.target.value }))}
+                      placeholder="#1d4ed8"
+                      className="rounded-xl h-9 text-sm font-mono bg-slate-800/60 border-slate-700 focus:border-blue-500/60" />
+                  </div>
+                </div>
+                <div>
+                  <FL icon={User}>Email (From Name)</FL>
+                  <Input value={branding.agentName} onChange={e => setBranding(b => ({ ...b, agentName: e.target.value }))}
+                    placeholder="e.g. Frank Miller"
+                    className="rounded-xl h-9 text-sm bg-slate-800/60 border-slate-700 focus:border-blue-500/60" />
+                  <p className="text-[11px] text-slate-500 mt-1.5">Shown as the sender name. Falls back to CSV agent_name column.</p>
                 </div>
               </div>
 
-            </div>{/* /3-col grid */}
+              {/* COL 3 — Signature Preview ────────────────────────────────────── */}
+              <div className="space-y-3 flex flex-col">
+                <p className="text-xs font-semibold text-slate-300 flex items-center gap-1.5 uppercase tracking-wider">
+                  <Eye className="h-3.5 w-3.5 text-emerald-400" /> Signature Preview
+                </p>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  This is how your signature appears in every outgoing email. Updates instantly as you type.
+                </p>
+                <div className="flex-1">
+                  <SignaturePreview branding={branding} />
+                </div>
+              </div>
+
+            </div>
           </div>
 
           {/* Save footer */}
@@ -772,7 +732,7 @@ export default function Settings() {
               className="rounded-xl h-9 px-6 font-medium gap-2 bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/30"
             >
               {isSavingBranding
-                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Saving…</>
                 : "Save Branding"}
             </Button>
             {brandingSaved && (
@@ -784,77 +744,120 @@ export default function Settings() {
         </form>
       </div>
 
-      {/* ── Template Variables ──────────────────────────────────────────────── */}
+      {/* ── Email Preferences ────────────────────────────────────────────────── */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500/15 border border-violet-500/20 flex-shrink-0">
-              <Sparkles className="h-3.5 w-3.5 text-violet-400" />
-            </div>
-            <div>
-              <span className="text-sm font-semibold text-slate-100">Template Variables</span>
-              <p className="text-xs text-slate-500 mt-0.5">Insert these placeholders in your email templates — they're replaced automatically from your CSV data.</p>
-            </div>
-          </div>
-        </div>
+        <CardHeader
+          icon={Settings2}
+          iconColor="bg-indigo-500/15 border border-indigo-500/20 text-indigo-400"
+          label="Email Preferences"
+          subtitle="Configure default behavior for new emails and campaigns."
+        />
 
         <div className="p-6">
-          <div className="rounded-xl border border-blue-900/40 bg-blue-950/20 p-4 mb-5">
-            <p className="text-xs font-semibold text-blue-300 mb-1">Automatic — no manual configuration needed</p>
-            <p className="text-xs text-blue-400/80 leading-relaxed">
-              Your company name and logo appear in the email header automatically. When "Automatic Signature" is on,
-              agent name, tagline, phone, website, USDOT, and MC# are appended to every email.
-            </p>
-          </div>
+          <div className="grid lg:grid-cols-2 gap-6">
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {TEMPLATE_VARIABLES.map(v => (
-              <div
-                key={v.var}
-                className={`group relative flex flex-col gap-1.5 p-3.5 rounded-xl border transition-all duration-200 cursor-default ${VAR_COLORS[v.color]}`}
-              >
-                <code className="text-sm font-mono font-bold leading-none">{v.var}</code>
-                <span className="text-[10px] font-semibold uppercase tracking-wider opacity-70">{v.label}</span>
-                <span className="text-xs opacity-60 leading-snug">{v.desc}</span>
-                <div className="absolute inset-0 rounded-xl ring-1 ring-inset ring-white/5 pointer-events-none" />
+            {/* LEFT — Sending defaults (Coming Soon) */}
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Sending Defaults</p>
+              <div className="rounded-xl border border-slate-700/60 bg-slate-800/30 px-4 divide-y divide-slate-700/60">
+                <ComingSoonRow
+                  label="Default From"
+                  description="Choose which account sends outgoing emails"
+                />
+                <ComingSoonRow
+                  label="Default Reply-To"
+                  description="Override the reply-to address on campaigns"
+                />
+                <ComingSoonRow
+                  label="Default BCC"
+                  description="Blind-copy an address on every email sent"
+                />
               </div>
-            ))}
+            </div>
+
+            {/* RIGHT — Behavior toggles */}
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Behavior</p>
+              <div className="rounded-xl border border-slate-700/60 bg-slate-800/30 px-4 divide-y divide-slate-700/60">
+                {/* Automatic Signature — live toggle */}
+                <Toggle
+                  checked={branding.useSignature}
+                  onChange={() => setBranding(b => ({ ...b, useSignature: !b.useSignature }))}
+                  label="Automatic Signature"
+                  description={branding.useSignature
+                    ? "Appended to every outgoing email"
+                    : "Template content sent as written"}
+                />
+                <ComingSoonRow label="Track Email Opens" description="Get notified when recipients open your emails" />
+                <ComingSoonRow label="Track Link Clicks" description="Track clicks on links in your emails" />
+                <ComingSoonRow label="Save Sent Emails" description="Save a copy to your Gmail Sent folder" />
+              </div>
+              {branding.useSignature && (
+                <p className="text-[11px] text-slate-500 mt-2.5 leading-relaxed">
+                  Signature is built from your Branding settings above. Edit the Branding section to update it.
+                </p>
+              )}
+            </div>
+
           </div>
         </div>
       </div>
 
       {/* ── Danger Zone ──────────────────────────────────────────────────────── */}
       <div className="rounded-2xl border border-red-900/40 bg-slate-900 overflow-hidden">
-        <div className="px-6 py-4 border-b border-red-900/40">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-500/10 border border-red-500/20 flex-shrink-0">
-              <LogOut className="h-3.5 w-3.5 text-red-400" />
-            </div>
-            <div>
-              <span className="text-sm font-semibold text-slate-100">Danger Zone</span>
-              <p className="text-xs text-slate-500 mt-0.5">Irreversible and sensitive actions.</p>
-            </div>
+        <div className="px-6 py-4 border-b border-red-900/40 flex items-center gap-3">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-500/10 border border-red-500/20 flex-shrink-0">
+            <LogOut className="h-3.5 w-3.5 text-red-400" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-100">Danger Zone</p>
+            <p className="text-xs text-slate-500 mt-0.5">Irreversible and sensitive actions.</p>
           </div>
         </div>
 
-        <div className="p-6">
-          <div className="rounded-xl border border-slate-800 bg-slate-800/30 overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4">
+        <div className="p-6 space-y-3">
+
+          {/* Sign Out */}
+          <div className="flex items-center justify-between rounded-xl border border-slate-700/60 bg-slate-800/30 px-5 py-4">
+            <div>
+              <p className="text-sm font-semibold text-slate-200">Sign Out</p>
+              <p className="text-xs text-slate-500 mt-0.5">Sign out of BrokerMAIL on all devices.</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={logout}
+              className="h-9 px-4 text-xs font-semibold rounded-xl border-red-900/60 text-red-400 hover:bg-red-950/30 hover:border-red-800 hover:text-red-300 bg-transparent transition-all duration-200 flex-shrink-0 ml-4"
+            >
+              <LogOut className="h-3.5 w-3.5 mr-2" />
+              Sign Out
+            </Button>
+          </div>
+
+          {/* Disconnect Gmail — only shown when connected */}
+          {user?.gmailConnected && (
+            <div className="flex items-center justify-between rounded-xl border border-slate-700/60 bg-slate-800/30 px-5 py-4">
               <div>
-                <p className="text-sm font-semibold text-slate-200">Sign out of BrokerMAIL</p>
-                <p className="text-xs text-slate-500 mt-0.5">You will be returned to the login screen on all devices.</p>
+                <p className="text-sm font-semibold text-slate-200">Disconnect Gmail</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Remove Google account access. Campaigns and draft creation will stop working.
+                </p>
               </div>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={logout}
-                className="rounded-xl h-9 px-4 text-xs font-semibold border-red-900/60 text-red-400 hover:bg-red-950/30 hover:border-red-800 hover:text-red-300 bg-transparent transition-all duration-200"
+                onClick={handleDisconnectGmail}
+                disabled={disconnecting}
+                className="h-9 px-4 text-xs font-semibold rounded-xl border-red-900/60 text-red-400 hover:bg-red-950/30 hover:border-red-800 hover:text-red-300 bg-transparent transition-all duration-200 flex-shrink-0 ml-4"
               >
-                <LogOut className="h-3.5 w-3.5 mr-2" />
-                Sign Out
+                {disconnecting
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" />
+                  : <Unlink className="h-3.5 w-3.5 mr-2" />}
+                Disconnect
               </Button>
             </div>
-          </div>
+          )}
+
         </div>
       </div>
 
