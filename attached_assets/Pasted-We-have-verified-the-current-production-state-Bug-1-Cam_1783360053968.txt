@@ -1,0 +1,97 @@
+We have verified the current production state.
+
+Bug #1 (Campaign status)
+This is FIXED.
+Do not modify campaign logic anymore.
+
+-----------------------------------------
+
+Remaining Bug #1
+
+Compose Email still shows the SMTP/company email for the Gmail option.
+
+We verified the API response in Chrome DevTools.
+
+The response already contains:
+
+{
+  "gmailConnected": true,
+  "userEmail": "miller@vertexcarship.com",
+  "gmailEmail": "frank.vertexcarship1@gmail.com"
+}
+
+So the backend is correct.
+
+The frontend is ignoring gmailEmail and still renders userEmail.
+
+Do NOT modify any backend code.
+
+Only fix the frontend.
+
+Search the entire frontend for where the Gmail option in the From dropdown is created.
+
+The label must be:
+
+Gmail — ${gmailEmail}
+
+NOT
+
+Gmail — ${userEmail}
+
+Do not touch SMTP.
+
+-----------------------------------------
+
+Remaining Bug #2
+
+The Settings page redesign did NOT reach production.
+
+The page is visually identical to the old version.
+
+Either:
+
+• the wrong component was edited
+• the redesign exists in an unused file
+• or the old component is still being rendered
+
+Find the actual Settings page used by the application.
+
+Do not redesign another copy.
+
+Modify the component that production actually renders.
+
+Requirements:
+
+- modern professional SaaS layout
+- grouped cards
+- proper spacing
+- cleaner typography
+- improved section headers
+- professional Gmail connection card
+- better branding section
+- danger zone separated
+- consistent buttons
+- improved alignment
+
+Keep every existing API call,
+every handler,
+every state variable,
+every endpoint,
+every database field exactly the same.
+
+UI only.
+
+-----------------------------------------
+
+Before committing:
+
+1. Run the app.
+2. Open Compose Email.
+3. Verify the Gmail option displays:
+
+Gmail — frank.vertexcarship1@gmail.com
+
+4. Open Settings.
+5. Confirm the UI is visibly different from production.
+
+Do not commit until both are verified visually.
