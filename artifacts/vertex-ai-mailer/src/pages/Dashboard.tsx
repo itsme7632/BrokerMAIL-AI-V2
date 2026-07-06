@@ -12,6 +12,7 @@ import {
   Activity, RefreshCw, ChevronRight, Eye,
   CreditCard, Loader2, PenLine, Megaphone,
   Server, Unlink, TicketCheck, LayoutGrid,
+  Building2, Users, Rocket, Circle, Sparkles,
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -154,6 +155,180 @@ function SectionCard({ title, subtitle, icon: Icon, iconBg, action, children }: 
   );
 }
 
+// ─── Onboarding card ──────────────────────────────────────────────────────────
+
+interface OnboardingStep {
+  id:          string;
+  icon:        React.ElementType;
+  iconBg:      string;
+  iconColor:   string;
+  title:       string;
+  description: string;
+  done:        boolean;
+  btnLabel:    string;
+  btnHref?:    string;
+  btnAction?:  () => void;
+}
+
+function OnboardingCard({
+  steps, completedCount, allDone, seenComplete, dataReady,
+}: {
+  steps:         OnboardingStep[];
+  completedCount: number;
+  allDone:       boolean;
+  seenComplete:  boolean;
+  dataReady:     boolean;
+}) {
+  const pct = Math.round((completedCount / steps.length) * 100);
+
+  // ── Already seen complete → tiny compact card (skip checklist flash) ─────
+  if (seenComplete) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+        className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 px-5 py-4 flex items-center gap-3">
+        <div className="h-8 w-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
+          <Sparkles className="h-4 w-4 text-emerald-400" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-emerald-300">Everything is ready.</p>
+          <p className="text-xs text-slate-400 mt-0.5">BrokerMAIL AI is fully configured and ready for sending campaigns.</p>
+        </div>
+        <Button asChild size="sm"
+          className="h-8 px-3 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5 flex-shrink-0">
+          <Link href="/compose"><PenLine className="h-3.5 w-3.5" /> Compose Email</Link>
+        </Button>
+      </motion.div>
+    );
+  }
+
+  // ── All done, first time → celebration state ─────────────────────────────
+  if (allDone) {
+    return (
+      <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }}
+        className="rounded-2xl border border-emerald-500/20 bg-slate-900 overflow-hidden">
+        <div className="px-6 py-8 flex flex-col items-center text-center">
+          <div className="h-14 w-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-4">
+            <Rocket className="h-7 w-7 text-emerald-400" />
+          </div>
+          <h3 className="text-lg font-bold text-white mb-1">🎉 BrokerMAIL AI is fully configured.</h3>
+          <p className="text-sm text-slate-400 mb-6 max-w-sm">Your workspace is ready for production. Start sending campaigns and building relationships.</p>
+          <div className="flex items-center gap-3">
+            <Button asChild size="sm"
+              className="h-9 px-4 text-sm rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white gap-2">
+              <Link href="/compose"><PenLine className="h-3.5 w-3.5" /> Compose Email</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm"
+              className="h-9 px-4 text-sm rounded-xl border-slate-700 hover:bg-slate-800 text-slate-200 bg-transparent gap-2">
+              <Link href="/campaigns"><Megaphone className="h-3.5 w-3.5" /> Start New Campaign</Link>
+            </Button>
+          </div>
+        </div>
+        {/* subtle progress bar at top */}
+        <div className="h-1 w-full bg-emerald-500/20">
+          <motion.div className="h-full bg-emerald-400 rounded-full"
+            initial={{ width: 0 }} animate={{ width: "100%" }} transition={{ duration: 0.8, ease: "easeOut" }} />
+        </div>
+      </motion.div>
+    );
+  }
+
+  // ── Normal checklist ─────────────────────────────────────────────────────
+  return (
+    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-slate-800 flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-0.5">
+            <p className="text-sm font-semibold text-slate-100">Getting Started</p>
+            {!dataReady && <Loader2 className="h-3.5 w-3.5 text-slate-500 animate-spin" />}
+          </div>
+          <p className="text-xs text-slate-500">Complete these steps to unlock the full BrokerMAIL AI experience.</p>
+        </div>
+        <div className="flex-shrink-0 text-right">
+          <p className="text-xs font-semibold text-slate-300 tabular-nums">{completedCount} of {steps.length} completed</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">{pct}% done</p>
+        </div>
+      </div>
+
+      {/* Animated progress bar */}
+      <div className="h-1 w-full bg-slate-800">
+        <motion.div className="h-full bg-blue-500 rounded-full"
+          initial={{ width: 0 }}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+        />
+      </div>
+
+      {/* Steps */}
+      <div className="divide-y divide-slate-800/60">
+        {steps.map((step, i) => {
+          const Icon = step.icon;
+          return (
+            <motion.div key={step.id}
+              custom={i} initial="hidden" animate="show" variants={fadeUp}
+              className={`flex items-start gap-4 px-5 py-4 transition-colors ${step.done ? "opacity-60" : "hover:bg-slate-800/30"}`}>
+              {/* Completion indicator */}
+              <div className="flex-shrink-0 w-5 flex items-center justify-center mt-0.5">
+                <AnimatePresence mode="wait">
+                  {step.done ? (
+                    <motion.div key="check"
+                      initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0, opacity: 0 }} transition={{ type: "spring", stiffness: 400, damping: 20 }}>
+                      <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                    </motion.div>
+                  ) : (
+                    <motion.div key="circle"
+                      initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0, opacity: 0 }}>
+                      <Circle className="h-5 w-5 text-slate-600" />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Step icon */}
+              <div className={`h-9 w-9 rounded-xl flex items-center justify-center flex-shrink-0 border mt-0.5 ${step.iconBg} ${step.done ? "opacity-50" : ""}`}>
+                <Icon className={`h-4 w-4 ${step.iconColor}`} />
+              </div>
+
+              {/* Text + responsive button */}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-sm font-semibold ${step.done ? "text-slate-400 line-through decoration-slate-600" : "text-slate-100"}`}>
+                      {step.title}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{step.description}</p>
+                  </div>
+                  {/* Action button — stacks below text on mobile, inline on sm+ */}
+                  {!step.done && (
+                    <div className="flex-shrink-0 mt-2 sm:mt-0">
+                      {step.btnHref ? (
+                        <Button asChild variant="outline" size="sm"
+                          className="h-8 px-3 text-xs rounded-xl border-slate-700 hover:bg-slate-800 hover:border-slate-600 text-slate-200 bg-transparent gap-1.5 whitespace-nowrap">
+                          <Link href={step.btnHref}>
+                            {step.btnLabel} <ArrowRight className="h-3 w-3" />
+                          </Link>
+                        </Button>
+                      ) : (
+                        <Button variant="outline" size="sm" onClick={step.btnAction}
+                          className="h-8 px-3 text-xs rounded-xl border-slate-700 hover:bg-slate-800 hover:border-slate-600 text-slate-200 bg-transparent gap-1.5 whitespace-nowrap">
+                          {step.btnLabel} <ArrowRight className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+}
+
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -176,7 +351,17 @@ export default function Dashboard() {
     topReasons: { reason: string; count: number }[];
   } | null>(null);
   const [billing,  setBilling]  = useState<BillingData | null>(null);
-  const [branding, setBranding] = useState<{ companyName: string } | null>(null);
+  const [branding, setBranding] = useState<{
+    companyName?: string | null;
+    logoUrl?:     string | null;
+    website?:     string | null;
+    phone?:       string | null;
+  } | null>(null);
+
+  // Onboarding: track if user has ever seen the all-complete celebration
+  const [onboardingSeenComplete, setOnboardingSeenComplete] = useState<boolean>(() =>
+    typeof window !== "undefined" && localStorage.getItem("bm_onboarding_done") === "1"
+  );
 
   const firstName = user?.name?.split(" ")[0] ?? "there";
   const token     = () => localStorage.getItem("auth_token") ?? "";
@@ -274,6 +459,28 @@ export default function Dashboard() {
   const emailUsagePct = billing?.plan.monthlyEmailLimit && billing.plan.monthlyEmailLimit > 0
     ? Math.min(100, Math.round((billing.usage.emailsSentThisMonth / billing.plan.monthlyEmailLimit) * 100))
     : null;
+
+  // ── Onboarding completion flags ─────────────────────────────────────────────
+  const ob_gmail     = !gmailLoading    && gmailStatus?.connected === true;
+  const ob_branding  = !!(branding && (branding.companyName || branding.logoUrl) && (branding.website || branding.phone || branding.logoUrl));
+  const ob_leads     = !statsLoading    && (stats?.totalLeads ?? 0) > 0;
+  const ob_campaign  = !statsLoading    && (stats?.totalCampaigns ?? 0) > 0;
+  const ob_email     = !!(billing       && billing.usage.emailsSentThisMonth > 0);
+
+  const obSteps = [ob_gmail, ob_branding, ob_leads, ob_campaign, ob_email];
+  const obCompleted  = obSteps.filter(Boolean).length;
+  const obAllDone    = obCompleted === 5;
+  const obDataReady  = !gmailLoading && !statsLoading; // enough data loaded to show progress
+
+  // Persist once user has seen the celebration so we downgrade to mini-card
+  useEffect(() => {
+    if (!obAllDone || onboardingSeenComplete) return;
+    const t = setTimeout(() => {
+      localStorage.setItem("bm_onboarding_done", "1");
+      setOnboardingSeenComplete(true);
+    }, 4500);
+    return () => clearTimeout(t);
+  }, [obAllDone, onboardingSeenComplete]);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
@@ -374,6 +581,77 @@ export default function Dashboard() {
           ))}
         </div>
       </div>
+
+      {/* ── Getting Started / Onboarding ────────────────────────────────────── */}
+      {(() => {
+        const onboardingStepDefs: OnboardingStep[] = [
+          {
+            id:          "gmail",
+            icon:        Mail,
+            iconBg:      "bg-blue-500/10 border-blue-500/20",
+            iconColor:   "text-blue-400",
+            title:       "Connect Gmail",
+            description: "Connect your Google account to send emails and create Gmail drafts.",
+            done:        ob_gmail,
+            btnLabel:    "Connect Gmail",
+            btnAction:   handleConnectGmail,
+          },
+          {
+            id:          "branding",
+            icon:        Building2,
+            iconBg:      "bg-purple-500/10 border-purple-500/20",
+            iconColor:   "text-purple-400",
+            title:       "Complete Company Branding",
+            description: "Upload your company logo and add your business information in Settings.",
+            done:        ob_branding,
+            btnLabel:    "Open Settings",
+            btnHref:     "/settings",
+          },
+          {
+            id:          "leads",
+            icon:        Users,
+            iconBg:      "bg-amber-500/10 border-amber-500/20",
+            iconColor:   "text-amber-400",
+            title:       "Upload Your First Leads",
+            description: "Import a CSV or Excel file of contacts to start your first campaign.",
+            done:        ob_leads,
+            btnLabel:    "Upload Leads",
+            btnHref:     "/leads/import",
+          },
+          {
+            id:          "campaign",
+            icon:        Megaphone,
+            iconBg:      "bg-indigo-500/10 border-indigo-500/20",
+            iconColor:   "text-indigo-400",
+            title:       "Create Your First Campaign",
+            description: "Start your first outreach campaign to reach your leads.",
+            done:        ob_campaign,
+            btnLabel:    "Open Campaigns",
+            btnHref:     "/campaigns",
+          },
+          {
+            id:          "email",
+            icon:        Send,
+            iconBg:      "bg-emerald-500/10 border-emerald-500/20",
+            iconColor:   "text-emerald-400",
+            title:       "Send Your First Email",
+            description: "Send your first quote or follow-up to a contact.",
+            done:        ob_email,
+            btnLabel:    "Compose Email",
+            btnHref:     "/compose",
+          },
+        ];
+
+        return (
+          <OnboardingCard
+            steps={onboardingStepDefs}
+            completedCount={obCompleted}
+            allDone={obAllDone}
+            seenComplete={onboardingSeenComplete}
+            dataReady={obDataReady}
+          />
+        );
+      })()}
 
       {/* ── Metric cards ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

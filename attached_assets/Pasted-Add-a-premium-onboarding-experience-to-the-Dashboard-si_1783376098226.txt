@@ -1,0 +1,259 @@
+Add a premium onboarding experience to the Dashboard similar to Stripe, HubSpot, Shopify and Notion.
+
+IMPORTANT
+
+- UI enhancement only.
+- DO NOT modify backend logic.
+- DO NOT create new APIs.
+- DO NOT hardcode completion states.
+- Reuse existing data wherever possible.
+- If backend data is unavailable, infer completion from existing state already loaded by the dashboard.
+- Keep everything responsive.
+
+====================================================
+NEW SECTION
+====================================================
+
+Add a new card directly below "Account Health".
+
+Title:
+
+Getting Started
+
+Subtitle:
+
+Complete these steps to unlock the full BrokerMAIL AI experience.
+
+Display a progress indicator.
+
+Example:
+
+2 of 5 completed
+
+Animated progress bar.
+
+Each completed task shows:
+
+✓ Green check
+
+Each incomplete task shows:
+
+○ Grey circle
+
+====================================================
+CHECKLIST
+====================================================
+
+Use these five steps.
+
+1.
+
+Connect Gmail
+
+Description
+
+Connect your Google account to send emails and create Gmail drafts.
+
+Completion
+
+Use existing gmailConnected state.
+
+Button
+
+Connect Gmail
+
+Navigate to existing Gmail connect flow.
+
+----------------------------------------------------
+
+2.
+
+Complete Company Branding
+
+Description
+
+Upload your company logo and business information.
+
+Completion
+
+Detect from existing branding state.
+
+For example:
+
+Company Name
+
+Logo
+
+Website
+
+Phone
+
+If enough branding information exists,
+
+mark completed.
+
+Button
+
+Open Settings
+
+Navigate to Settings.
+
+----------------------------------------------------
+
+3.
+
+Upload Your First Leads
+
+Description
+
+Import a CSV or Excel file.
+
+Completion
+
+Use existing campaign/upload data if available.
+
+If not available,
+
+show incomplete.
+
+Button
+
+Upload Leads
+
+Navigate to Upload & Send.
+
+----------------------------------------------------
+
+4.
+
+Create Your First Campaign
+
+Description
+
+Start your first outreach campaign.
+
+Completion
+
+Use existing campaign count.
+
+Button
+
+Open Campaigns
+
+----------------------------------------------------
+
+5.
+
+Send Your First Email
+
+Description
+
+Send your first quote or follow-up.
+
+Completion
+
+Use existing sent email statistics.
+
+Button
+
+Compose Email
+
+====================================================
+BEHAVIOR
+====================================================
+
+The card should automatically update.
+
+As tasks complete,
+
+the progress bar updates.
+
+When all tasks are complete:
+
+Replace the checklist with a success state.
+
+Headline
+
+🎉 BrokerMAIL AI is fully configured.
+
+Subtitle
+
+Your workspace is ready for production.
+
+Button
+
+Compose Email
+
+OR
+
+Start New Campaign
+
+====================================================
+ANIMATIONS
+====================================================
+
+Animate checkmarks.
+
+Animate progress bar.
+
+Fade completed rows.
+
+Smooth transitions.
+
+====================================================
+DESIGN
+====================================================
+
+Modern SaaS.
+
+Lots of whitespace.
+
+Subtle shadows.
+
+Soft borders.
+
+Small colorful icons.
+
+Each checklist row should have:
+
+Icon
+
+Title
+
+Description
+
+Action Button
+
+Completion Status
+
+====================================================
+DO NOT
+====================================================
+
+Do not hardcode completion.
+
+Do not invent fake backend values.
+
+Do not create placeholder statistics.
+
+Do not add unnecessary widgets.
+
+====================================================
+EXTRA POLISH
+====================================================
+
+If the user has completed every checklist item,
+
+never show the onboarding card again.
+
+Instead replace it with a much smaller card.
+
+Example:
+
+✨ Everything is ready.
+
+BrokerMAIL AI is fully configured and ready for sending campaigns.
+
+[Compose Email]
+
+This keeps the dashboard clean for experienced users while guiding new users naturally.
