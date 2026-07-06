@@ -1,0 +1,337 @@
+The current Settings page works correctly functionally, but it does not feel like a premium SaaS application. I have attached a reference image. Redesign the Settings page to closely match the overall layout, spacing, hierarchy, and premium feel of the reference.
+
+IMPORTANT REQUIREMENTS:
+
+- DO NOT change any backend code.
+- DO NOT change any API endpoints.
+- DO NOT change any database schema.
+- DO NOT rename any state variables.
+- DO NOT modify any existing business logic.
+- DO NOT change any save functionality.
+- DO NOT change Gmail integration logic.
+- DO NOT change upload logic.
+- DO NOT change signature logic.
+- DO NOT introduce any new bugs.
+- This is a UI/UX redesign ONLY.
+
+Keep every existing feature exactly as it works today. Only improve the presentation.
+
+==================================================
+DESIGN GOAL
+==================================================
+
+I want this page to feel like a premium SaaS product similar to Linear, Vercel, Stripe, Notion, or Framer.
+
+The page should have better visual hierarchy, spacing, typography, cards, icons, shadows, and organization.
+
+Everything should feel polished, modern, expensive, and professional.
+
+==================================================
+PAGE STRUCTURE
+==================================================
+
+1. SETTINGS HEADER
+
+Large title:
+Settings
+
+Subtitle:
+Manage your account, branding, preferences and integrations.
+
+==================================================
+2. TOP OVERVIEW CARDS
+==================================================
+
+Create a horizontal row of small summary cards.
+
+Examples:
+
+• Gmail Status
+Connected
+green badge
+
+• Company
+Vertex Carship
+
+• Brand Color
+show color swatch
+
+• Signature
+Enabled
+
+These cards are informational only.
+
+==================================================
+3. PROFILE CARD
+==================================================
+
+Large profile card.
+
+Show
+
+• Large avatar
+• Agent name
+• Email
+• Phone
+
+Add an Edit Profile button.
+
+==================================================
+4. BRANDING SECTION
+==================================================
+
+This should become the largest section.
+
+Split into three columns.
+
+LEFT
+
+Company Logo
+
+Large upload area
+
+Upload button
+
+Remove button
+
+CENTER
+
+Company Information
+
+Company Name
+
+Agent Name
+
+Website
+
+Phone
+
+USDOT
+
+MC Number
+
+Tagline
+
+Accent Color
+
+RIGHT
+
+Live Signature Preview
+
+Render exactly how outgoing emails look.
+
+Include logo.
+
+Include company info.
+
+Include signature.
+
+Save Branding button centered below.
+
+==================================================
+5. GMAIL INTEGRATION
+==================================================
+
+Separate premium card.
+
+Show:
+
+Google logo
+
+Connected badge
+
+Connected Gmail address
+
+Buttons:
+
+Reconnect
+
+Disconnect
+
+Below that show 4 feature badges:
+
+✓ Send emails
+
+✓ Gmail Drafts
+
+✓ Track Opens
+
+✓ Track Clicks
+
+==================================================
+6. EMAIL PREFERENCES
+==================================================
+
+Separate card.
+
+Left column
+
+Default From
+
+Default Reply-To
+
+Default BCC
+
+Right column
+
+Modern switches:
+
+Track Opens
+
+Track Clicks
+
+Save Sent Emails
+
+Include Unsubscribe
+
+Use Signature
+
+==================================================
+7. TEMPLATE VARIABLES
+==================================================
+
+Current variables look plain.
+
+Redesign them into beautiful rounded pills/cards.
+
+{name}
+
+{vehicle}
+
+{pickup}
+
+{delivery}
+
+{route}
+
+{price}
+
+{quote_id}
+
+{agent_name}
+
+Each variable should have
+
+Title
+
+Small description
+
+Hover animation
+
+==================================================
+8. ACCOUNT SECTION
+==================================================
+
+Bottom section.
+
+Danger styled.
+
+Include
+
+Reset Settings
+
+Sign Out
+
+Each inside its own card.
+
+==================================================
+DESIGN DETAILS
+==================================================
+
+Increase whitespace.
+
+Increase padding.
+
+Larger card radius.
+
+Soft shadows.
+
+Gradient accents.
+
+Premium borders.
+
+Better typography.
+
+Better alignment.
+
+Better icon usage.
+
+Consistent spacing.
+
+Professional hover animations.
+
+Professional transitions.
+
+Use the current BrokerMAIL dark theme.
+
+No bright colors except:
+
+Blue
+
+Purple
+
+Green
+
+Red (Danger only)
+
+==================================================
+KEEP THESE FEATURES
+==================================================
+
+Everything currently working must continue working.
+
+Logo upload
+
+Branding
+
+Save Branding
+
+Google Connect
+
+Reconnect
+
+Disconnect
+
+Signature Preview
+
+Template Variables
+
+Automatic Signature
+
+Save Settings
+
+Sign Out
+
+All API calls
+
+All validation
+
+All event handlers
+
+Everything must continue functioning exactly as before.
+
+==================================================
+DO NOT
+==================================================
+
+Do not refactor business logic.
+
+Do not change API responses.
+
+Do not modify backend routes.
+
+Do not rename components unnecessarily.
+
+Do not remove existing functionality.
+
+Do not create placeholder components.
+
+Do not simplify the page.
+
+Do not introduce regressions.
+
+==================================================
+FINAL GOAL
+==================================================
+
+When finished, the Settings page should look like a polished enterprise SaaS product that could belong to companies like Vercel, Stripe, Notion, Linear, Resend, or Clerk while preserving 100% of the existing functionality.
