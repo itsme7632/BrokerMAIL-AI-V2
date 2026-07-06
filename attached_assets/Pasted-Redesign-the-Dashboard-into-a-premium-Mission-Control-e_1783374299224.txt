@@ -1,0 +1,452 @@
+Redesign the Dashboard into a premium "Mission Control" experience inspired by Stripe Dashboard, Vercel, Linear, Raycast and modern SaaS platforms.
+
+IMPORTANT
+
+- UI redesign only.
+- Preserve ALL existing backend logic.
+- Preserve ALL API calls.
+- Preserve ALL state variables.
+- Preserve ALL routing.
+- Preserve ALL functionality.
+- Do NOT invent backend features.
+- Use only real data already available.
+- No fake statistics.
+- No fake subscription information.
+- Maintain BrokerMAIL AI branding and dark theme.
+
+==================================================
+DESIGN GOAL
+==================================================
+
+Instead of showing many random cards everywhere, create a dashboard that immediately answers:
+
+• Is my account healthy?
+• Are my campaigns running?
+• Did emails send successfully?
+• Is Gmail connected?
+• How much quota do I have left?
+• What should I do next?
+
+The page should feel calm, spacious and premium.
+
+Think Stripe Dashboard.
+
+Not an admin template.
+
+==================================================
+HEADER
+==================================================
+
+Top left
+
+Good Afternoon, {User}
+
+Below
+
+"Here's everything happening across your BrokerMAIL account today."
+
+Top right
+
+Current Date
+
+Upload & Send button
+
+Compose Email button
+
+No extra buttons.
+
+==================================================
+FIRST ROW
+==================================================
+
+One full-width Account Health card.
+
+Inside display 5 compact status chips.
+
+✓ Gmail Connected
+
+✓ SMTP Healthy
+
+✓ Campaign Engine
+
+✓ Quota Remaining
+
+✓ Subscription Status
+
+Each chip should have
+
+icon
+
+status color
+
+small description
+
+This replaces many scattered widgets.
+
+==================================================
+SECOND ROW
+==================================================
+
+Four equal metric cards.
+
+Only use real data.
+
+Emails Sent
+
+Drafts Created
+
+Active Campaigns
+
+Quota Used
+
+Each card includes
+
+large number
+
+small subtitle
+
+mini progress bar
+
+small trend if real data exists
+
+==================================================
+MAIN LAYOUT
+==================================================
+
+Use 65 / 35 split.
+
+==================================================
+LEFT SIDE
+==================================================
+
+SECTION
+
+Campaign Activity
+
+Large modern card.
+
+Recent Campaigns table.
+
+Columns
+
+Campaign
+
+Progress
+
+Recipients
+
+Status
+
+Created
+
+Actions
+
+View All
+
+--------------------------------------------------
+
+Below
+
+Recent Drafts
+
+Modern email list.
+
+Recipient
+
+Subject
+
+Time
+
+Status badge
+
+View All
+
+--------------------------------------------------
+
+Below
+
+Quick Actions
+
+Instead of large cards.
+
+Use compact action buttons.
+
+Compose Email
+
+Upload CSV
+
+Template Gallery
+
+Campaigns
+
+Mailbox
+
+Support
+
+Display in a responsive grid.
+
+==================================================
+RIGHT SIDE
+==================================================
+
+Vertical stack.
+
+--------------------------------------------------
+
+1.
+
+Account Overview
+
+Avatar
+
+Name
+
+Role
+
+Company
+
+Current Plan
+
+Manage Profile
+
+--------------------------------------------------
+
+2.
+
+Sending Account
+
+Large Gmail card.
+
+Connected email
+
+Connection badge
+
+Reconnect
+
+Disconnect
+
+Small text:
+
+"Authenticated with Google OAuth"
+
+--------------------------------------------------
+
+3.
+
+Usage
+
+Circular progress
+
+Emails Used
+
+Monthly Limit
+
+Remaining
+
+Manage Plan button
+
+Button opens
+
+Plans & Billing
+
+using existing routing.
+
+Use REAL subscription data only.
+
+--------------------------------------------------
+
+4.
+
+Live Activity Feed
+
+Timeline instead of table.
+
+Example
+
+10:45
+
+Campaign completed
+
+10:38
+
+Email opened
+
+10:34
+
+Draft created
+
+10:20
+
+Campaign started
+
+Use existing backend events only.
+
+==================================================
+VISUAL STYLE
+==================================================
+
+Fewer borders.
+
+More spacing.
+
+Cards should feel like floating panels.
+
+Rounded corners.
+
+Subtle shadows.
+
+Very light gradients.
+
+Primary buttons should glow slightly.
+
+Progress bars should animate.
+
+Hover lift on cards.
+
+Large typography.
+
+Reduce unnecessary icons.
+
+Keep visual hierarchy clean.
+
+==================================================
+SIDEBAR
+==================================================
+
+Keep every page.
+
+Do NOT remove functionality.
+
+Organize with section labels.
+
+━━━━━━━━━━━━
+
+COMMUNICATION
+
+Compose Email
+
+Templates
+
+Template Gallery
+
+Upload & Send
+
+━━━━━━━━━━━━
+
+CAMPAIGNS
+
+Campaigns
+
+Sent Emails
+
+Gmail Drafts
+
+━━━━━━━━━━━━
+
+ACCOUNT
+
+Mailbox
+
+Plans & Billing
+
+Suppression List
+
+Settings
+
+Support
+
+━━━━━━━━━━━━
+
+Bottom sidebar
+
+Premium card
+
+Current Plan
+
+Emails Used
+
+Monthly Limit
+
+Progress bar
+
+Manage Plan button
+
+(real data only)
+
+Below
+
+Need Help?
+
+Contact Support
+
+Navigate to Support page.
+
+==================================================
+REMOVE
+==================================================
+
+Remove duplicate information.
+
+Remove unnecessary nested cards.
+
+Reduce visual noise.
+
+Do not display the same status twice.
+
+==================================================
+RESPONSIVE
+==================================================
+
+Desktop
+
+Two-column layout.
+
+Tablet
+
+Balanced stacked layout.
+
+Mobile
+
+Single column.
+
+==================================================
+ANIMATIONS
+==================================================
+
+Smooth page transitions.
+
+Animated counters.
+
+Animated progress bars.
+
+Hover elevation.
+
+Button ripple.
+
+Subtle loading skeletons.
+
+==================================================
+IMPORTANT
+==================================================
+
+This should feel like software built by Stripe or Vercel.
+
+Professional.
+
+Minimal.
+
+High-end.
+
+Everything should breathe.
+
+Every component should have a purpose.
+
+Do not add fake features.
+
+Do not hardcode any plan data.
+
+Reuse existing APIs wherever possible.
+
+If data doesn't exist, gracefully hide that section instead of inventing numbers.
+
+The result should be noticeably cleaner, more premium, and easier to scan than the current dashboard.

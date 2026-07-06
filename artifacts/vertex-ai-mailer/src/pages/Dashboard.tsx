@@ -1,21 +1,25 @@
 import { useState, useEffect, useCallback } from "react";
-import { useGetDashboardStats, useGetDashboardActivity, useGetGmailStatus, useGetDrafts } from "@workspace/api-client-react";
+import { useGetDashboardStats, useGetDashboardActivity, useGetGmailStatus, useGetDrafts, type ActivityItem } from "@workspace/api-client-react";
 import { useAuth } from "@/context/AuthContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Mail, CheckCircle2, AlertCircle, Clock, ArrowRight,
-  FileText, UploadCloud, TrendingUp, Wifi, Settings,
-  Send, LayoutDashboard, Inbox, TimerReset, Zap,
+  Mail, CheckCircle2, ArrowRight,
+  FileText, UploadCloud, Settings,
+  Send, TimerReset, Zap,
   PlayCircle, PauseCircle, AlertTriangle, BarChart3,
-  Activity, RefreshCw, ChevronRight, Eye, ShieldOff,
+  Activity, RefreshCw, ChevronRight, Eye,
+  CreditCard, Loader2, PenLine, Megaphone,
+  Server, Unlink, TicketCheck, LayoutGrid,
 } from "lucide-react";
 import { Link } from "wouter";
 
+// ─── Animation variants ────────────────────────────────────────────────────────
+
 const fadeUp = {
   hidden: { opacity: 0, y: 10 },
-  show:   (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.06, duration: 0.28 } }),
+  show:   (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.05, duration: 0.25 } }),
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -30,6 +34,10 @@ function timeAgo(iso: string): string {
   if (h < 24)  return `${h}h ago`;
   const d = Math.floor(h / 24);
   return `${d}d ago`;
+}
+
+function fmtTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -55,8 +63,8 @@ interface QuotaData {
 }
 
 interface Campaign {
-  id:           string;
-  name:         string;
+  id:            string;
+  name:          string;
   status:        string;
   sendMode:      string;
   totalLeads:    number;
@@ -68,216 +76,80 @@ interface Campaign {
   updatedAt:     string;
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+interface BillingData {
+  plan:  { name: string; slug: string; monthlyEmailLimit: number };
+  usage: { emailsSentThisMonth: number; smtpAccountsUsed: number };
+}
 
-function HeroStatCard({
-  label, value, icon: Icon, color, loading, sub,
-}: {
-  label: string;
-  value?: string | number;
-  icon: React.ElementType;
-  color: "blue" | "emerald" | "violet" | "amber" | "rose";
-  loading: boolean;
-  sub?: string;
-}) {
-  const map = {
-    blue:    { wrap: "bg-blue-50 ring-blue-100",    icon: "text-blue-600",    val: "text-slate-900" },
-    emerald: { wrap: "bg-emerald-50 ring-emerald-100", icon: "text-emerald-600", val: "text-slate-900" },
-    violet:  { wrap: "bg-violet-50 ring-violet-100",  icon: "text-violet-600",  val: "text-slate-900" },
-    amber:   { wrap: "bg-amber-50 ring-amber-100",    icon: "text-amber-600",   val: "text-slate-900" },
-    rose:    { wrap: "bg-rose-50 ring-rose-100",      icon: "text-rose-600",    val: "text-slate-900" },
-  };
-  const c = map[color];
+// ─── Circular SVG progress ────────────────────────────────────────────────────
+
+function CircularProgress({ pct, size = 76 }: { pct: number; size?: number }) {
+  const sw = 7;
+  const r  = (size - sw) / 2;
+  const c  = 2 * Math.PI * r;
+  const color = pct >= 90 ? "#f87171" : pct >= 70 ? "#fb923c" : "#3b82f6";
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
-      <div className={`h-11 w-11 rounded-xl ${c.wrap} ring-1 flex items-center justify-center flex-shrink-0`}>
-        <Icon className={`h-5 w-5 ${c.icon}`} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-medium text-slate-500 mb-1 uppercase tracking-wide">{label}</p>
-        {loading
-          ? <Skeleton className="h-7 w-16" />
-          : <p className={`text-2xl font-bold leading-none ${c.val}`}>{value ?? "—"}</p>
-        }
-        {sub && !loading && <p className="text-xs text-slate-400 mt-1 truncate">{sub}</p>}
-      </div>
-    </div>
+    <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+      <circle cx={size / 2} cy={size / 2} r={r} strokeWidth={sw} stroke="#1e293b" fill="none" />
+      <circle cx={size / 2} cy={size / 2} r={r} strokeWidth={sw} stroke={color}
+        strokeLinecap="round" fill="none"
+        strokeDasharray={c} strokeDashoffset={c - (pct / 100) * c}
+        style={{ transition: "stroke-dashoffset 0.8s ease" }}
+      />
+    </svg>
   );
 }
 
-function QuickActionCard({
-  label, desc, href, icon: Icon, color, i,
-}: {
-  label: string;
-  desc: string;
-  href: string;
-  icon: React.ElementType;
-  color: string;
-  i: number;
-}) {
-  return (
-    <motion.div custom={i} initial="hidden" animate="show" variants={fadeUp}>
-      <Link href={href}>
-        <div className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all p-5 flex items-center gap-4 cursor-pointer h-full">
-          <div className={`h-11 w-11 rounded-xl ${color} flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-105`}>
-            <Icon className="h-5 w-5" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-slate-900 text-sm">{label}</p>
-            <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{desc}</p>
-          </div>
-          <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
-        </div>
-      </Link>
-    </motion.div>
-  );
-}
+// ─── Campaign status helpers ──────────────────────────────────────────────────
 
-function getCampaignStatus(campaign: Campaign): { icon: React.ElementType; label: string; cls: string } {
+function getCampaignStatus(campaign: Campaign): { icon: React.ElementType; label: string; dotColor: string; bg: string; text: string } {
   const isCooling = campaign.status === "sending"
     && !!campaign.cooldownUntil
     && new Date(campaign.cooldownUntil) > new Date();
-  if (isCooling) return { icon: TimerReset,    label: "Cooling Down", cls: "text-orange-600 bg-orange-50" };
+  if (isCooling) return { icon: TimerReset,    label: "Cooling Down", dotColor: "bg-orange-400", bg: "bg-orange-500/10", text: "text-orange-400" };
   switch (campaign.status) {
-    case "sending":   return { icon: PlayCircle,    label: "Sending",   cls: "text-blue-600   bg-blue-50"   };
-    case "pending":   return { icon: FileText,      label: "Pending",   cls: "text-slate-600  bg-slate-50"  };
-    case "paused":    return { icon: PauseCircle,   label: "Paused",    cls: "text-amber-600  bg-amber-50"  };
-    case "completed": return { icon: CheckCircle2,  label: "Completed", cls: "text-emerald-600 bg-emerald-50" };
-    case "cancelled": return { icon: AlertTriangle, label: "Cancelled", cls: "text-slate-600  bg-slate-50"  };
-    case "failed":    return { icon: AlertTriangle, label: "Failed",    cls: "text-red-600    bg-red-50"    };
-    default:          return { icon: FileText,      label: campaign.status, cls: "text-slate-600 bg-slate-50" };
+    case "sending":   return { icon: PlayCircle,    label: "Sending",   dotColor: "bg-blue-400",    bg: "bg-blue-500/10",    text: "text-blue-400"    };
+    case "pending":   return { icon: FileText,      label: "Pending",   dotColor: "bg-slate-400",   bg: "bg-slate-700/40",   text: "text-slate-400"   };
+    case "paused":    return { icon: PauseCircle,   label: "Paused",    dotColor: "bg-amber-400",   bg: "bg-amber-500/10",   text: "text-amber-400"   };
+    case "completed": return { icon: CheckCircle2,  label: "Completed", dotColor: "bg-green-400",   bg: "bg-green-500/10",   text: "text-green-400"   };
+    case "cancelled": return { icon: AlertTriangle, label: "Cancelled", dotColor: "bg-slate-400",   bg: "bg-slate-700/40",   text: "text-slate-400"   };
+    case "failed":    return { icon: AlertTriangle, label: "Failed",    dotColor: "bg-red-400",     bg: "bg-red-500/10",     text: "text-red-400"     };
+    default:          return { icon: FileText,      label: campaign.status, dotColor: "bg-slate-400", bg: "bg-slate-700/40", text: "text-slate-400" };
   }
 }
 
-function CampaignStatusRow({ campaign }: { campaign: Campaign }) {
-  const done = (campaign.sentCount ?? 0) + (campaign.draftedCount ?? 0);
-  const pct  = campaign.totalLeads > 0 ? Math.round((done / campaign.totalLeads) * 100) : 0;
-  const s = getCampaignStatus(campaign);
-  const StatusIcon = s.icon;
-
-  return (
-    <div className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50/70 dark:hover:bg-slate-700/40 transition-colors">
-      <div className={`h-8 w-8 rounded-lg ${s.cls} flex items-center justify-center flex-shrink-0`}>
-        <StatusIcon className="h-4 w-4" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-medium text-slate-900 text-sm truncate">{campaign.name}</p>
-        <div className="flex items-center gap-2 mt-1">
-          <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden max-w-[120px]">
-            <div
-              className="h-full bg-blue-500 rounded-full transition-all"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-          <span className="text-xs text-slate-400">
-            {done}/{campaign.totalLeads} {campaign.sendMode === "smtp" ? "sent" : "drafted"}
-          </span>
-        </div>
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        {campaign.failedCount > 0 && (
-          <span className="text-xs text-red-500 bg-red-50 px-1.5 py-0.5 rounded-md">
-            {campaign.failedCount} failed
-          </span>
-        )}
-        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${s.cls}`}>
-          {s.label}
-        </span>
-      </div>
-    </div>
-  );
+function activityIcon(type: string): { icon: React.ElementType; color: string; bg: string } {
+  switch (type) {
+    case "campaign_completed": return { icon: CheckCircle2, color: "text-green-400",  bg: "bg-green-500/10"  };
+    case "campaign_started":   return { icon: PlayCircle,   color: "text-blue-400",   bg: "bg-blue-500/10"   };
+    case "draft_created":      return { icon: Mail,         color: "text-indigo-400", bg: "bg-indigo-500/10" };
+    case "email_opened":       return { icon: Eye,          color: "text-emerald-400",bg: "bg-emerald-500/10"};
+    case "bounce_detected":    return { icon: AlertTriangle,color: "text-red-400",    bg: "bg-red-500/10"    };
+    default:                   return { icon: Activity,     color: "text-slate-400",  bg: "bg-slate-700/40"  };
+  }
 }
 
-function SmtpHealthCard({ quota, loading }: { quota: QuotaData | null; loading: boolean }) {
-  const pct = quota && quota.hourlyLimit > 0
-    ? Math.min(100, Math.round((quota.usedThisHour / quota.hourlyLimit) * 100))
-    : 0;
+// ─── Section card wrapper ─────────────────────────────────────────────────────
 
-  const barColor = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-emerald-500";
-
+function SectionCard({ title, subtitle, icon: Icon, iconBg, action, children }: {
+  title: string; subtitle?: string; icon?: React.ElementType; iconBg?: string;
+  action?: React.ReactNode; children: React.ReactNode;
+}) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
-        <div className="h-8 w-8 rounded-lg bg-blue-50 flex items-center justify-center">
-          <Activity className="h-4 w-4 text-blue-600" />
-        </div>
-        <div>
-          <h2 className="font-semibold text-slate-900 text-sm">SMTP Health</h2>
-          <p className="text-xs text-slate-400 mt-0.5">Live mailbox status</p>
-        </div>
-      </div>
-
-      <div className="p-5 space-y-4">
-        {loading ? (
-          <div className="space-y-3">
-            {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-8 w-full rounded-lg" />)}
-          </div>
-        ) : quota ? (
-          <>
-            {/* Connection status */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className={`h-2 w-2 rounded-full ${quota.smtpConnected ? "bg-emerald-500" : "bg-slate-300"}`} />
-                <span className="text-sm text-slate-700">SMTP</span>
-              </div>
-              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                quota.smtpConnected ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
-              }`}>
-                {quota.smtpConnected ? "Connected" : "Not connected"}
-              </span>
-            </div>
-
-            {/* Hourly quota bar */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-slate-600">Hourly Quota</span>
-                <span className="text-xs text-slate-500">{quota.usedThisHour} / {quota.hourlyLimit}</span>
-              </div>
-              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                <div className={`h-full ${barColor} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
-              </div>
-              <p className="text-xs text-slate-400 mt-1">{quota.remainingQuota} slots remaining this hour</p>
-            </div>
-
-            {/* Stats grid */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-slate-50 rounded-xl p-3">
-                <p className="text-xs text-slate-500 mb-1">Deferred</p>
-                <p className="text-lg font-bold text-amber-600">{quota.deferredCount}</p>
-              </div>
-              <div className="bg-slate-50 rounded-xl p-3">
-                <p className="text-xs text-slate-500 mb-1">Retry Queue</p>
-                <p className="text-lg font-bold text-blue-600">{quota.retryQueueCount}</p>
-              </div>
-            </div>
-
-            {/* Next release */}
-            {quota.nextReleaseAt && (
-              <div className="flex items-center gap-2 text-xs text-slate-500 bg-amber-50 border border-amber-100 rounded-xl p-3">
-                <TimerReset className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
-                <span>Next slot releases at {new Date(quota.nextReleaseAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-              </div>
-            )}
-
-            <Button asChild variant="outline" size="sm" className="w-full rounded-xl gap-2 text-xs">
-              <Link href="/mailbox">
-                <Settings className="h-3.5 w-3.5" /> Mailbox Settings
-              </Link>
-            </Button>
-          </>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-8 text-center">
-            <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center mb-3">
-              <Wifi className="h-5 w-5 text-slate-400" />
-            </div>
-            <p className="text-sm text-slate-500 mb-1">No mailbox connected</p>
-            <p className="text-xs text-slate-400 mb-3">Configure SMTP to track quota</p>
-            <Button asChild variant="outline" size="sm" className="rounded-xl gap-1.5 text-xs">
-              <Link href="/mailbox"><Settings className="h-3 w-3" /> Connect Mailbox</Link>
-            </Button>
+    <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
+      <div className="px-5 py-4 border-b border-slate-800 flex items-center gap-3">
+        {Icon && (
+          <div className={`h-7 w-7 rounded-lg flex items-center justify-center flex-shrink-0 ${iconBg ?? "bg-slate-700/60"}`}>
+            <Icon className="h-3.5 w-3.5" />
           </div>
         )}
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-slate-100">{title}</p>
+          {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
+        </div>
+        {action}
       </div>
+      {children}
     </div>
   );
 }
@@ -287,7 +159,7 @@ function SmtpHealthCard({ quota, loading }: { quota: QuotaData | null; loading: 
 export default function Dashboard() {
   const { user } = useAuth();
   const { data: stats,        isLoading: statsLoading }    = useGetDashboardStats();
-  const { data: activity,     isLoading: activityLoading } = useGetDashboardActivity({ limit: 8 });
+  const { data: activity,     isLoading: activityLoading } = useGetDashboardActivity({ limit: 10 });
   const { data: gmailStatus,  isLoading: gmailLoading }    = useGetGmailStatus();
   const { data: recentDrafts, isLoading: draftsLoading }   = useGetDrafts({ page: 1, limit: 6 });
 
@@ -303,6 +175,8 @@ export default function Dashboard() {
     lastSuppressionAt: string | null;
     topReasons: { reason: string; count: number }[];
   } | null>(null);
+  const [billing,  setBilling]  = useState<BillingData | null>(null);
+  const [branding, setBranding] = useState<{ companyName: string } | null>(null);
 
   const firstName = user?.name?.split(" ")[0] ?? "there";
   const token     = () => localStorage.getItem("auth_token") ?? "";
@@ -314,6 +188,13 @@ export default function Dashboard() {
       const { authUrl } = await res.json();
       window.location.href = authUrl;
     } catch { setConnectingGmail(false); }
+  }
+
+  async function handleDisconnectGmail() {
+    try {
+      await fetch("/api/gmail/disconnect", { method: "POST", headers: { Authorization: `Bearer ${token()}` } });
+      window.location.reload();
+    } catch {}
   }
 
   useEffect(() => {
@@ -334,7 +215,7 @@ export default function Dashboard() {
     async function fetchCampaigns() {
       setCampaignsLoading(true);
       try {
-        const res = await fetch("/api/campaigns?page=1&limit=4", { headers: { Authorization: `Bearer ${token()}` } });
+        const res = await fetch("/api/campaigns?page=1&limit=5", { headers: { Authorization: `Bearer ${token()}` } });
         if (res.ok) {
           const data = await res.json();
           setCampaigns(Array.isArray(data) ? data : (data.data ?? []));
@@ -348,20 +229,23 @@ export default function Dashboard() {
   useEffect(() => {
     async function fetchSuppressionStats() {
       try {
-        const res = await fetch("/api/suppressions/stats", {
-          headers: { Authorization: `Bearer ${token()}` },
-        });
+        const res = await fetch("/api/suppressions/stats", { headers: { Authorization: `Bearer ${token()}` } });
         if (res.ok) setSuppressionStats(await res.json());
       } catch { /* ignore */ }
     }
     fetchSuppressionStats();
   }, []);
 
+  useEffect(() => {
+    fetch("/api/billing/subscription", { headers: { Authorization: `Bearer ${token()}` } })
+      .then(r => r.ok ? r.json() : null).then(d => d && setBilling(d)).catch(() => {});
+    fetch("/api/users/branding", { headers: { Authorization: `Bearer ${token()}` } })
+      .then(r => r.ok ? r.json() : null).then(d => d && setBranding(d)).catch(() => {});
+  }, []);
+
   const fetchLiveActivity = useCallback(async () => {
     try {
-      const res = await fetch("/api/notifications/live?limit=8", {
-        headers: { Authorization: `Bearer ${token()}` },
-      });
+      const res = await fetch("/api/notifications/live?limit=8", { headers: { Authorization: `Bearer ${token()}` } });
       if (res.ok) {
         const d = await res.json();
         setLiveActivity(d.events ?? []);
@@ -376,6 +260,8 @@ export default function Dashboard() {
     return () => clearInterval(id);
   }, [fetchLiveActivity]);
 
+  // ── Derived values ──────────────────────────────────────────────────────────
+
   const activeCampaigns  = campaigns.filter(c =>
     c.status === "sending" && !(c.cooldownUntil && new Date(c.cooldownUntil) > new Date())
   ).length;
@@ -385,46 +271,83 @@ export default function Dashboard() {
   const quotaPct = quota && quota.hourlyLimit > 0
     ? Math.min(100, Math.round((quota.usedThisHour / quota.hourlyLimit) * 100))
     : 0;
+  const emailUsagePct = billing?.plan.monthlyEmailLimit && billing.plan.monthlyEmailLimit > 0
+    ? Math.min(100, Math.round((billing.usage.emailsSentThisMonth / billing.plan.monthlyEmailLimit) * 100))
+    : null;
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+
+  const initials = user?.name
+    ? user.name.split(" ").map((w: string) => w[0]).slice(0, 2).join("").toUpperCase()
+    : "?";
+
+  // ── Account health chips ────────────────────────────────────────────────────
+
+  const healthChips = [
+    {
+      label: "Gmail",
+      desc: gmailLoading ? "Checking…" : gmailStatus?.connected ? (gmailStatus.email ?? "Connected") : "Not connected",
+      status: gmailLoading ? "loading" : gmailStatus?.connected ? "ok" : "warn",
+    },
+    {
+      label: "SMTP",
+      desc: quotaLoading ? "Checking…" : quota?.smtpConnected ? "Connected" : "No mailbox",
+      status: quotaLoading ? "loading" : quota?.smtpConnected ? "ok" : "neutral",
+    },
+    {
+      label: "Campaign Engine",
+      desc: campaignsLoading ? "Checking…" : activeCampaigns > 0 ? `${activeCampaigns} running` : coolingCampaigns > 0 ? `${coolingCampaigns} cooling` : "Idle",
+      status: campaignsLoading ? "loading" : activeCampaigns > 0 ? "ok" : "neutral",
+    },
+    {
+      label: "Quota",
+      desc: quotaLoading ? "Checking…" : quota ? `${quota.remainingQuota} remaining` : "No data",
+      status: quotaLoading ? "loading" : !quota ? "neutral" : quotaPct >= 90 ? "error" : quotaPct >= 70 ? "warn" : "ok",
+    },
+    {
+      label: "Subscription",
+      desc: !billing ? "Loading…" : billing.plan.name,
+      status: !billing ? "loading" : "ok",
+    },
+  ] as const;
+
+  type HealthStatus = "ok" | "warn" | "error" | "neutral" | "loading";
+  const statusDot: Record<HealthStatus, string> = {
+    ok:      "bg-green-400",
+    warn:    "bg-amber-400",
+    error:   "bg-red-400",
+    neutral: "bg-slate-500",
+    loading: "bg-slate-600 animate-pulse",
+  };
+  const statusText: Record<HealthStatus, string> = {
+    ok:      "text-green-400",
+    warn:    "text-amber-400",
+    error:   "text-red-400",
+    neutral: "text-slate-400",
+    loading: "text-slate-500",
+  };
 
   return (
-    <div className="space-y-6 pb-8">
+    <div className="space-y-6 pb-10">
 
-      {/* ── Gmail warning banner ─────────────────────────────────────────── */}
-      {!gmailLoading && !gmailStatus?.connected && (
-        <motion.div
-          initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-4 p-4 bg-amber-50 border border-amber-200 rounded-2xl"
-        >
-          <div className="h-9 w-9 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-            <AlertCircle className="h-4.5 w-4.5 text-amber-600" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-amber-900 text-sm">Connect Gmail to start creating drafts</p>
-            <p className="text-amber-700 text-xs mt-0.5">Your emails will be saved as Gmail drafts — never auto-sent.</p>
-          </div>
-          <Button size="sm" onClick={handleConnectGmail} disabled={connectingGmail}
-            className="bg-amber-600 hover:bg-amber-700 text-white rounded-lg flex-shrink-0 text-xs">
-            {connectingGmail ? "Connecting…" : "Connect Gmail"}
-          </Button>
-        </motion.div>
-      )}
-
-      {/* ── Hero ─────────────────────────────────────────────────────────── */}
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">{greeting}, {firstName}</h1>
-          <p className="text-slate-500 mt-1 text-sm">Here's your BrokerMail overview for today.</p>
+          <h1 className="text-2xl font-bold text-white tracking-tight">{greeting}, {firstName}</h1>
+          <p className="text-slate-400 mt-1 text-sm">Here's everything happening across your BrokerMAIL account today.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button asChild variant="outline" size="sm" className="gap-2 rounded-xl border-slate-200 text-xs text-slate-600">
-            <Link href="/campaigns">
-              <BarChart3 className="h-3.5 w-3.5" /> Campaigns
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="hidden md:block text-xs text-slate-500 mr-1">{today}</span>
+          <Button asChild variant="outline" size="sm"
+            className="h-8 px-3 text-xs rounded-xl border-slate-700 hover:bg-slate-800 text-slate-200 bg-transparent gap-1.5">
+            <Link href="/compose">
+              <PenLine className="h-3.5 w-3.5" /> Compose Email
             </Link>
           </Button>
-          <Button asChild size="sm" className="gap-2 rounded-xl shadow-sm text-xs">
+          <Button asChild size="sm"
+            className="h-8 px-3 text-xs rounded-xl bg-blue-600 hover:bg-blue-500 text-white gap-1.5 shadow-lg shadow-blue-900/30">
             <Link href="/leads/import">
               <UploadCloud className="h-3.5 w-3.5" /> Upload &amp; Send
             </Link>
@@ -432,332 +355,579 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Hero stat cards ───────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {[
-          {
-            label: "Drafts Created", icon: Mail, color: "blue" as const,
-            value: statsLoading ? undefined : (stats?.totalDraftsCreated ?? 0),
-            loading: statsLoading,
-            sub: "All time",
-          },
-          {
-            label: "Success Rate", icon: TrendingUp, color: "emerald" as const,
-            value: statsLoading ? undefined : (stats?.draftSuccessRate ? `${stats.draftSuccessRate}%` : "—"),
-            loading: statsLoading,
-            sub: "Draft creation",
-          },
-          {
-            label: "Active Campaigns", icon: Zap, color: "violet" as const,
-            value: campaignsLoading ? undefined : activeCampaigns,
-            loading: campaignsLoading,
-            sub: coolingCampaigns > 0 ? `${coolingCampaigns} cooling down` : "Running now",
-          },
-          {
-            label: "Quota Used", icon: BarChart3, color: quotaPct >= 80 ? "rose" as const : "amber" as const,
-            value: quotaLoading ? undefined : (quota ? `${quotaPct}%` : "—"),
-            loading: quotaLoading,
-            sub: quota ? `${quota.usedThisHour}/${quota.hourlyLimit} this hour` : "No mailbox",
-          },
-        ].map((card, i) => (
-          <motion.div key={card.label} custom={i} initial="hidden" animate="show" variants={fadeUp}>
-            <HeroStatCard {...card} />
-          </motion.div>
-        ))}
-      </div>
-
-      {/* ── Quick Actions ────────────────────────────────────────────────── */}
-      <div>
-        <h2 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide">Quick Actions</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {[
-            { label: "Upload & Send",      desc: "Import CSV/XLSX and send personalized quotes",  href: "/leads/import",    icon: UploadCloud,      color: "bg-blue-50 text-blue-600",    i: 0 },
-            { label: "Template Gallery",   desc: "Browse 10 professional email templates",         href: "/templates",       icon: FileText,         color: "bg-violet-50 text-violet-600", i: 1 },
-            { label: "View Campaigns",     desc: "Manage your SMTP outreach campaigns",            href: "/campaigns",       icon: LayoutDashboard,  color: "bg-emerald-50 text-emerald-600",i: 2 },
-            { label: "Sent Emails",        desc: "Track delivery, opens, and retry status",        href: "/sent-emails",     icon: Send,             color: "bg-orange-50 text-orange-600", i: 3 },
-            { label: "Gmail Drafts",       desc: "View all created Gmail drafts",                  href: "/drafts",          icon: Inbox,            color: "bg-sky-50 text-sky-600",       i: 4 },
-            { label: "Mailbox Settings",   desc: "Configure SMTP, IMAP, and quota limits",        href: "/mailbox",         icon: Settings,         color: "bg-slate-100 text-slate-600",  i: 5 },
-          ].map(action => (
-            <QuickActionCard key={action.label} {...action} />
+      {/* ── Account Health ──────────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Account Health</p>
+          <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {healthChips.map((chip) => (
+            <div key={chip.label}
+              className="flex items-start gap-2.5 rounded-xl border border-slate-700/60 bg-slate-800/40 px-3.5 py-3">
+              <span className={`mt-1 h-2 w-2 rounded-full flex-shrink-0 ${statusDot[chip.status]}`} />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-slate-200">{chip.label}</p>
+                <p className={`text-[11px] mt-0.5 truncate ${statusText[chip.status]}`}>{chip.desc}</p>
+              </div>
+            </div>
           ))}
         </div>
       </div>
 
-      {/* ── Main content: 2-col ──────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      {/* ── Metric cards ───────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 
-        {/* ── Left column (2/3) ─────────────────────────────────────────── */}
-        <div className="lg:col-span-2 space-y-5">
-
-          {/* Campaign Status */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-lg bg-violet-50 flex items-center justify-center">
-                  <Zap className="h-4 w-4 text-violet-600" />
-                </div>
-                <div>
-                  <h2 className="font-semibold text-slate-900 text-sm">Campaign Status</h2>
-                  <p className="text-xs text-slate-400 mt-0.5">Live outreach campaigns</p>
-                </div>
+        {/* Emails Sent */}
+        <motion.div custom={0} initial="hidden" animate="show" variants={fadeUp}>
+          <div className="group rounded-2xl border border-slate-800 bg-slate-900 p-5 hover:border-slate-700 hover:shadow-xl hover:shadow-black/20 transition-all duration-200 cursor-default">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="h-7 w-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center flex-shrink-0">
+                <Send className="h-3.5 w-3.5 text-blue-400" />
               </div>
-              <Button variant="ghost" size="sm" asChild className="text-xs text-slate-500 hover:text-slate-900 rounded-lg gap-1">
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Emails Sent</p>
+            </div>
+            {!billing ? (
+              <Skeleton className="h-8 w-16 bg-slate-800" />
+            ) : (
+              <p className="text-3xl font-bold text-white tabular-nums">
+                {billing.usage.emailsSentThisMonth.toLocaleString()}
+              </p>
+            )}
+            <p className="text-xs text-slate-500 mt-1">This billing period</p>
+            {emailUsagePct !== null && (
+              <div className="mt-3 h-1 w-full rounded-full bg-slate-800 overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-700"
+                  style={{ width: `${emailUsagePct}%`, backgroundColor: emailUsagePct >= 90 ? "#f87171" : emailUsagePct >= 70 ? "#fb923c" : "#3b82f6" }} />
+              </div>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Drafts Created */}
+        <motion.div custom={1} initial="hidden" animate="show" variants={fadeUp}>
+          <div className="group rounded-2xl border border-slate-800 bg-slate-900 p-5 hover:border-slate-700 hover:shadow-xl hover:shadow-black/20 transition-all duration-200 cursor-default">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="h-7 w-7 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
+                <Mail className="h-3.5 w-3.5 text-violet-400" />
+              </div>
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Drafts Created</p>
+            </div>
+            {statsLoading ? (
+              <Skeleton className="h-8 w-16 bg-slate-800" />
+            ) : (
+              <p className="text-3xl font-bold text-white tabular-nums">
+                {(stats?.totalDraftsCreated ?? 0).toLocaleString()}
+              </p>
+            )}
+            <p className="text-xs text-slate-500 mt-1">All time</p>
+            {!statsLoading && (stats?.draftSuccessRate ?? 0) > 0 && (
+              <div className="mt-3 h-1 w-full rounded-full bg-slate-800 overflow-hidden">
+                <div className="h-full rounded-full bg-violet-500 transition-all duration-700"
+                  style={{ width: `${Math.round((stats?.draftSuccessRate ?? 0) * 100)}%` }} />
+              </div>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Active Campaigns */}
+        <motion.div custom={2} initial="hidden" animate="show" variants={fadeUp}>
+          <div className="group rounded-2xl border border-slate-800 bg-slate-900 p-5 hover:border-slate-700 hover:shadow-xl hover:shadow-black/20 transition-all duration-200 cursor-default">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="h-7 w-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                <Zap className="h-3.5 w-3.5 text-emerald-400" />
+              </div>
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Active Campaigns</p>
+            </div>
+            {campaignsLoading ? (
+              <Skeleton className="h-8 w-16 bg-slate-800" />
+            ) : (
+              <p className="text-3xl font-bold text-white tabular-nums">{activeCampaigns}</p>
+            )}
+            <p className="text-xs text-slate-500 mt-1">
+              {coolingCampaigns > 0 ? `${coolingCampaigns} cooling down` : "Running now"}
+            </p>
+            <div className="mt-3 h-1 w-full rounded-full bg-slate-800 overflow-hidden">
+              <div className={`h-full rounded-full transition-all duration-700 ${activeCampaigns > 0 ? "bg-emerald-500" : "bg-slate-700"}`}
+                style={{ width: activeCampaigns > 0 ? "100%" : "0%" }} />
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Quota Used */}
+        <motion.div custom={3} initial="hidden" animate="show" variants={fadeUp}>
+          <div className="group rounded-2xl border border-slate-800 bg-slate-900 p-5 hover:border-slate-700 hover:shadow-xl hover:shadow-black/20 transition-all duration-200 cursor-default">
+            <div className="flex items-center gap-2 mb-3">
+              <div className={`h-7 w-7 rounded-lg flex items-center justify-center flex-shrink-0 ${quotaPct >= 80 ? "bg-red-500/10 border border-red-500/20" : "bg-amber-500/10 border border-amber-500/20"}`}>
+                <BarChart3 className={`h-3.5 w-3.5 ${quotaPct >= 80 ? "text-red-400" : "text-amber-400"}`} />
+              </div>
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Quota Used</p>
+            </div>
+            {quotaLoading ? (
+              <Skeleton className="h-8 w-16 bg-slate-800" />
+            ) : (
+              <p className="text-3xl font-bold text-white tabular-nums">
+                {quota ? `${quotaPct}%` : "—"}
+              </p>
+            )}
+            <p className="text-xs text-slate-500 mt-1">
+              {quota ? `${quota.usedThisHour}/${quota.hourlyLimit} this hour` : "No mailbox configured"}
+            </p>
+            <div className="mt-3 h-1 w-full rounded-full bg-slate-800 overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-700"
+                style={{ width: `${quotaPct}%`, backgroundColor: quotaPct >= 90 ? "#f87171" : quotaPct >= 70 ? "#fb923c" : "#f59e0b" }} />
+            </div>
+          </div>
+        </motion.div>
+
+      </div>
+
+      {/* ── Main 65/35 grid ─────────────────────────────────────────────────── */}
+      <div className="grid lg:grid-cols-[1fr_320px] gap-6 items-start">
+
+        {/* ── Left column ─────────────────────────────────────────────────── */}
+        <div className="space-y-5 min-w-0">
+
+          {/* Campaign Activity */}
+          <SectionCard
+            title="Campaign Activity"
+            subtitle="Recent outreach campaigns"
+            icon={Zap}
+            iconBg="bg-violet-500/10 border border-violet-500/20 text-violet-400"
+            action={
+              <Button variant="ghost" size="sm" asChild className="text-xs text-slate-500 hover:text-slate-200 rounded-lg gap-1 h-7">
                 <Link href="/campaigns">View all <ArrowRight className="h-3.5 w-3.5" /></Link>
               </Button>
-            </div>
-
+            }
+          >
             {campaignsLoading ? (
               <div className="p-5 space-y-3">
-                {[1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}
+                {[1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full rounded-xl bg-slate-800" />)}
               </div>
             ) : campaigns.length ? (
-              <div className="divide-y divide-slate-50">
-                {campaigns.map(c => <CampaignStatusRow key={c.id} campaign={c} />)}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-800">
+                      <th className="px-5 py-2.5 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Campaign</th>
+                      <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Progress</th>
+                      <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider hidden md:table-cell">Recipients</th>
+                      <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                      <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider hidden lg:table-cell">Created</th>
+                      <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {campaigns.map(c => {
+                      const s = getCampaignStatus(c);
+                      const done = (c.sentCount ?? 0) + (c.draftedCount ?? 0);
+                      const pct  = c.totalLeads > 0 ? Math.round((done / c.totalLeads) * 100) : 0;
+                      return (
+                        <tr key={c.id} className="hover:bg-slate-800/30 transition-colors">
+                          <td className="px-5 py-3.5">
+                            <p className="font-medium text-slate-100 text-sm truncate max-w-[160px]">{c.name}</p>
+                            <p className="text-[11px] text-slate-500 mt-0.5">{c.sendMode === "smtp" ? "SMTP" : "Gmail"}</p>
+                          </td>
+                          <td className="px-3 py-3.5 hidden sm:table-cell">
+                            <div className="w-24">
+                              <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-1">{done}/{c.totalLeads}</p>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3.5 hidden md:table-cell">
+                            <p className="text-sm text-slate-300 tabular-nums">{c.totalLeads.toLocaleString()}</p>
+                          </td>
+                          <td className="px-3 py-3.5">
+                            <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${s.bg} ${s.text}`}>
+                              <span className={`h-1.5 w-1.5 rounded-full ${s.dotColor}`} />
+                              {s.label}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3.5 hidden lg:table-cell">
+                            <p className="text-xs text-slate-500">
+                              {new Date(c.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                            </p>
+                          </td>
+                          <td className="px-3 py-3.5 text-right">
+                            <Link href={`/campaigns/${c.id}`}>
+                              <Button variant="ghost" size="sm"
+                                className="h-7 px-2.5 text-xs text-slate-500 hover:text-slate-200 rounded-lg">
+                                View
+                              </Button>
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-14 text-slate-400">
-                <div className="h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center mb-3">
+              <div className="flex flex-col items-center justify-center py-14 text-slate-500">
+                <div className="h-12 w-12 rounded-2xl bg-slate-800 flex items-center justify-center mb-3">
                   <Zap className="h-6 w-6 opacity-30" />
                 </div>
-                <p className="text-sm font-medium">No campaigns yet</p>
-                <p className="text-xs mt-1 mb-4">Upload leads to create your first campaign</p>
-                <Button asChild variant="outline" size="sm" className="rounded-xl gap-1.5 text-xs">
+                <p className="text-sm font-medium text-slate-400">No campaigns yet</p>
+                <p className="text-xs mt-1 mb-4 text-slate-500">Upload leads to create your first campaign</p>
+                <Button asChild variant="outline" size="sm"
+                  className="rounded-xl gap-1.5 text-xs border-slate-700 hover:bg-slate-800 text-slate-300 bg-transparent">
                   <Link href="/leads/import"><UploadCloud className="h-3.5 w-3.5" /> Upload Leads</Link>
                 </Button>
               </div>
             )}
-          </div>
+          </SectionCard>
 
-          {/* Recent Emails / Drafts */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-lg bg-blue-50 flex items-center justify-center">
-                  <Mail className="h-4 w-4 text-blue-600" />
-                </div>
-                <div>
-                  <h2 className="font-semibold text-slate-900 text-sm">Recent Drafts</h2>
-                  <p className="text-xs text-slate-400 mt-0.5">Latest Gmail drafts created</p>
-                </div>
-              </div>
-              <Button variant="ghost" size="sm" asChild className="text-xs text-slate-500 hover:text-slate-900 rounded-lg gap-1">
+          {/* Recent Drafts */}
+          <SectionCard
+            title="Recent Drafts"
+            subtitle="Latest Gmail drafts created"
+            icon={Mail}
+            iconBg="bg-blue-500/10 border border-blue-500/20 text-blue-400"
+            action={
+              <Button variant="ghost" size="sm" asChild className="text-xs text-slate-500 hover:text-slate-200 rounded-lg gap-1 h-7">
                 <Link href="/drafts">View all <ArrowRight className="h-3.5 w-3.5" /></Link>
               </Button>
-            </div>
-
-            <div className="divide-y divide-slate-50">
+            }
+          >
+            <div className="divide-y divide-slate-800/50">
               {draftsLoading ? (
                 <div className="p-5 space-y-3">
-                  {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full rounded-xl" />)}
+                  {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full rounded-xl bg-slate-800" />)}
                 </div>
               ) : recentDrafts?.data?.length ? (
                 recentDrafts.data.map(draft => {
-                  const statusCls =
-                    draft.status === "success" ? "bg-emerald-50 text-emerald-700"
-                    : draft.status === "failed" ? "bg-red-50 text-red-700"
-                    : "bg-slate-100 text-slate-600";
-                  const iconCls =
-                    draft.status === "success" ? "bg-emerald-50 text-emerald-600"
-                    : draft.status === "failed" ? "bg-red-50 text-red-500"
-                    : "bg-slate-50 text-slate-400";
+                  const isSuccess = draft.status === "success";
+                  const isFailed  = draft.status === "failed";
                   return (
-                    <div key={draft.id} className="px-5 py-3.5 flex items-center gap-4 hover:bg-slate-50/70 dark:hover:bg-slate-700/40 transition-colors">
-                      <div className={`h-9 w-9 rounded-xl flex items-center justify-center flex-shrink-0 ${iconCls}`}>
-                        <Mail className="h-4 w-4" />
+                    <div key={draft.id}
+                      className="px-5 py-3.5 flex items-center gap-4 hover:bg-slate-800/30 transition-colors">
+                      <div className={`h-8 w-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                        isSuccess ? "bg-green-500/10" : isFailed ? "bg-red-500/10" : "bg-slate-700/60"
+                      }`}>
+                        <Mail className={`h-3.5 w-3.5 ${
+                          isSuccess ? "text-green-400" : isFailed ? "text-red-400" : "text-slate-400"
+                        }`} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-slate-900 text-sm truncate">{draft.subject}</p>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          {new Date(draft.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                        </p>
+                        <p className="font-medium text-slate-100 text-sm truncate">{draft.subject || <span className="italic text-slate-500">No subject</span>}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{fmtTime(draft.createdAt)}</p>
                       </div>
-                      <span className={`text-xs font-medium px-2.5 py-1 rounded-full flex-shrink-0 ${statusCls}`}>
+                      <span className={`text-xs font-medium px-2.5 py-1 rounded-full flex-shrink-0 ${
+                        isSuccess ? "bg-green-500/10 text-green-400" : isFailed ? "bg-red-500/10 text-red-400" : "bg-slate-700/60 text-slate-400"
+                      }`}>
                         {draft.status}
                       </span>
                     </div>
                   );
                 })
               ) : (
-                <div className="flex flex-col items-center justify-center py-14 text-slate-400">
-                  <Mail className="h-10 w-10 mb-3 opacity-25" />
-                  <p className="text-sm font-medium">No drafts yet</p>
-                  <Button asChild variant="ghost" size="sm" className="mt-3 text-blue-600 hover:text-blue-700 text-xs gap-1">
+                <div className="flex flex-col items-center justify-center py-14 text-slate-500">
+                  <Mail className="h-10 w-10 mb-3 opacity-20" />
+                  <p className="text-sm font-medium text-slate-400">No drafts yet</p>
+                  <Button asChild variant="ghost" size="sm" className="mt-3 text-blue-400 hover:text-blue-300 text-xs gap-1">
                     <Link href="/leads/import">Upload leads to create drafts →</Link>
                   </Button>
                 </div>
               )}
             </div>
-          </div>
-        </div>
+          </SectionCard>
 
-        {/* ── Right column (1/3) ────────────────────────────────────────── */}
-        <div className="space-y-5">
-
-          {/* Gmail + SMTP Health */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className={`h-9 w-9 rounded-xl ring-1 flex items-center justify-center flex-shrink-0 ${
-                gmailStatus?.connected ? "bg-emerald-50 ring-emerald-100" : "bg-amber-50 ring-amber-100"
-              }`}>
-                {gmailStatus?.connected
-                  ? <Wifi className="h-4 w-4 text-emerald-600" />
-                  : <Mail className="h-4 w-4 text-amber-600" />
-                }
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-slate-900">Gmail</p>
-                  {!gmailLoading && gmailStatus?.connected && (
-                    <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 flex-shrink-0">
-                      Connected
-                    </span>
-                  )}
-                </div>
-                {gmailLoading ? <Skeleton className="h-4 w-32 mt-1" /> : gmailStatus?.connected && gmailStatus.email ? (
-                  <p className="text-xs text-slate-500 truncate mt-0.5">{gmailStatus.email}</p>
-                ) : (
-                  <Button size="sm" onClick={handleConnectGmail} disabled={connectingGmail}
-                    className="mt-1.5 h-7 px-3 text-xs bg-amber-600 hover:bg-amber-700 text-white rounded-lg">
-                    {connectingGmail ? "Connecting…" : "Connect Gmail"}
-                  </Button>
-                )}
-              </div>
+          {/* Quick Actions */}
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Quick Actions</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+              {[
+                { label: "Compose Email",    href: "/compose",        icon: PenLine,       desc: "One-off email"          },
+                { label: "Upload CSV",       href: "/leads/import",   icon: UploadCloud,   desc: "Import leads & send"    },
+                { label: "Template Gallery", href: "/templates",      icon: LayoutGrid,    desc: "Browse templates"       },
+                { label: "Campaigns",        href: "/campaigns",      icon: Megaphone,     desc: "Manage campaigns"       },
+                { label: "Mailbox",          href: "/mailbox",        icon: Server,        desc: "SMTP & quota settings"  },
+                { label: "Support",          href: "/support",        icon: TicketCheck,   desc: "Open a ticket"          },
+              ].map((a, i) => (
+                <motion.div key={a.label} custom={i} initial="hidden" animate="show" variants={fadeUp}>
+                  <Link href={a.href}>
+                    <div className="group flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 hover:border-slate-700 hover:bg-slate-800/60 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 transition-all duration-150 cursor-pointer">
+                      <a.icon className="h-4 w-4 text-slate-400 group-hover:text-slate-200 transition-colors flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-200 leading-tight">{a.label}</p>
+                        <p className="text-[11px] text-slate-500 truncate">{a.desc}</p>
+                      </div>
+                      <ChevronRight className="h-3.5 w-3.5 text-slate-600 group-hover:text-slate-400 group-hover:translate-x-0.5 transition-all ml-auto flex-shrink-0" />
+                    </div>
+                  </Link>
+                </motion.div>
+              ))}
             </div>
           </div>
 
-          {/* SMTP Health */}
-          <SmtpHealthCard quota={quota} loading={quotaLoading} />
+        </div>
+        {/* end left column */}
 
-          {/* Suppression Shield */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
-              <div className="h-8 w-8 rounded-lg bg-purple-50 flex items-center justify-center">
-                <ShieldOff className="h-4 w-4 text-purple-600" />
+        {/* ── Right column ────────────────────────────────────────────────── */}
+        <div className="space-y-4 lg:sticky lg:top-4">
+
+          {/* Account Overview */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-800">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Account Overview</p>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="flex items-center gap-3">
+                {user?.avatarUrl ? (
+                  <img src={user.avatarUrl} alt={user.name} className="h-11 w-11 rounded-full object-cover ring-2 ring-slate-700 flex-shrink-0" />
+                ) : (
+                  <div className="h-11 w-11 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold flex-shrink-0 ring-2 ring-slate-700">
+                    {initials}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-white text-sm leading-tight">{user?.name}</p>
+                  <p className="text-xs text-slate-400 mt-0.5 truncate">{user?.email}</p>
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 border border-blue-500/20 text-blue-400">
+                      <Zap className="h-2.5 w-2.5" />
+                      {user?.role === "admin" ? "Admin" : "Agent"}
+                    </span>
+                  </div>
+                </div>
               </div>
-              <div>
-                <h2 className="font-semibold text-slate-900 text-sm">Suppression Shield</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Bounce-protected addresses</p>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl bg-slate-800/50 border border-slate-700/60 px-3 py-2.5">
+                  <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Company</p>
+                  <p className="text-xs text-slate-200 font-medium mt-0.5 truncate">
+                    {branding?.companyName || <span className="text-slate-500 italic">Not set</span>}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-slate-800/50 border border-slate-700/60 px-3 py-2.5">
+                  <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Current Plan</p>
+                  <p className="text-xs text-slate-200 font-medium mt-0.5 truncate">
+                    {billing?.plan.name ?? <span className="text-slate-500">—</span>}
+                  </p>
+                </div>
               </div>
+
+              <Link href="/settings">
+                <Button variant="outline" size="sm"
+                  className="w-full h-8 text-xs rounded-xl border-slate-700 hover:bg-slate-800 text-slate-300 bg-transparent transition-all duration-200">
+                  Manage Profile
+                </Button>
+              </Link>
+            </div>
+          </div>
+
+          {/* Sending Account */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/5 border border-slate-700 flex-shrink-0">
+                  <svg viewBox="0 0 24 24" className="h-[13px] w-[13px]" aria-hidden="true">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                  </svg>
+                </div>
+                <p className="text-sm font-semibold text-slate-100">Gmail</p>
+              </div>
+              {gmailLoading ? null : gmailStatus?.connected ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-500/10 border border-green-500/20 text-green-400 flex-shrink-0">
+                  <span className="h-1.5 w-1.5 rounded-full bg-green-400" /> Connected
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-700/60 border border-slate-600 text-slate-400 flex-shrink-0">
+                  Not connected
+                </span>
+              )}
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              {gmailLoading ? (
+                <Skeleton className="h-8 w-full bg-slate-800" />
+              ) : gmailStatus?.connected ? (
+                <>
+                  <p className="text-sm text-slate-200 truncate">{gmailStatus.email}</p>
+                  <p className="text-[11px] text-slate-500">Authenticated with Google OAuth</p>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={handleDisconnectGmail}
+                      className="flex-1 h-8 text-xs rounded-xl border-red-900/50 text-red-400 hover:bg-red-950/30 hover:border-red-800 bg-transparent transition-all duration-200">
+                      <Unlink className="h-3.5 w-3.5 mr-1.5" />Disconnect
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleConnectGmail} disabled={connectingGmail}
+                      className="flex-1 h-8 text-xs rounded-xl border-slate-700 hover:bg-slate-800 text-slate-200 bg-transparent transition-all duration-200">
+                      {connectingGmail ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Reconnect"}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-slate-500">Connect Gmail to create drafts and send campaigns.</p>
+                  <Button size="sm" onClick={handleConnectGmail} disabled={connectingGmail}
+                    className="w-full h-8 text-xs rounded-xl bg-blue-600 hover:bg-blue-500 text-white transition-all duration-200">
+                    {connectingGmail ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />Connecting…</> : "Connect Gmail"}
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Usage */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-800">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Usage</p>
             </div>
             <div className="p-5">
-              <div className="flex items-end gap-3 mb-4">
-                <div>
-                  <p className="text-3xl font-bold text-slate-900">
-                    {suppressionStats?.totalSuppressed ?? 0}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-0.5">suppressed addresses</p>
-                </div>
-                {suppressionStats?.lastSuppressionAt && (
-                  <p className="text-xs text-slate-400 mb-1">
-                    Last: {timeAgo(suppressionStats.lastSuppressionAt)}
-                  </p>
-                )}
-              </div>
-              {suppressionStats && suppressionStats.topReasons.length > 0 ? (
-                <div className="space-y-1.5">
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Top Bounce Reasons</p>
-                  {suppressionStats.topReasons.slice(0, 3).map((r, i) => (
-                    <div key={i} className="flex items-center justify-between gap-2">
-                      <p className="text-xs text-slate-600 truncate flex-1">{r.reason.slice(0, 60)}</p>
-                      <span className="text-xs font-semibold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-md flex-shrink-0">
-                        {r.count}
-                      </span>
-                    </div>
-                  ))}
+              {!billing ? (
+                <div className="flex items-center gap-4">
+                  <Skeleton className="h-[76px] w-[76px] rounded-full bg-slate-800 flex-shrink-0" />
+                  <div className="space-y-2 flex-1">
+                    <Skeleton className="h-4 w-24 bg-slate-800" />
+                    <Skeleton className="h-3 w-20 bg-slate-800" />
+                  </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center py-4 text-slate-400">
-                  <CheckCircle2 className="h-7 w-7 mb-1.5 text-emerald-400" />
-                  <p className="text-xs font-medium text-emerald-600">No suppressions yet</p>
-                  <p className="text-xs text-slate-400 text-center mt-0.5">Permanent bounces are auto-suppressed</p>
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="relative flex-shrink-0">
+                    <CircularProgress pct={emailUsagePct ?? 0} size={76} />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-sm font-bold text-white">{emailUsagePct ?? 0}%</span>
+                    </div>
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-400">Emails used</span>
+                      <span className="text-slate-200 font-semibold tabular-nums">
+                        {billing.usage.emailsSentThisMonth.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-400">Monthly limit</span>
+                      <span className="text-slate-200 font-semibold tabular-nums">
+                        {billing.plan.monthlyEmailLimit === -1 ? "∞" : billing.plan.monthlyEmailLimit.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-400">Remaining</span>
+                      <span className="text-slate-200 font-semibold tabular-nums">
+                        {billing.plan.monthlyEmailLimit === -1
+                          ? "∞"
+                          : Math.max(0, billing.plan.monthlyEmailLimit - billing.usage.emailsSentThisMonth).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               )}
+              <Link href="/plans">
+                <Button variant="outline" size="sm"
+                  className="w-full h-8 text-xs rounded-xl border-slate-700 hover:bg-slate-800 text-slate-200 bg-transparent transition-all duration-200">
+                  <CreditCard className="h-3.5 w-3.5 mr-1.5" />Manage Plan
+                </Button>
+              </Link>
             </div>
           </div>
 
-          {/* Live Lead Activity */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-lg bg-emerald-50 flex items-center justify-center">
-                  <Eye className="h-4 w-4 text-emerald-600" />
+          {/* Live Activity Feed */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold text-slate-100">Activity Feed</p>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live
+                  </span>
                 </div>
-                <div>
-                  <h2 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
-                    Live Lead Activity
-                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded-full">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Live
-                    </span>
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-0.5">Email opens in real time</p>
-                </div>
+                <p className="text-xs text-slate-500 mt-0.5">Recent account events</p>
               </div>
-              <Button
-                variant="ghost" size="sm"
-                onClick={fetchLiveActivity}
-                className="text-slate-400 hover:text-slate-600 rounded-lg p-1.5 h-auto"
-              >
+              <button onClick={fetchLiveActivity}
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-all">
                 <RefreshCw className="h-3.5 w-3.5" />
-              </Button>
+              </button>
             </div>
-            <div className="p-3 space-y-0.5 max-h-72 overflow-auto">
-              {liveLoading ? (
-                <div className="space-y-2 p-2">
-                  {[1, 2, 3].map(i => <Skeleton key={i} className="h-11 w-full rounded-lg" />)}
-                </div>
-              ) : liveActivity.length > 0 ? (
-                <AnimatePresence initial={false}>
-                  {liveActivity.map(event => (
-                    <motion.div
-                      key={event.id}
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors"
-                    >
-                      <div className={`h-7 w-7 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                        event.isAppleMail ? "bg-slate-50" : "bg-emerald-50"
-                      }`}>
-                        <Eye className={`h-3.5 w-3.5 ${event.isAppleMail ? "text-slate-400" : "text-emerald-600"}`} />
+
+            {(() => {
+              // Merge historical activity items and live email-open events into one unified timeline
+              type FeedItem =
+                | { kind: "activity"; id: number; ts: number; item: ActivityItem }
+                | { kind: "open";     id: number; ts: number; event: OpenEvent };
+
+              const merged: FeedItem[] = [
+                ...(activity ?? []).map((item): FeedItem => ({
+                  kind: "activity", id: item.id, ts: new Date(item.createdAt).getTime(), item,
+                })),
+                ...liveActivity.map((e): FeedItem => ({
+                  kind: "open", id: e.id, ts: new Date(e.openedAt).getTime(), event: e,
+                })),
+              ].sort((a, b) => b.ts - a.ts).slice(0, 12);
+
+              const isLoading = activityLoading && liveLoading;
+
+              return (
+                <div className="p-4 max-h-72 overflow-auto">
+                  {isLoading ? (
+                    <div className="space-y-2">
+                      {[1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full rounded-lg bg-slate-800" />)}
+                    </div>
+                  ) : merged.length > 0 ? (
+                    <AnimatePresence initial={false}>
+                      <div className="space-y-1">
+                        {merged.map(entry => {
+                          if (entry.kind === "activity") {
+                            const { item } = entry;
+                            const ai = activityIcon(item.type);
+                            const Icon = ai.icon;
+                            return (
+                              <motion.div key={`a-${item.id}`}
+                                initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+                                className="flex items-start gap-3 px-2 py-2 rounded-xl hover:bg-slate-800/40 transition-colors">
+                                <div className={`h-6 w-6 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${ai.bg}`}>
+                                  <Icon className={`h-3 w-3 ${ai.color}`} />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs text-slate-200 leading-tight">{item.description}</p>
+                                  <p className="text-[10px] text-slate-500 mt-0.5">{timeAgo(item.createdAt)}</p>
+                                </div>
+                                <p className="text-[10px] text-slate-600 flex-shrink-0 mt-0.5">{fmtTime(item.createdAt)}</p>
+                              </motion.div>
+                            );
+                          }
+                          const { event } = entry;
+                          return (
+                            <motion.div key={`o-${event.id}`}
+                              initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+                              className="flex items-start gap-3 px-2 py-2 rounded-xl hover:bg-slate-800/40 transition-colors">
+                              <div className={`h-6 w-6 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                                event.isAppleMail ? "bg-slate-700/60" : "bg-emerald-500/10"
+                              }`}>
+                                <Eye className={`h-3 w-3 ${event.isAppleMail ? "text-slate-400" : "text-emerald-400"}`} />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-medium text-slate-200 truncate">
+                                  {event.customerName ?? event.email ?? "Unknown"} opened email
+                                </p>
+                                <p className="text-[10px] text-slate-500 mt-0.5">{timeAgo(event.openedAt)}</p>
+                              </div>
+                              <p className="text-[10px] text-slate-600 flex-shrink-0 mt-0.5">{fmtTime(event.openedAt)}</p>
+                            </motion.div>
+                          );
+                        })}
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-semibold text-slate-900 truncate">
-                          {event.customerName ?? event.email ?? "Unknown"}
-                        </p>
-                        {event.email && event.customerName && (
-                          <p className="text-xs text-slate-400 truncate">{event.email}</p>
-                        )}
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-xs text-slate-400">{timeAgo(event.openedAt)}</span>
-                          {event.isAppleMail && (
-                            <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full">
-                              Apple Mail
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-10 text-slate-400">
-                  <Eye className="h-8 w-8 mb-2 opacity-25" />
-                  <p className="text-xs font-medium">No opens tracked yet</p>
-                  <p className="text-xs mt-1 text-center px-4">
-                    Opens appear here once a lead reads your email.
-                  </p>
+                    </AnimatePresence>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-8 text-slate-500">
+                      <Activity className="h-8 w-8 mb-2 opacity-20" />
+                      <p className="text-xs font-medium text-slate-400">No recent activity</p>
+                      <p className="text-[11px] mt-1 text-center">Events appear here as your campaigns run.</p>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            {liveActivity.length > 0 && (
-              <div className="px-5 py-2.5 border-t border-slate-50">
-                <Link href="/sent-emails" className="text-xs text-primary hover:underline">
-                  View all sent emails →
-                </Link>
-              </div>
-            )}
+              );
+            })()}
           </div>
+
         </div>
+        {/* end right column */}
+
       </div>
     </div>
   );
