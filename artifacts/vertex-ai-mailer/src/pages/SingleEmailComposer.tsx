@@ -529,6 +529,7 @@ export default function SingleEmailComposer() {
   const [mailboxes, setMailboxes]     = useState<any[]>([]);
   const [gmailConnected, setGmail]    = useState(false);
   const [userEmail, setUserEmail]     = useState("");
+  const [gmailEmail, setGmailEmail]   = useState(""); // actual connected Gmail address
   const [mailboxId, setMailboxId]     = useState<string>("");
   const [mailboxType, setMailboxType] = useState<"smtp" | "gmail">("smtp");
 
@@ -633,6 +634,9 @@ export default function SingleEmailComposer() {
       setMailboxes(d.mailboxes ?? []);
       setGmail(d.gmailConnected ?? false);
       setUserEmail(d.userEmail ?? "");
+      // gmailEmail is the actual connected Gmail address (e.g. frank@gmail.com).
+      // userEmail may be the SMTP/registration address — never use it for the Gmail option.
+      if (d.gmailEmail) setGmailEmail(d.gmailEmail);
       if (d.mailboxes?.length > 0)  { setMailboxId(String(d.mailboxes[0].id)); setMailboxType("smtp"); }
       else if (d.gmailConnected)    { setMailboxId("gmail"); setMailboxType("gmail"); }
     } catch {}
@@ -1466,7 +1470,13 @@ export default function SingleEmailComposer() {
                         {mb.fromName ? `${mb.fromName} <${mb.smtpUser}>` : mb.smtpUser}
                       </option>
                     ))}
-                    {gmailConnected && <option value="gmail">Gmail — {userEmail}</option>}
+                    {gmailConnected && (
+                      <option value="gmail">
+                        {gmailEmail
+                          ? `Gmail — ${gmailEmail}`
+                          : "Gmail — (reconnect to refresh address)"}
+                      </option>
+                    )}
                     {mailboxes.length === 0 && !gmailConnected && <option value="">No mailboxes configured</option>}
                   </select>
                   <ChevronDown className="h-3 w-3 text-slate-400 absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none" />

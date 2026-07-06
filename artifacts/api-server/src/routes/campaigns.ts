@@ -1850,12 +1850,15 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
     // is now in a terminal state (drafted/failed/sent), mark the campaign completed.
     // Run unconditionally — even a fully-failed batch may complete a campaign that had
     // prior successful drafts, and skipping the check would leave it stuck in "failed".
-    {
+    // Wrapped in try/catch so that a DB failure here does NOT fail the HTTP response —
+    // the batch status update above already succeeded; only the completion upgrade is at risk.
+    try {
       const [campCheck] = await db
         .select({ totalLeads: campaignsTable.totalLeads })
         .from(campaignsTable)
         .where(eq(campaignsTable.id, campaignId));
       const total = campCheck?.totalLeads ?? 0;
+      logger.info({ campaignId, total, succeeded, failed, batchStatus }, "[GMAIL_BATCH] Terminal-count check starting");
       if (total > 0) {
         const [termRow] = await db
           .select({ count: sql<number>`count(*)::int` })
@@ -1865,13 +1868,23 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
             inArray(leadsTable.status, ["sent", "drafted", "failed"]),
           ));
         const termCount = termRow?.count ?? 0;
+        logger.info({ campaignId, termCount, total }, "[GMAIL_BATCH] Terminal-count result");
         if (termCount >= total) {
           logger.info({ campaignId, termCount, total }, "[GMAIL_BATCH] All leads terminal — marking campaign completed");
           await db.update(campaignsTable)
             .set({ status: "completed", updatedAt: new Date() })
             .where(eq(campaignsTable.id, campaignId));
+          logger.info({ campaignId }, "[GMAIL_BATCH] Campaign status set to completed ✓");
+        } else {
+          logger.info({ campaignId, termCount, total, remaining: total - termCount },
+            "[GMAIL_BATCH] Not all leads terminal yet — campaign stays in current status");
         }
+      } else {
+        logger.warn({ campaignId }, "[GMAIL_BATCH] totalLeads is 0 — skipping completion check");
       }
+    } catch (completionErr: any) {
+      // Non-fatal: the batch status was already saved above. Log and continue.
+      logger.error({ err: completionErr, campaignId }, "[GMAIL_BATCH] Completion check failed (non-fatal) — batch response still sent");
     }
 
     await db.update(campaignBatchesTable).set({ sentCount: succeeded, failedCount: failed })
@@ -2657,8 +2670,11 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
   // is now in a terminal state (drafted/failed/sent), mark the campaign completed.
   // Run unconditionally — even a fully-failed batch may complete a campaign that had
   // prior successful drafts, and skipping the check would leave it stuck in "failed".
-  {
+  // Wrapped in try/catch so that a DB failure here does NOT cause a 500 response —
+  // the batch status update above already succeeded; only the completion upgrade is at risk.
+  try {
     const total = campaign.totalLeads ?? 0;
+    logger.info({ userId: user.id, campaignId: campaign.id, total, succeeded, failed, batchStatus }, "[GENERATE_DRAFTS] Terminal-count check starting");
     if (total > 0) {
       const [termRow] = await db
         .select({ count: sql<number>`count(*)::int` })
@@ -2668,13 +2684,23 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
           inArray(leadsTable.status, ["sent", "drafted", "failed"]),
         ));
       const termCount = termRow?.count ?? 0;
+      logger.info({ userId: user.id, campaignId: campaign.id, termCount, total }, "[GENERATE_DRAFTS] Terminal-count result");
       if (termCount >= total) {
         logger.info({ userId: user.id, campaignId: campaign.id, termCount, total }, "[GENERATE_DRAFTS] All leads terminal — marking campaign completed");
         await db.update(campaignsTable)
           .set({ status: "completed", updatedAt: new Date() })
           .where(eq(campaignsTable.id, campaign.id));
+        logger.info({ userId: user.id, campaignId: campaign.id }, "[GENERATE_DRAFTS] Campaign status set to completed ✓");
+      } else {
+        logger.info({ userId: user.id, campaignId: campaign.id, termCount, total, remaining: total - termCount },
+          "[GENERATE_DRAFTS] Not all leads terminal yet — campaign stays in current status");
       }
+    } else {
+      logger.warn({ userId: user.id, campaignId: campaign.id }, "[GENERATE_DRAFTS] totalLeads is 0 — skipping completion check");
     }
+  } catch (completionErr: any) {
+    // Non-fatal: the batch status was already saved above. Log and continue.
+    logger.error({ err: completionErr, userId: user.id, campaignId: campaign.id }, "[GENERATE_DRAFTS] Completion check failed (non-fatal) — response still sent");
   }
 
   await db.insert(activityTable).values({

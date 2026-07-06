@@ -1,0 +1,243 @@
+BrokerMAIL AI – Fix the Actual Production Bugs (Verified Failed)
+
+The previous commit (a47259e) claimed to fix these issues, but after deploying to production the fixes are NOT working.
+
+Do NOT assume the previous implementation is correct.
+
+Do NOT make another blind fix.
+
+First, trace the complete data flow from frontend → API → database → frontend.
+
+Find the real root cause before changing any code.
+
+Bug 1 – Compose Email shows SMTP email for Gmail
+Current production behavior
+
+The From dropdown still shows:
+
+Frank Miller <miller@vertexcarship.com>
+
+for Gmail.
+
+That is incorrect.
+
+The connected Gmail account is:
+
+frank.vertexcarship1@gmail.com
+
+The Gmail option must always display the actual connected Gmail account.
+
+SMTP must display only the SMTP mailbox.
+
+Never mix the two.
+
+Required investigation
+
+Trace:
+
+Gmail OAuth callback
+Gmail token storage
+gmailEmail field
+user table
+composer API
+composer frontend
+dropdown mapping
+
+Verify:
+
+where gmailEmail is stored
+whether it is NULL
+whether the API returns it
+whether the frontend ignores it
+whether another endpoint overwrites it
+
+Do not guess.
+
+Show the exact root cause.
+
+Bug 2 – Gmail campaigns never become Completed
+
+Current production:
+
+SMTP:
+
+Completed
+
+Gmail Drafts:
+
+Drafted
+
+even when
+
+drafted_count == total_leads
+
+This is wrong.
+
+A fully drafted Gmail campaign must become:
+
+Completed
+
+exactly like SMTP.
+
+Required investigation
+
+Trace:
+
+Campaign creation
+
+↓
+
+Lead processing
+
+↓
+
+Draft creation
+
+↓
+
+Campaign status update
+
+↓
+
+Dashboard query
+
+↓
+
+Campaign list query
+
+↓
+
+Campaign card rendering
+
+Determine exactly where the status remains "drafted".
+
+Do not copy SMTP logic blindly.
+
+Find why Gmail status never transitions.
+
+Verify using a real campaign.
+
+Bug 3 – Settings redesign never appeared
+
+The previous commit claimed:
+
+redesigned settings
+new cards
+icons
+better layout
+
+Production shows no visible difference.
+
+That means one of these happened:
+
+wrong component edited
+wrong route
+CSS never applied
+changes too minor
+incorrect file modified
+
+Investigate first.
+
+Do not claim a redesign unless the visual difference is obvious.
+
+Requirements:
+
+Keep all functionality identical.
+
+No API changes.
+
+No backend changes.
+
+No database changes.
+
+Only redesign the frontend.
+
+Target:
+
+Professional SaaS quality similar to:
+
+Linear
+Vercel
+Stripe Dashboard
+Clerk
+Notion
+
+Improve:
+
+spacing
+typography
+section hierarchy
+branding card
+Gmail integration card
+signature preview
+save button
+danger zone
+responsive layout
+
+The page should immediately look more premium.
+
+IMPORTANT
+
+Before committing:
+
+Actually verify the fixes.
+
+For Bug 1:
+
+Print the exact API response.
+
+Example:
+
+{
+  smtpEmail: "...",
+  gmailEmail: "...",
+  displayedEmail: "..."
+}
+
+For Bug 2:
+
+Create a test Gmail campaign.
+
+Show:
+
+Campaign ID
+
+total_leads
+
+drafted_count
+
+database status before
+
+database status after
+
+UI status
+
+For Bug 3:
+
+Provide before and after screenshots of the Settings page.
+
+If the screenshots look almost identical, do not commit.
+
+DO NOT TOUCH
+
+Do NOT modify:
+
+Gmail OAuth
+SMTP sending
+Campaign creation
+Upload & Send
+CSV parser
+Database schema
+Drizzle migrations
+Authentication
+Routing
+API contracts
+Nginx
+PM2
+Server configuration
+
+These systems are working.
+
+Only fix these three verified production bugs.
+
+Commit only after proving each fix works with real evidence (API output, database verification, and screenshots). This is not a "best effort" task; every claimed fix must be validated before it is pushed.

@@ -4,13 +4,13 @@ import fs from "fs";
 import path from "path";
 import {
   db, mailboxesTable, composerDraftsTable, emailQueueTable, draftsTable, designTemplatesTable,
-  composerEmailTemplatesTable,
+  composerEmailTemplatesTable, usersTable,
 } from "@workspace/db";
 import type { User } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { sendEmail } from "../lib/smtp";
-import { sendGmailMessage } from "../lib/gmail";
+import { sendGmailMessage, getGmailClient } from "../lib/gmail";
 import { logger } from "../lib/logger";
 import { randomUUID } from "crypto";
 import { getTrackingSettings } from "../lib/tracking-settings";
@@ -89,10 +89,32 @@ router.get("/composer/mailboxes", requireAuth, async (req, res) => {
       .orderBy(mailboxesTable.id);
 
     const gmailConnected = !!(user.gmailAccessToken && user.gmailRefreshToken);
-    // Use the connected Gmail address (gmailEmail) for the Gmail sender option, not the
-    // account registration email (email) which may be an SMTP/company address.
-    const userEmail = gmailConnected ? (user.gmailEmail ?? user.email) : user.email;
-    res.json({ mailboxes, gmailConnected, userEmail, userName: user.name });
+
+    // ── Resolve the Gmail sender address ─────────────────────────────────────
+    // gmailEmail may be NULL for users who connected Gmail before we started
+    // persisting this field. When that happens, we fetch it live from Google
+    // and save it so every future request returns it instantly.
+    let gmailEmail: string | null = user.gmailEmail ?? null;
+    if (gmailConnected && !gmailEmail) {
+      try {
+        const gmail = await getGmailClient(user);
+        const profile = await gmail.users.getProfile({ userId: "me" });
+        gmailEmail = profile.data.emailAddress ?? null;
+        if (gmailEmail) {
+          await db.update(usersTable)
+            .set({ gmailEmail, updatedAt: new Date() })
+            .where(eq(usersTable.id, user.id));
+          logger.info({ userId: user.id, gmailEmail }, "[COMPOSER] Backfilled missing gmailEmail from Google profile");
+        }
+      } catch (fetchErr: any) {
+        logger.warn({ err: fetchErr, userId: user.id }, "[COMPOSER] Could not fetch Gmail profile to backfill gmailEmail");
+      }
+    }
+
+    // userEmail is kept for backward-compat (SMTP fallback for non-Gmail callers).
+    // gmailEmail is the explicit Gmail sender address — always use this in the Gmail option.
+    const userEmail = user.email;
+    res.json({ mailboxes, gmailConnected, userEmail, gmailEmail, userName: user.name });
   } catch (err: any) {
     logger.error({ err }, "[COMPOSER] Failed to load mailboxes");
     res.status(500).json({ error: "Failed to load mailboxes" });
