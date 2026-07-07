@@ -64,21 +64,21 @@ function SignaturePreview({ branding }: { branding: BrandingData }) {
   const hasAny    = agentName || company || phone || website || usdot || mc;
 
   return (
-    <div className="rounded-xl border border-slate-700/60 bg-slate-800/40 overflow-hidden shadow-sm">
+    <div className="rounded-xl border border-border dark:border-slate-700/60 bg-secondary/60 dark:bg-slate-800/40 overflow-hidden shadow-sm">
       {/* Email chrome */}
-      <div className="px-3 py-2 border-b border-slate-700/60 flex items-center gap-1.5 bg-slate-800/70">
-        <Eye className="h-3 w-3 text-slate-400 flex-shrink-0" />
-        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Live Preview</span>
+      <div className="px-3 py-2 border-b border-border dark:border-slate-700/60 flex items-center gap-1.5 bg-secondary/80 dark:bg-slate-800/70">
+        <Eye className="h-3 w-3 text-muted-foreground dark:text-slate-400 flex-shrink-0" />
+        <span className="text-[10px] font-semibold text-muted-foreground dark:text-slate-400 uppercase tracking-wider">Live Preview</span>
       </div>
       {/* Simulated email fields */}
-      <div className="px-4 pt-3 pb-1 space-y-1 border-b border-slate-700/40 text-[11px] text-slate-500">
+      <div className="px-4 pt-3 pb-1 space-y-1 border-b border-border/60 dark:border-slate-700/40 text-[11px] text-slate-500">
         <div className="flex gap-2">
           <span className="w-10 text-slate-600 font-medium flex-shrink-0">From:</span>
-          <span className="text-slate-400">{agentName || "Your Name"} &lt;{branding.agentName ? "you@gmail.com" : "…"}&gt;</span>
+          <span className="text-muted-foreground dark:text-slate-400">{agentName || "Your Name"} &lt;{branding.agentName ? "you@gmail.com" : "…"}&gt;</span>
         </div>
         <div className="flex gap-2">
           <span className="w-10 text-slate-600 font-medium flex-shrink-0">Subject:</span>
-          <span className="text-slate-400 italic">Your email subject line…</span>
+          <span className="text-muted-foreground dark:text-slate-400 italic">Your email subject line…</span>
         </div>
       </div>
       {/* Signature body */}
@@ -89,9 +89,9 @@ function SignaturePreview({ branding }: { branding: BrandingData }) {
           <>
             <p className="text-slate-500 text-xs mb-3">Best regards,</p>
             <div className="border-l-2 pl-3" style={{ borderColor: accent }}>
-              {agentName && <p className="font-semibold text-slate-100 text-sm leading-tight">{agentName}</p>}
+              {agentName && <p className="font-semibold text-foreground dark:text-slate-100 text-sm leading-tight">{agentName}</p>}
               {company && (
-                <p className="text-slate-400 text-xs mt-0.5">
+                <p className="text-muted-foreground dark:text-slate-400 text-xs mt-0.5">
                   {company}
                   {tagline && <span className="text-slate-500"> — {tagline}</span>}
                 </p>
@@ -108,7 +108,7 @@ function SignaturePreview({ branding }: { branding: BrandingData }) {
                 </a>
               )}
               {(usdot || mc) && (
-                <p className="text-slate-500 text-[10px] mt-1.5 pt-1.5 border-t border-slate-700/40">
+                <p className="text-slate-500 text-[10px] mt-1.5 pt-1.5 border-t border-border/60 dark:border-slate-700/40">
                   {[usdot && `USDOT #${usdot}`, mc && `MC #${mc}`].filter(Boolean).join(" · ")}
                 </p>
               )}
@@ -132,14 +132,14 @@ function Toggle({ checked, onChange, label, description }: {
   return (
     <div className="flex items-center justify-between py-3.5">
       <div className="min-w-0 pr-4">
-        <p className="text-sm font-medium text-slate-200">{label}</p>
+        <p className="text-sm font-medium text-foreground dark:text-slate-200">{label}</p>
         {description && <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{description}</p>}
       </div>
       <button
         type="button"
         onClick={onChange}
         className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${
-          checked ? "bg-blue-600 shadow-[0_0_8px_rgba(37,99,235,0.35)]" : "bg-slate-700"
+          checked ? "bg-blue-600 shadow-[0_0_8px_rgba(37,99,235,0.35)]" : "bg-secondary dark:bg-slate-700"
         }`}
         role="switch"
         aria-checked={checked}
@@ -157,12 +157,12 @@ function CardHeader({
   icon: React.ElementType; iconColor: string; label: string; subtitle?: string; badge?: React.ReactNode;
 }) {
   return (
-    <div className="px-6 py-4 border-b border-slate-800 flex items-center gap-3">
+    <div className="px-6 py-4 border-b border-border dark:border-slate-800 flex items-center gap-3">
       <div className={`flex h-7 w-7 items-center justify-center rounded-lg flex-shrink-0 ${iconColor}`}>
         <Icon className="h-3.5 w-3.5" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-slate-100">{label}</p>
+        <p className="text-sm font-semibold text-foreground dark:text-slate-100">{label}</p>
         {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
       </div>
       {badge}
@@ -339,7 +339,7 @@ export default function Settings() {
   // ── Shared field label ───────────────────────────────────────────────────────
   function FL({ icon: Icon, children }: { icon: React.ElementType; children: React.ReactNode }) {
     return (
-      <label className="flex items-center gap-1.5 text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">
+      <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground dark:text-slate-400 uppercase tracking-wider mb-1.5">
         <Icon className="h-3 w-3 text-slate-500" />
         {children}
       </label>
@@ -350,15 +350,15 @@ export default function Settings() {
     <div className="max-w-6xl pb-16 space-y-6">
 
       {/* ── Page header ──────────────────────────────────────────────────────── */}
-      <div className="pb-5 border-b border-slate-800">
-        <h1 className="text-3xl font-bold tracking-tight text-white">Settings</h1>
-        <p className="text-slate-400 mt-1.5 text-sm">Manage your account, branding, preferences, and integrations.</p>
+      <div className="pb-5 border-b border-border dark:border-slate-800">
+        <h1 className="text-3xl font-bold tracking-tight text-foreground dark:text-white">Settings</h1>
+        <p className="text-muted-foreground dark:text-slate-400 mt-1.5 text-sm">Manage your account, branding, preferences, and integrations.</p>
       </div>
 
       {/* ── Overview stats row ───────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
 
-        <div className="group rounded-xl border border-slate-800 bg-slate-900 p-4 flex items-start gap-3 hover:border-slate-700 hover:shadow-lg hover:shadow-black/20 transition-all duration-200 cursor-default">
+        <div className="group rounded-xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 p-4 flex items-start gap-3 hover:border-border dark:hover:border-slate-700 hover:shadow-lg hover:shadow-black/20 transition-all duration-200 cursor-default">
           <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-green-500/10 border border-green-500/20 flex-shrink-0 group-hover:bg-green-500/15 transition-colors">
             <Mail className="h-4 w-4 text-green-400" />
           </div>
@@ -370,24 +370,24 @@ export default function Settings() {
                 <span className="text-sm font-semibold text-green-400">Connected</span>
               </div>
             ) : (
-              <span className="text-sm font-semibold text-slate-400 mt-0.5 block">Not connected</span>
+              <span className="text-sm font-semibold text-muted-foreground dark:text-slate-400 mt-0.5 block">Not connected</span>
             )}
           </div>
         </div>
 
-        <div className="group rounded-xl border border-slate-800 bg-slate-900 p-4 flex items-start gap-3 hover:border-slate-700 hover:shadow-lg hover:shadow-black/20 transition-all duration-200 cursor-default">
+        <div className="group rounded-xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 p-4 flex items-start gap-3 hover:border-border dark:hover:border-slate-700 hover:shadow-lg hover:shadow-black/20 transition-all duration-200 cursor-default">
           <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 border border-blue-500/20 flex-shrink-0 group-hover:bg-blue-500/15 transition-colors">
             <Building2 className="h-4 w-4 text-blue-400" />
           </div>
           <div className="min-w-0">
             <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Company</p>
-            <p className="text-sm font-semibold text-slate-200 mt-0.5 truncate">
+            <p className="text-sm font-semibold text-foreground dark:text-slate-200 mt-0.5 truncate">
               {branding.companyName || <span className="text-slate-500 font-normal italic">Not configured</span>}
             </p>
           </div>
         </div>
 
-        <div className="group rounded-xl border border-slate-800 bg-slate-900 p-4 flex items-start gap-3 hover:border-slate-700 hover:shadow-lg hover:shadow-black/20 transition-all duration-200 cursor-default">
+        <div className="group rounded-xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 p-4 flex items-start gap-3 hover:border-border dark:hover:border-slate-700 hover:shadow-lg hover:shadow-black/20 transition-all duration-200 cursor-default">
           <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/10 border border-violet-500/20 flex-shrink-0 group-hover:bg-violet-500/15 transition-colors">
             <Palette className="h-4 w-4 text-violet-400" />
           </div>
@@ -395,23 +395,23 @@ export default function Settings() {
             <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Accent Color</p>
             <div className="flex items-center gap-2 mt-0.5">
               <div
-                className="h-4 w-4 rounded-full border-2 border-slate-600 flex-shrink-0"
+                className="h-4 w-4 rounded-full border-2 border-border/80 dark:border-slate-600 flex-shrink-0"
                 style={{ backgroundColor: branding.accentColor || "#1d4ed8" }}
               />
-              <span className="text-sm font-mono font-semibold text-slate-200 truncate">
+              <span className="text-sm font-mono font-semibold text-foreground dark:text-slate-200 truncate">
                 {branding.accentColor || "#1d4ed8"}
               </span>
             </div>
           </div>
         </div>
 
-        <div className="group rounded-xl border border-slate-800 bg-slate-900 p-4 flex items-start gap-3 hover:border-slate-700 hover:shadow-lg hover:shadow-black/20 transition-all duration-200 cursor-default">
+        <div className="group rounded-xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 p-4 flex items-start gap-3 hover:border-border dark:hover:border-slate-700 hover:shadow-lg hover:shadow-black/20 transition-all duration-200 cursor-default">
           <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 border border-amber-500/20 flex-shrink-0 group-hover:bg-amber-500/15 transition-colors">
             <Calendar className="h-4 w-4 text-amber-400" />
           </div>
           <div className="min-w-0">
             <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Member Since</p>
-            <p className="text-sm font-semibold text-slate-200 mt-0.5">{memberSince ?? <span className="text-slate-500 italic font-normal text-xs">Not configured</span>}</p>
+            <p className="text-sm font-semibold text-foreground dark:text-slate-200 mt-0.5">{memberSince ?? <span className="text-slate-500 italic font-normal text-xs">Not configured</span>}</p>
           </div>
         </div>
 
@@ -427,24 +427,24 @@ export default function Settings() {
           <div className="grid lg:grid-cols-2 gap-6">
 
             {/* ── Profile ───────────────────────────────────────────────────── */}
-            <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
-              <CardHeader icon={User} iconColor="bg-slate-700/80 text-slate-300" label="Profile Information" />
+            <div className="rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 overflow-hidden">
+              <CardHeader icon={User} iconColor="bg-secondary dark:bg-slate-700/80 text-muted-foreground dark:text-slate-300" label="Profile Information" />
               <div className="p-6 space-y-5">
                 {/* Avatar + identity */}
                 <div className="flex items-center gap-4">
                   <div className="relative flex-shrink-0">
                     {user?.avatarUrl ? (
-                      <img src={user.avatarUrl} alt={user.name} className="h-14 w-14 rounded-full object-cover ring-2 ring-slate-700" />
+                      <img src={user.avatarUrl} alt={user.name} className="h-14 w-14 rounded-full object-cover ring-2 ring-border dark:ring-slate-700" />
                     ) : (
-                      <div className="h-14 w-14 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-lg ring-2 ring-slate-700 shadow-lg">
+                      <div className="h-14 w-14 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-lg ring-2 ring-border dark:ring-slate-700 shadow-lg">
                         {initials}
                       </div>
                     )}
-                    <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-green-500 border-2 border-slate-900" title="Active" />
+                    <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-green-500 border-2 border-card dark:border-slate-900" title="Active" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-white text-base leading-tight">{user?.name}</p>
-                    <p className="text-sm text-slate-400 mt-0.5 truncate">{user?.email}</p>
+                    <p className="font-semibold text-foreground dark:text-white text-base leading-tight">{user?.name}</p>
+                    <p className="text-sm text-muted-foreground dark:text-slate-400 mt-0.5 truncate">{user?.email}</p>
                     <div className="flex items-center gap-2 mt-2 flex-wrap">
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-500/10 border border-blue-500/20 text-blue-400">
                         <Zap className="h-2.5 w-2.5" />
@@ -455,7 +455,7 @@ export default function Settings() {
                         Active
                       </span>
                       {user?.gmailConnected && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-700/60 border border-slate-600 text-slate-300">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-muted dark:bg-slate-700/60 border border-border/80 dark:border-slate-600 text-muted-foreground dark:text-slate-300">
                           <Mail className="h-2.5 w-2.5" />
                           Gmail
                         </span>
@@ -466,23 +466,23 @@ export default function Settings() {
 
                 {/* Detail grid */}
                 <div className="grid grid-cols-2 gap-2.5">
-                  <div className="rounded-xl bg-slate-800/50 border border-slate-700/60 px-3.5 py-3">
+                  <div className="rounded-xl bg-secondary/60 dark:bg-slate-800/50 border border-border dark:border-slate-700/60 px-3.5 py-3">
                     <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Company</p>
-                    <p className="text-sm text-slate-200 font-medium truncate">
+                    <p className="text-sm text-foreground dark:text-slate-200 font-medium truncate">
                       {branding.companyName || <span className="text-slate-500 italic text-xs">Not configured</span>}
                     </p>
                   </div>
-                  <div className="rounded-xl bg-slate-800/50 border border-slate-700/60 px-3.5 py-3">
+                  <div className="rounded-xl bg-secondary/60 dark:bg-slate-800/50 border border-border dark:border-slate-700/60 px-3.5 py-3">
                     <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Phone</p>
-                    <p className="text-sm text-slate-200 font-medium truncate">
+                    <p className="text-sm text-foreground dark:text-slate-200 font-medium truncate">
                       {branding.companyPhone || <span className="text-slate-500 italic text-xs">Not configured</span>}
                     </p>
                   </div>
-                  <div className="rounded-xl bg-slate-800/50 border border-slate-700/60 px-3.5 py-3">
+                  <div className="rounded-xl bg-secondary/60 dark:bg-slate-800/50 border border-border dark:border-slate-700/60 px-3.5 py-3">
                     <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Member Since</p>
-                    <p className="text-sm text-slate-200 font-medium">{memberSince ?? <span className="text-slate-500 italic text-xs">Not configured</span>}</p>
+                    <p className="text-sm text-foreground dark:text-slate-200 font-medium">{memberSince ?? <span className="text-slate-500 italic text-xs">Not configured</span>}</p>
                   </div>
-                  <div className="rounded-xl bg-slate-800/50 border border-slate-700/60 px-3.5 py-3">
+                  <div className="rounded-xl bg-secondary/60 dark:bg-slate-800/50 border border-border dark:border-slate-700/60 px-3.5 py-3">
                     <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Gmail Status</p>
                     <p className="text-sm font-medium truncate" style={{ color: user?.gmailConnected ? "#4ade80" : "#94a3b8" }}>
                       {user?.gmailConnected ? "Connected" : "Not connected"}
@@ -493,10 +493,10 @@ export default function Settings() {
             </div>
 
             {/* ── Gmail Integration ──────────────────────────────────────────── */}
-            <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between gap-3">
+            <div className="rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 overflow-hidden">
+              <div className="px-6 py-4 border-b border-border dark:border-slate-800 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/5 border border-slate-700 flex-shrink-0">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/5 border border-border dark:border-slate-700 flex-shrink-0">
                     <svg viewBox="0 0 24 24" className="h-[15px] w-[15px]" aria-hidden="true">
                       <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                       <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -505,7 +505,7 @@ export default function Settings() {
                     </svg>
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-100">Gmail Integration</p>
+                    <p className="text-sm font-semibold text-foreground dark:text-slate-100">Gmail Integration</p>
                     <p className="text-xs text-slate-500 mt-0.5">Google Workspace &amp; personal accounts</p>
                   </div>
                 </div>
@@ -515,7 +515,7 @@ export default function Settings() {
                     Connected
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-700/60 border border-slate-600 text-slate-400 flex-shrink-0">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-muted dark:bg-slate-700/60 border border-border/80 dark:border-slate-600 text-muted-foreground dark:text-slate-400 flex-shrink-0">
                     <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
                     Not connected
                   </span>
@@ -526,10 +526,10 @@ export default function Settings() {
 
                 {/* Account rows */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between rounded-xl border border-slate-700/60 bg-slate-800/40 px-4 py-3">
+                  <div className="flex items-center justify-between rounded-xl border border-border dark:border-slate-700/60 bg-secondary/50 dark:bg-slate-800/40 px-4 py-3">
                     <div className="min-w-0">
                       <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">Google Account</p>
-                      <p className="text-sm font-medium text-slate-200 truncate">
+                      <p className="text-sm font-medium text-foreground dark:text-slate-200 truncate">
                         {user?.gmailConnected ? (user.gmailEmail ?? "Connected") : <span className="text-slate-500 italic">No account connected</span>}
                       </p>
                     </div>
@@ -539,10 +539,10 @@ export default function Settings() {
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2.5 rounded-xl border border-slate-700/60 bg-slate-800/40 px-4 py-3">
+                  <div className="flex items-center gap-2.5 rounded-xl border border-border dark:border-slate-700/60 bg-secondary/50 dark:bg-slate-800/40 px-4 py-3">
                     <Lock className="h-3.5 w-3.5 text-blue-400/70 flex-shrink-0" />
                     <div className="min-w-0">
-                      <p className="text-xs font-medium text-slate-300">OAuth 2.0 Secured</p>
+                      <p className="text-xs font-medium text-muted-foreground dark:text-slate-300">OAuth 2.0 Secured</p>
                       <p className="text-[10px] text-slate-500">Credentials are never stored — Google handles authentication directly.</p>
                     </div>
                   </div>
@@ -566,7 +566,7 @@ export default function Settings() {
                     size="sm"
                     onClick={handleConnectGmail}
                     disabled={connectingGmail}
-                    className={`h-9 text-xs rounded-xl flex-1 transition-all duration-200 ${user?.gmailConnected ? "bg-transparent border-slate-700 hover:bg-slate-800 text-slate-200" : ""}`}
+                    className={`h-9 text-xs rounded-xl flex-1 transition-all duration-200 ${user?.gmailConnected ? "bg-transparent border-border dark:border-slate-700 hover:bg-secondary dark:hover:bg-slate-800 text-foreground dark:text-slate-200" : ""}`}
                   >
                     {connectingGmail
                       ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />Connecting…</>
@@ -586,7 +586,7 @@ export default function Settings() {
                       <div className="h-4 w-4 rounded-full bg-green-500/15 border border-green-500/25 flex items-center justify-center flex-shrink-0">
                         <CheckCircle2 className="h-2.5 w-2.5 text-green-400" />
                       </div>
-                      <span className="text-xs text-slate-400">{f}</span>
+                      <span className="text-xs text-muted-foreground dark:text-slate-400">{f}</span>
                     </div>
                   ))}
                 </div>
@@ -612,7 +612,7 @@ export default function Settings() {
           </div>
 
           {/* ── Branding ──────────────────────────────────────────────────── */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
+          <div className="rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 overflow-hidden">
             <CardHeader
               icon={Building2}
               iconColor="bg-blue-500/15 border border-blue-500/20 text-blue-400"
@@ -626,18 +626,18 @@ export default function Settings() {
 
                   {/* COL 1 — Logo ────────────────────────────────────────────── */}
                   <div className="space-y-4">
-                    <p className="text-xs font-semibold text-slate-300 flex items-center gap-1.5 uppercase tracking-wider">
+                    <p className="text-xs font-semibold text-muted-foreground dark:text-slate-300 flex items-center gap-1.5 uppercase tracking-wider">
                       <ImagePlus className="h-3.5 w-3.5 text-violet-400" /> Company Logo
                     </p>
 
                     {/* Drop zone — larger */}
                     <label
-                      className="relative rounded-2xl border-2 border-dashed border-slate-700 bg-slate-800/40 flex items-center justify-center cursor-pointer hover:border-slate-600 hover:bg-slate-800/60 transition-all duration-200 group"
+                      className="relative rounded-2xl border-2 border-dashed border-border dark:border-slate-700 bg-secondary/50 dark:bg-slate-800/40 flex items-center justify-center cursor-pointer hover:border-border/80 dark:hover:border-slate-600 hover:bg-secondary/80 dark:hover:bg-slate-800/60 transition-all duration-200 group"
                       style={{ minHeight: "192px" }}
                     >
                       <input ref={fileInputRef} type="file" accept="image/*" className="sr-only" onChange={handleLogoFileChange} />
                       {isUploadingLogo && (
-                        <div className="absolute inset-0 bg-slate-900/80 flex items-center justify-center z-10 rounded-2xl">
+                        <div className="absolute inset-0 bg-card/80 dark:bg-slate-900/80 flex items-center justify-center z-10 rounded-2xl">
                           <Loader2 className="h-7 w-7 animate-spin text-blue-400" />
                         </div>
                       )}
@@ -645,11 +645,11 @@ export default function Settings() {
                         <img src={logoPreview} alt="Logo" className="max-h-28 max-w-[180px] object-contain p-4" />
                       ) : (
                         <div className="flex flex-col items-center gap-3 text-slate-600 group-hover:text-slate-500 transition-colors p-8">
-                          <div className="h-12 w-12 rounded-2xl bg-slate-700/60 border border-slate-600/60 flex items-center justify-center group-hover:border-slate-500/60 transition-colors">
+                          <div className="h-12 w-12 rounded-2xl bg-muted dark:bg-slate-700/60 border border-border/80 dark:border-slate-600/60 flex items-center justify-center group-hover:border-slate-500/60 transition-colors">
                             <ImagePlus className="h-5 w-5" />
                           </div>
                           <div className="text-center">
-                            <p className="text-xs font-medium text-slate-400">Click to upload</p>
+                            <p className="text-xs font-medium text-muted-foreground dark:text-slate-400">Click to upload</p>
                             <p className="text-[10px] text-slate-600 mt-0.5">PNG, JPG, or SVG · Max 600 KB</p>
                           </div>
                         </div>
@@ -661,7 +661,7 @@ export default function Settings() {
                         type="button" variant="outline" size="sm"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isUploadingLogo}
-                        className="flex-1 h-8 text-xs rounded-xl bg-transparent border-slate-700 hover:bg-slate-800 text-slate-300 transition-all duration-200"
+                        className="flex-1 h-8 text-xs rounded-xl bg-transparent border-border dark:border-slate-700 hover:bg-secondary dark:hover:bg-slate-800 text-muted-foreground dark:text-slate-300 transition-all duration-200"
                       >
                         {isUploadingLogo
                           ? <><Loader2 className="h-3 w-3 animate-spin mr-1" />Uploading…</>
@@ -684,7 +684,7 @@ export default function Settings() {
 
                   {/* COL 2 — Company Details ────────────────────────────────── */}
                   <div className="space-y-3.5">
-                    <p className="text-xs font-semibold text-slate-300 flex items-center gap-1.5 uppercase tracking-wider">
+                    <p className="text-xs font-semibold text-muted-foreground dark:text-slate-300 flex items-center gap-1.5 uppercase tracking-wider">
                       <Building2 className="h-3.5 w-3.5 text-blue-400" /> Company Details
                     </p>
 
@@ -692,38 +692,38 @@ export default function Settings() {
                       <FL icon={Building2}>Company Name</FL>
                       <Input value={branding.companyName} onChange={e => setBranding(b => ({ ...b, companyName: e.target.value }))}
                         placeholder="e.g. Vertex Car Shipping"
-                        className="rounded-xl h-9 text-sm bg-slate-800/60 border-slate-700 focus:border-blue-500/60 transition-colors" />
+                        className="rounded-xl h-9 text-sm bg-secondary/70 dark:bg-slate-800/60 border-border dark:border-slate-700 focus:border-blue-500/60 transition-colors" />
                     </div>
                     <div>
                       <FL icon={Sparkles}>Tagline / Slogan</FL>
                       <Input value={branding.companyTagline} onChange={e => setBranding(b => ({ ...b, companyTagline: e.target.value }))}
                         placeholder="e.g. Nationwide Vehicle Shipping"
-                        className="rounded-xl h-9 text-sm bg-slate-800/60 border-slate-700 focus:border-blue-500/60 transition-colors" />
+                        className="rounded-xl h-9 text-sm bg-secondary/70 dark:bg-slate-800/60 border-border dark:border-slate-700 focus:border-blue-500/60 transition-colors" />
                     </div>
                     <div>
                       <FL icon={Globe}>Website</FL>
                       <Input value={branding.companyWebsite} onChange={e => setBranding(b => ({ ...b, companyWebsite: e.target.value }))}
                         placeholder="e.g. www.yourcompany.com"
-                        className="rounded-xl h-9 text-sm bg-slate-800/60 border-slate-700 focus:border-blue-500/60 transition-colors" />
+                        className="rounded-xl h-9 text-sm bg-secondary/70 dark:bg-slate-800/60 border-border dark:border-slate-700 focus:border-blue-500/60 transition-colors" />
                     </div>
                     <div>
                       <FL icon={Phone}>Phone</FL>
                       <Input value={branding.companyPhone} onChange={e => setBranding(b => ({ ...b, companyPhone: e.target.value }))}
                         placeholder="e.g. (555) 123-4567"
-                        className="rounded-xl h-9 text-sm bg-slate-800/60 border-slate-700 focus:border-blue-500/60 transition-colors" />
+                        className="rounded-xl h-9 text-sm bg-secondary/70 dark:bg-slate-800/60 border-border dark:border-slate-700 focus:border-blue-500/60 transition-colors" />
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <FL icon={Shield}>USDOT #</FL>
                         <Input value={branding.usdot} onChange={e => setBranding(b => ({ ...b, usdot: e.target.value }))}
                           placeholder="1234567"
-                          className="rounded-xl h-9 text-sm font-mono bg-slate-800/60 border-slate-700 focus:border-blue-500/60 transition-colors" />
+                          className="rounded-xl h-9 text-sm font-mono bg-secondary/70 dark:bg-slate-800/60 border-border dark:border-slate-700 focus:border-blue-500/60 transition-colors" />
                       </div>
                       <div>
                         <FL icon={Hash}>MC #</FL>
                         <Input value={branding.mcNumber} onChange={e => setBranding(b => ({ ...b, mcNumber: e.target.value }))}
                           placeholder="987654"
-                          className="rounded-xl h-9 text-sm font-mono bg-slate-800/60 border-slate-700 focus:border-blue-500/60 transition-colors" />
+                          className="rounded-xl h-9 text-sm font-mono bg-secondary/70 dark:bg-slate-800/60 border-border dark:border-slate-700 focus:border-blue-500/60 transition-colors" />
                       </div>
                     </div>
                     <div>
@@ -732,25 +732,25 @@ export default function Settings() {
                         <input type="color"
                           value={branding.accentColor || "#1d4ed8"}
                           onChange={e => setBranding(b => ({ ...b, accentColor: e.target.value }))}
-                          className="h-9 w-10 rounded-xl border border-slate-700 cursor-pointer bg-slate-800/60 p-1 flex-shrink-0" />
+                          className="h-9 w-10 rounded-xl border border-border dark:border-slate-700 cursor-pointer bg-secondary/70 dark:bg-slate-800/60 p-1 flex-shrink-0" />
                         <Input value={branding.accentColor}
                           onChange={e => setBranding(b => ({ ...b, accentColor: e.target.value }))}
                           placeholder="#1d4ed8"
-                          className="rounded-xl h-9 text-sm font-mono bg-slate-800/60 border-slate-700 focus:border-blue-500/60 transition-colors" />
+                          className="rounded-xl h-9 text-sm font-mono bg-secondary/70 dark:bg-slate-800/60 border-border dark:border-slate-700 focus:border-blue-500/60 transition-colors" />
                       </div>
                     </div>
                     <div>
                       <FL icon={User}>Email (From Name)</FL>
                       <Input value={branding.agentName} onChange={e => setBranding(b => ({ ...b, agentName: e.target.value }))}
                         placeholder="e.g. Frank Miller"
-                        className="rounded-xl h-9 text-sm bg-slate-800/60 border-slate-700 focus:border-blue-500/60 transition-colors" />
+                        className="rounded-xl h-9 text-sm bg-secondary/70 dark:bg-slate-800/60 border-border dark:border-slate-700 focus:border-blue-500/60 transition-colors" />
                       <p className="text-[11px] text-slate-500 mt-1.5">Shown as the sender name. Falls back to CSV agent_name column.</p>
                     </div>
                   </div>
 
                   {/* COL 3 — Signature Preview ──────────────────────────────── */}
                   <div className="space-y-3 flex flex-col">
-                    <p className="text-xs font-semibold text-slate-300 flex items-center gap-1.5 uppercase tracking-wider">
+                    <p className="text-xs font-semibold text-muted-foreground dark:text-slate-300 flex items-center gap-1.5 uppercase tracking-wider">
                       <Eye className="h-3.5 w-3.5 text-emerald-400" /> Signature Preview
                     </p>
                     <p className="text-[11px] text-slate-500 leading-relaxed">
@@ -765,7 +765,7 @@ export default function Settings() {
               </div>
 
               {/* Save footer */}
-              <div className="px-6 py-4 bg-slate-900/60 border-t border-slate-800 flex items-center gap-3">
+              <div className="px-6 py-4 bg-card/60 dark:bg-slate-900/60 border-t border-border dark:border-slate-800 flex items-center gap-3">
                 <Button
                   type="submit"
                   disabled={isSavingBranding}
@@ -785,7 +785,7 @@ export default function Settings() {
           </div>
 
           {/* ── Sending Configuration ────────────────────────────────────── */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
+          <div className="rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 overflow-hidden">
             <CardHeader
               icon={Settings2}
               iconColor="bg-indigo-500/15 border border-indigo-500/20 text-indigo-400"
@@ -798,12 +798,12 @@ export default function Settings() {
 
                 {/* LEFT — Current Sending Account */}
                 <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Current Sending Accounts</p>
+                  <p className="text-xs font-semibold text-muted-foreground dark:text-slate-400 uppercase tracking-wider mb-3">Current Sending Accounts</p>
                   <div className="space-y-2">
 
                     {/* Gmail */}
-                    <div className="flex items-center gap-3 rounded-xl border border-slate-700/60 bg-slate-800/30 px-4 py-3.5">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/5 border border-slate-700 flex-shrink-0">
+                    <div className="flex items-center gap-3 rounded-xl border border-border dark:border-slate-700/60 bg-secondary/40 dark:bg-slate-800/30 px-4 py-3.5">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/5 border border-border dark:border-slate-700 flex-shrink-0">
                         <svg viewBox="0 0 24 24" className="h-[13px] w-[13px]" aria-hidden="true">
                           <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                           <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -812,8 +812,8 @@ export default function Settings() {
                         </svg>
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider leading-tight">Gmail</p>
-                        <p className="text-sm font-medium text-slate-200 mt-0.5 truncate">
+                        <p className="text-xs font-semibold text-muted-foreground dark:text-slate-400 uppercase tracking-wider leading-tight">Gmail</p>
+                        <p className="text-sm font-medium text-foreground dark:text-slate-200 mt-0.5 truncate">
                           {user?.gmailConnected
                             ? (user.gmailEmail ?? "Connected")
                             : <span className="text-slate-500 italic text-xs">Not connected</span>}
@@ -827,13 +827,13 @@ export default function Settings() {
                     </div>
 
                     {/* SMTP */}
-                    <div className="flex items-center gap-3 rounded-xl border border-slate-700/60 bg-slate-800/30 px-4 py-3.5">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-700/60 border border-slate-700 flex-shrink-0">
-                        <Server className="h-3.5 w-3.5 text-slate-400" />
+                    <div className="flex items-center gap-3 rounded-xl border border-border dark:border-slate-700/60 bg-secondary/40 dark:bg-slate-800/30 px-4 py-3.5">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted dark:bg-slate-700/60 border border-border dark:border-slate-700 flex-shrink-0">
+                        <Server className="h-3.5 w-3.5 text-muted-foreground dark:text-slate-400" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider leading-tight">SMTP</p>
-                        <p className="text-sm font-medium text-slate-200 mt-0.5">
+                        <p className="text-xs font-semibold text-muted-foreground dark:text-slate-400 uppercase tracking-wider leading-tight">SMTP</p>
+                        <p className="text-sm font-medium text-foreground dark:text-slate-200 mt-0.5">
                           {billing?.usage.smtpAccountsUsed
                             ? `${billing.usage.smtpAccountsUsed} active mailbox${billing.usage.smtpAccountsUsed !== 1 ? "es" : ""}`
                             : <span className="text-slate-500 italic text-xs">No mailboxes configured</span>}
@@ -843,13 +843,13 @@ export default function Settings() {
                     </div>
 
                     {/* Current Sender */}
-                    <div className="flex items-center gap-3 rounded-xl border border-slate-700/60 bg-slate-800/30 px-4 py-3.5">
+                    <div className="flex items-center gap-3 rounded-xl border border-border dark:border-slate-700/60 bg-secondary/40 dark:bg-slate-800/30 px-4 py-3.5">
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 border border-blue-500/20 flex-shrink-0">
                         <User className="h-3.5 w-3.5 text-blue-400" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider leading-tight">Current Sender</p>
-                        <p className="text-sm font-medium text-slate-200 mt-0.5 truncate">{currentSender ?? <span className="text-slate-500 italic text-xs">Not configured</span>}</p>
+                        <p className="text-xs font-semibold text-muted-foreground dark:text-slate-400 uppercase tracking-wider leading-tight">Current Sender</p>
+                        <p className="text-sm font-medium text-foreground dark:text-slate-200 mt-0.5 truncate">{currentSender ?? <span className="text-slate-500 italic text-xs">Not configured</span>}</p>
                       </div>
                     </div>
 
@@ -858,8 +858,8 @@ export default function Settings() {
 
                 {/* RIGHT — Behavior */}
                 <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Behavior</p>
-                  <div className="rounded-xl border border-slate-700/60 bg-slate-800/30 px-4 divide-y divide-slate-700/60">
+                  <p className="text-xs font-semibold text-muted-foreground dark:text-slate-400 uppercase tracking-wider mb-3">Behavior</p>
+                  <div className="rounded-xl border border-border dark:border-slate-700/60 bg-secondary/40 dark:bg-slate-800/30 px-4 divide-y divide-border dark:divide-slate-700/60">
                     <Toggle
                       checked={branding.useSignature}
                       onChange={() => setBranding(b => ({ ...b, useSignature: !b.useSignature }))}
@@ -881,21 +881,21 @@ export default function Settings() {
           </div>
 
           {/* ── Danger Zone ─────────────────────────────────────────────────── */}
-          <div className="rounded-2xl border border-red-900/40 bg-slate-900 overflow-hidden">
+          <div className="rounded-2xl border border-red-900/40 bg-card dark:bg-slate-900 overflow-hidden">
             <div className="px-6 py-4 border-b border-red-900/40 flex items-center gap-3">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-500/10 border border-red-500/20 flex-shrink-0">
                 <LogOut className="h-3.5 w-3.5 text-red-400" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-slate-100">Danger Zone</p>
+                <p className="text-sm font-semibold text-foreground dark:text-slate-100">Danger Zone</p>
                 <p className="text-xs text-slate-500 mt-0.5">Actions that affect your session.</p>
               </div>
             </div>
 
             <div className="p-6">
-              <div className="flex items-center justify-between rounded-xl border border-slate-700/60 bg-slate-800/30 px-5 py-4">
+              <div className="flex items-center justify-between rounded-xl border border-border dark:border-slate-700/60 bg-secondary/40 dark:bg-slate-800/30 px-5 py-4">
                 <div>
-                  <p className="text-sm font-semibold text-slate-200">Sign Out</p>
+                  <p className="text-sm font-semibold text-foreground dark:text-slate-200">Sign Out</p>
                   <p className="text-xs text-slate-500 mt-0.5">Sign out of BrokerMAIL on this device.</p>
                 </div>
                 <Button
@@ -918,12 +918,12 @@ export default function Settings() {
         <div className="space-y-4 lg:sticky lg:top-4">
 
           {/* ── Plan Card ─────────────────────────────────────────────────── */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-800 flex items-center gap-2.5">
+          <div className="rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 overflow-hidden">
+            <div className="px-5 py-4 border-b border-border dark:border-slate-800 flex items-center gap-2.5">
               <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-500/15 border border-amber-500/20 flex-shrink-0">
                 <CreditCard className="h-3 w-3 text-amber-400" />
               </div>
-              <p className="text-sm font-semibold text-slate-100">Current Plan</p>
+              <p className="text-sm font-semibold text-foreground dark:text-slate-100">Current Plan</p>
             </div>
 
             <div className="p-5 space-y-4">
@@ -931,9 +931,9 @@ export default function Settings() {
               <div className="flex items-center justify-between">
                 <div>
                   {planName ? (
-                    <p className="text-base font-bold text-white">{planName}</p>
+                    <p className="text-base font-bold text-foreground dark:text-white">{planName}</p>
                   ) : (
-                    <div className="h-5 w-24 rounded bg-slate-800 animate-pulse" />
+                    <div className="h-5 w-24 rounded bg-muted dark:bg-slate-800 animate-pulse" />
                   )}
                   <p className="text-xs text-slate-500 mt-0.5">This billing period</p>
                 </div>
@@ -946,20 +946,20 @@ export default function Settings() {
               {/* Email usage */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400 flex items-center gap-1.5">
+                  <span className="text-muted-foreground dark:text-slate-400 flex items-center gap-1.5">
                     <TrendingUp className="h-3 w-3 text-slate-500" />
                     Emails sent
                   </span>
                   {emailsUsed !== null && emailsLimit !== null ? (
-                    <span className="text-slate-200 font-semibold tabular-nums">
+                    <span className="text-foreground dark:text-slate-200 font-semibold tabular-nums">
                       {emailsUsed.toLocaleString()} / {emailsLimit === -1 ? "∞" : emailsLimit.toLocaleString()}
                     </span>
                   ) : (
-                    <div className="h-3.5 w-20 rounded bg-slate-800 animate-pulse" />
+                    <div className="h-3.5 w-20 rounded bg-muted dark:bg-slate-800 animate-pulse" />
                   )}
                 </div>
                 {/* Progress bar */}
-                <div className="h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
+                <div className="h-1.5 w-full rounded-full bg-secondary dark:bg-slate-800 overflow-hidden">
                   {usagePct !== null && (
                     <div
                       className="h-full rounded-full transition-all duration-500"
@@ -980,7 +980,7 @@ export default function Settings() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full h-9 text-xs rounded-xl border-slate-700 hover:bg-slate-800 text-slate-200 bg-transparent transition-all duration-200 group"
+                  className="w-full h-9 text-xs rounded-xl border-border dark:border-slate-700 hover:bg-secondary dark:hover:bg-slate-800 text-foreground dark:text-slate-200 bg-transparent transition-all duration-200 group"
                 >
                   Manage Plan
                   <ArrowRight className="h-3 w-3 ml-auto group-hover:translate-x-0.5 transition-transform duration-200" />
@@ -990,20 +990,20 @@ export default function Settings() {
           </div>
 
           {/* ── Need Help Card ────────────────────────────────────────────── */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
+          <div className="rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 overflow-hidden">
             <div className="p-5 space-y-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-500/10 border border-blue-500/20">
                 <HeadphonesIcon className="h-4 w-4 text-blue-400" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-slate-100">Need Help?</p>
+                <p className="text-sm font-semibold text-foreground dark:text-slate-100">Need Help?</p>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">Our support team is here. Open a ticket and we'll get back to you.</p>
               </div>
               <Link href="/support">
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full h-9 text-xs rounded-xl border-slate-700 hover:bg-slate-800 text-slate-200 bg-transparent transition-all duration-200"
+                  className="w-full h-9 text-xs rounded-xl border-border dark:border-slate-700 hover:bg-secondary dark:hover:bg-slate-800 text-foreground dark:text-slate-200 bg-transparent transition-all duration-200"
                 >
                   Contact Support
                 </Button>

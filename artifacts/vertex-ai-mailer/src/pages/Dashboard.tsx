@@ -117,12 +117,12 @@ function getCampaignStatus(campaign: Campaign): { icon: React.ElementType; label
   if (isCooling) return { icon: TimerReset,    label: "Cooling Down", dotColor: "bg-orange-400", bg: "bg-orange-500/10", text: "text-orange-400" };
   switch (campaign.status) {
     case "sending":   return { icon: PlayCircle,    label: "Sending",   dotColor: "bg-blue-400",    bg: "bg-blue-500/10",    text: "text-blue-400"    };
-    case "pending":   return { icon: FileText,      label: "Pending",   dotColor: "bg-slate-400",   bg: "bg-slate-700/40",   text: "text-slate-400"   };
+    case "pending":   return { icon: FileText,      label: "Pending",   dotColor: "bg-slate-400",   bg: "bg-muted/60 dark:bg-slate-700/40",   text: "text-slate-400"   };
     case "paused":    return { icon: PauseCircle,   label: "Paused",    dotColor: "bg-amber-400",   bg: "bg-amber-500/10",   text: "text-amber-400"   };
     case "completed": return { icon: CheckCircle2,  label: "Completed", dotColor: "bg-green-400",   bg: "bg-green-500/10",   text: "text-green-400"   };
-    case "cancelled": return { icon: AlertTriangle, label: "Cancelled", dotColor: "bg-slate-400",   bg: "bg-slate-700/40",   text: "text-slate-400"   };
+    case "cancelled": return { icon: AlertTriangle, label: "Cancelled", dotColor: "bg-slate-400",   bg: "bg-muted/60 dark:bg-slate-700/40",   text: "text-slate-400"   };
     case "failed":    return { icon: AlertTriangle, label: "Failed",    dotColor: "bg-red-400",     bg: "bg-red-500/10",     text: "text-red-400"     };
-    default:          return { icon: FileText,      label: campaign.status, dotColor: "bg-slate-400", bg: "bg-slate-700/40", text: "text-slate-400" };
+    default:          return { icon: FileText,      label: campaign.status, dotColor: "bg-slate-400", bg: "bg-muted/60 dark:bg-slate-700/40", text: "text-slate-400" };
   }
 }
 
@@ -133,7 +133,7 @@ function activityIcon(type: string): { icon: React.ElementType; color: string; b
     case "draft_created":      return { icon: Mail,         color: "text-indigo-400", bg: "bg-indigo-500/10" };
     case "email_opened":       return { icon: Eye,          color: "text-emerald-400",bg: "bg-emerald-500/10"};
     case "bounce_detected":    return { icon: AlertTriangle,color: "text-red-400",    bg: "bg-red-500/10"    };
-    default:                   return { icon: Activity,     color: "text-slate-400",  bg: "bg-slate-700/40"  };
+    default:                   return { icon: Activity,     color: "text-muted-foreground dark:text-slate-400",  bg: "bg-muted/60 dark:bg-slate-700/40"  };
   }
 }
 
@@ -144,15 +144,15 @@ function SectionCard({ title, subtitle, icon: Icon, iconBg, action, children }: 
   action?: React.ReactNode; children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-800 flex items-center gap-3">
+    <div className="rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 overflow-hidden">
+      <div className="px-5 py-4 border-b border-border dark:border-slate-800 flex items-center gap-3">
         {Icon && (
-          <div className={`h-7 w-7 rounded-lg flex items-center justify-center flex-shrink-0 ${iconBg ?? "bg-slate-700/60"}`}>
+          <div className={`h-7 w-7 rounded-lg flex items-center justify-center flex-shrink-0 ${iconBg ?? "bg-muted dark:bg-slate-700/60"}`}>
             <Icon className="h-3.5 w-3.5" />
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-slate-100">{title}</p>
+          <p className="text-sm font-semibold text-foreground dark:text-slate-100">{title}</p>
           {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
         </div>
         {action}
@@ -199,7 +199,7 @@ function OnboardingCard({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-emerald-300">Everything is ready.</p>
-          <p className="text-xs text-slate-400 mt-0.5">BrokerMAIL AI is fully configured and ready for sending campaigns.</p>
+          <p className="text-xs text-muted-foreground dark:text-slate-400 mt-0.5">BrokerMAIL AI is fully configured and ready for sending campaigns.</p>
         </div>
         <Button asChild size="sm"
           className="h-8 px-3 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5 flex-shrink-0">
@@ -213,20 +213,20 @@ function OnboardingCard({
   if (allDone) {
     return (
       <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }}
-        className="rounded-2xl border border-emerald-500/20 bg-slate-900 overflow-hidden">
+        className="rounded-2xl border border-emerald-500/20 bg-card dark:bg-slate-900 overflow-hidden">
         <div className="px-6 py-8 flex flex-col items-center text-center">
           <div className="h-14 w-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-4">
             <Rocket className="h-7 w-7 text-emerald-400" />
           </div>
-          <h3 className="text-lg font-bold text-white mb-1">🎉 BrokerMAIL AI is fully configured.</h3>
-          <p className="text-sm text-slate-400 mb-6 max-w-sm">Your workspace is ready for production. Start sending campaigns and building relationships.</p>
+          <h3 className="text-lg font-bold text-foreground dark:text-white mb-1">🎉 BrokerMAIL AI is fully configured.</h3>
+          <p className="text-sm text-muted-foreground dark:text-slate-400 mb-6 max-w-sm">Your workspace is ready for production. Start sending campaigns and building relationships.</p>
           <div className="flex items-center gap-3">
             <Button asChild size="sm"
               className="h-9 px-4 text-sm rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white gap-2">
               <Link href="/compose"><PenLine className="h-3.5 w-3.5" /> Compose Email</Link>
             </Button>
             <Button asChild variant="outline" size="sm"
-              className="h-9 px-4 text-sm rounded-xl border-slate-700 hover:bg-slate-800 text-slate-200 bg-transparent gap-2">
+              className="h-9 px-4 text-sm rounded-xl border-border dark:border-slate-700 hover:bg-secondary dark:hover:bg-slate-800 text-foreground dark:text-slate-200 bg-transparent gap-2">
               <Link href="/campaigns"><Megaphone className="h-3.5 w-3.5" /> Start New Campaign</Link>
             </Button>
           </div>
@@ -243,24 +243,24 @@ function OnboardingCard({
   // ── Normal checklist ─────────────────────────────────────────────────────
   return (
     <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-      className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
+      className="rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-slate-800 flex items-start justify-between gap-4">
+      <div className="px-5 py-4 border-b border-border dark:border-slate-800 flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-0.5">
-            <p className="text-sm font-semibold text-slate-100">Getting Started</p>
+            <p className="text-sm font-semibold text-foreground dark:text-slate-100">Getting Started</p>
             {!dataReady && <Loader2 className="h-3.5 w-3.5 text-slate-500 animate-spin" />}
           </div>
           <p className="text-xs text-slate-500">Complete these steps to unlock the full BrokerMAIL AI experience.</p>
         </div>
         <div className="flex-shrink-0 text-right">
-          <p className="text-xs font-semibold text-slate-300 tabular-nums">{completedCount} of {steps.length} completed</p>
+          <p className="text-xs font-semibold text-muted-foreground dark:text-slate-300 tabular-nums">{completedCount} of {steps.length} completed</p>
           <p className="text-[11px] text-slate-500 mt-0.5">{pct}% done</p>
         </div>
       </div>
 
       {/* Animated progress bar */}
-      <div className="h-1 w-full bg-slate-800">
+      <div className="h-1 w-full bg-secondary dark:bg-slate-800">
         <motion.div className="h-full bg-blue-500 rounded-full"
           initial={{ width: 0 }}
           animate={{ width: `${pct}%` }}
@@ -269,13 +269,13 @@ function OnboardingCard({
       </div>
 
       {/* Steps */}
-      <div className="divide-y divide-slate-800/60">
+      <div className="divide-y divide-border dark:divide-slate-800/60">
         {steps.map((step, i) => {
           const Icon = step.icon;
           return (
             <motion.div key={step.id}
               custom={i} initial="hidden" animate="show" variants={fadeUp}
-              className={`flex items-start gap-4 px-5 py-4 transition-colors ${step.done ? "opacity-60" : "hover:bg-slate-800/30"}`}>
+              className={`flex items-start gap-4 px-5 py-4 transition-colors ${step.done ? "opacity-60" : "hover:bg-secondary/40 dark:hover:bg-slate-800/30"}`}>
               {/* Completion indicator — clickable circle to manually mark done */}
               <div className="flex-shrink-0 w-5 flex items-center justify-center mt-0.5">
                 <AnimatePresence mode="wait">
@@ -309,7 +309,7 @@ function OnboardingCard({
               <div className="min-w-0 flex-1">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
                   <div className="min-w-0 flex-1">
-                    <p className={`text-sm font-semibold ${step.done ? "text-slate-400 line-through decoration-slate-600" : "text-slate-100"}`}>
+                    <p className={`text-sm font-semibold ${step.done ? "text-slate-400 line-through decoration-slate-600" : "text-foreground dark:text-slate-100"}`}>
                       {step.title}
                     </p>
                     <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{step.description}</p>
@@ -319,14 +319,14 @@ function OnboardingCard({
                     <div className="flex-shrink-0 mt-2 sm:mt-0">
                       {step.btnHref ? (
                         <Button asChild variant="outline" size="sm"
-                          className="h-8 px-3 text-xs rounded-xl border-slate-700 hover:bg-slate-800 hover:border-slate-600 text-slate-200 bg-transparent gap-1.5 whitespace-nowrap">
+                          className="h-8 px-3 text-xs rounded-xl border-border dark:border-slate-700 hover:bg-secondary dark:hover:bg-slate-800 hover:border-border/80 dark:hover:border-slate-600 text-foreground dark:text-slate-200 bg-transparent gap-1.5 whitespace-nowrap">
                           <Link href={step.btnHref}>
                             {step.btnLabel} <ArrowRight className="h-3 w-3" />
                           </Link>
                         </Button>
                       ) : (
                         <Button variant="outline" size="sm" onClick={step.btnAction}
-                          className="h-8 px-3 text-xs rounded-xl border-slate-700 hover:bg-slate-800 hover:border-slate-600 text-slate-200 bg-transparent gap-1.5 whitespace-nowrap">
+                          className="h-8 px-3 text-xs rounded-xl border-border dark:border-slate-700 hover:bg-secondary dark:hover:bg-slate-800 hover:border-border/80 dark:hover:border-slate-600 text-foreground dark:text-slate-200 bg-transparent gap-1.5 whitespace-nowrap">
                           {step.btnLabel} <ArrowRight className="h-3 w-3" />
                         </Button>
                       )}
@@ -665,7 +665,7 @@ export default function Dashboard() {
     ok:      "text-green-400",
     warn:    "text-amber-400",
     error:   "text-red-400",
-    neutral: "text-slate-400",
+    neutral: "text-muted-foreground dark:text-slate-400",
     loading: "text-slate-500",
   };
 
@@ -675,13 +675,13 @@ export default function Dashboard() {
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">{greeting}, {firstName}</h1>
-          <p className="text-slate-400 mt-1 text-sm">Here's everything happening across your BrokerMAIL account today.</p>
+          <h1 className="text-2xl font-bold text-foreground dark:text-white tracking-tight">{greeting}, {firstName}</h1>
+          <p className="text-muted-foreground dark:text-slate-400 mt-1 text-sm">Here's everything happening across your BrokerMAIL account today.</p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className="hidden md:block text-xs text-slate-500 mr-1">{today}</span>
           <Button asChild variant="outline" size="sm"
-            className="h-8 px-3 text-xs rounded-xl border-slate-700 hover:bg-slate-800 text-slate-200 bg-transparent gap-1.5">
+            className="h-8 px-3 text-xs rounded-xl border-border dark:border-slate-700 hover:bg-secondary dark:hover:bg-slate-800 text-foreground dark:text-slate-200 bg-transparent gap-1.5">
             <Link href="/compose">
               <PenLine className="h-3.5 w-3.5" /> Compose Email
             </Link>
@@ -696,18 +696,18 @@ export default function Dashboard() {
       </div>
 
       {/* ── Account Health ──────────────────────────────────────────────────── */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+      <div className="rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 p-5">
         <div className="flex items-center gap-2 mb-4">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Account Health</p>
+          <p className="text-xs font-semibold text-muted-foreground dark:text-slate-400 uppercase tracking-wider">Account Health</p>
           <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {healthChips.map((chip) => (
             <div key={chip.label}
-              className="flex items-start gap-2.5 rounded-xl border border-slate-700/60 bg-slate-800/40 px-3.5 py-3">
+              className="flex items-start gap-2.5 rounded-xl border border-border dark:border-slate-700/60 bg-secondary/50 dark:bg-slate-800/40 px-3.5 py-3">
               <span className={`mt-1 h-2 w-2 rounded-full flex-shrink-0 ${statusDot[chip.status]}`} />
               <div className="min-w-0">
-                <p className="text-xs font-semibold text-slate-200">{chip.label}</p>
+                <p className="text-xs font-semibold text-foreground dark:text-slate-200">{chip.label}</p>
                 <p className={`text-[11px] mt-0.5 truncate ${statusText[chip.status]}`}>{chip.desc}</p>
               </div>
             </div>
@@ -796,7 +796,7 @@ export default function Dashboard() {
 
         {/* Emails Sent */}
         <motion.div custom={0} initial="hidden" animate="show" variants={fadeUp}>
-          <div className="group rounded-2xl border border-slate-800 bg-slate-900 p-5 hover:border-slate-700 hover:shadow-xl hover:shadow-black/20 transition-all duration-200 cursor-default">
+          <div className="group rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 p-5 hover:border-border dark:hover:border-slate-700 hover:shadow-xl hover:shadow-black/20 transition-all duration-200 cursor-default">
             <div className="flex items-center gap-2 mb-3">
               <div className="h-7 w-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center flex-shrink-0">
                 <Send className="h-3.5 w-3.5 text-blue-400" />
@@ -804,15 +804,15 @@ export default function Dashboard() {
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Emails Sent</p>
             </div>
             {!billing ? (
-              <Skeleton className="h-8 w-16 bg-slate-800" />
+              <Skeleton className="h-8 w-16 bg-muted dark:bg-slate-800" />
             ) : (
-              <p className="text-3xl font-bold text-white tabular-nums">
+              <p className="text-3xl font-bold text-foreground dark:text-white tabular-nums">
                 {billing.usage.emailsSentThisMonth.toLocaleString()}
               </p>
             )}
             <p className="text-xs text-slate-500 mt-1">This billing period</p>
             {emailUsagePct !== null && (
-              <div className="mt-3 h-1 w-full rounded-full bg-slate-800 overflow-hidden">
+              <div className="mt-3 h-1 w-full rounded-full bg-secondary dark:bg-slate-800 overflow-hidden">
                 <div className="h-full rounded-full transition-all duration-700"
                   style={{ width: `${emailUsagePct}%`, backgroundColor: emailUsagePct >= 90 ? "#f87171" : emailUsagePct >= 70 ? "#fb923c" : "#3b82f6" }} />
               </div>
@@ -822,7 +822,7 @@ export default function Dashboard() {
 
         {/* Drafts Created */}
         <motion.div custom={1} initial="hidden" animate="show" variants={fadeUp}>
-          <div className="group rounded-2xl border border-slate-800 bg-slate-900 p-5 hover:border-slate-700 hover:shadow-xl hover:shadow-black/20 transition-all duration-200 cursor-default">
+          <div className="group rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 p-5 hover:border-border dark:hover:border-slate-700 hover:shadow-xl hover:shadow-black/20 transition-all duration-200 cursor-default">
             <div className="flex items-center gap-2 mb-3">
               <div className="h-7 w-7 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
                 <Mail className="h-3.5 w-3.5 text-violet-400" />
@@ -830,15 +830,15 @@ export default function Dashboard() {
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Drafts Created</p>
             </div>
             {statsLoading ? (
-              <Skeleton className="h-8 w-16 bg-slate-800" />
+              <Skeleton className="h-8 w-16 bg-muted dark:bg-slate-800" />
             ) : (
-              <p className="text-3xl font-bold text-white tabular-nums">
+              <p className="text-3xl font-bold text-foreground dark:text-white tabular-nums">
                 {(stats?.totalDraftsCreated ?? 0).toLocaleString()}
               </p>
             )}
             <p className="text-xs text-slate-500 mt-1">All time</p>
             {!statsLoading && (stats?.draftSuccessRate ?? 0) > 0 && (
-              <div className="mt-3 h-1 w-full rounded-full bg-slate-800 overflow-hidden">
+              <div className="mt-3 h-1 w-full rounded-full bg-secondary dark:bg-slate-800 overflow-hidden">
                 <div className="h-full rounded-full bg-violet-500 transition-all duration-700"
                   style={{ width: `${Math.round((stats?.draftSuccessRate ?? 0) * 100)}%` }} />
               </div>
@@ -848,7 +848,7 @@ export default function Dashboard() {
 
         {/* Active Campaigns */}
         <motion.div custom={2} initial="hidden" animate="show" variants={fadeUp}>
-          <div className="group rounded-2xl border border-slate-800 bg-slate-900 p-5 hover:border-slate-700 hover:shadow-xl hover:shadow-black/20 transition-all duration-200 cursor-default">
+          <div className="group rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 p-5 hover:border-border dark:hover:border-slate-700 hover:shadow-xl hover:shadow-black/20 transition-all duration-200 cursor-default">
             <div className="flex items-center gap-2 mb-3">
               <div className="h-7 w-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
                 <Zap className="h-3.5 w-3.5 text-emerald-400" />
@@ -856,14 +856,14 @@ export default function Dashboard() {
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Active Campaigns</p>
             </div>
             {campaignsLoading ? (
-              <Skeleton className="h-8 w-16 bg-slate-800" />
+              <Skeleton className="h-8 w-16 bg-muted dark:bg-slate-800" />
             ) : (
-              <p className="text-3xl font-bold text-white tabular-nums">{activeCampaigns}</p>
+              <p className="text-3xl font-bold text-foreground dark:text-white tabular-nums">{activeCampaigns}</p>
             )}
             <p className="text-xs text-slate-500 mt-1">
               {coolingCampaigns > 0 ? `${coolingCampaigns} cooling down` : "Running now"}
             </p>
-            <div className="mt-3 h-1 w-full rounded-full bg-slate-800 overflow-hidden">
+            <div className="mt-3 h-1 w-full rounded-full bg-secondary dark:bg-slate-800 overflow-hidden">
               <div className={`h-full rounded-full transition-all duration-700 ${activeCampaigns > 0 ? "bg-emerald-500" : "bg-slate-700"}`}
                 style={{ width: activeCampaigns > 0 ? "100%" : "0%" }} />
             </div>
@@ -872,7 +872,7 @@ export default function Dashboard() {
 
         {/* Quota Used */}
         <motion.div custom={3} initial="hidden" animate="show" variants={fadeUp}>
-          <div className="group rounded-2xl border border-slate-800 bg-slate-900 p-5 hover:border-slate-700 hover:shadow-xl hover:shadow-black/20 transition-all duration-200 cursor-default">
+          <div className="group rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 p-5 hover:border-border dark:hover:border-slate-700 hover:shadow-xl hover:shadow-black/20 transition-all duration-200 cursor-default">
             <div className="flex items-center gap-2 mb-3">
               <div className={`h-7 w-7 rounded-lg flex items-center justify-center flex-shrink-0 ${quotaPct >= 80 ? "bg-red-500/10 border border-red-500/20" : "bg-amber-500/10 border border-amber-500/20"}`}>
                 <BarChart3 className={`h-3.5 w-3.5 ${quotaPct >= 80 ? "text-red-400" : "text-amber-400"}`} />
@@ -880,16 +880,16 @@ export default function Dashboard() {
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Quota Used</p>
             </div>
             {quotaLoading ? (
-              <Skeleton className="h-8 w-16 bg-slate-800" />
+              <Skeleton className="h-8 w-16 bg-muted dark:bg-slate-800" />
             ) : (
-              <p className="text-3xl font-bold text-white tabular-nums">
+              <p className="text-3xl font-bold text-foreground dark:text-white tabular-nums">
                 {quota ? `${quotaPct}%` : "—"}
               </p>
             )}
             <p className="text-xs text-slate-500 mt-1">
               {quota ? `${quota.usedThisHour}/${quota.hourlyLimit} this hour` : "No mailbox configured"}
             </p>
-            <div className="mt-3 h-1 w-full rounded-full bg-slate-800 overflow-hidden">
+            <div className="mt-3 h-1 w-full rounded-full bg-secondary dark:bg-slate-800 overflow-hidden">
               <div className="h-full rounded-full transition-all duration-700"
                 style={{ width: `${quotaPct}%`, backgroundColor: quotaPct >= 90 ? "#f87171" : quotaPct >= 70 ? "#fb923c" : "#f59e0b" }} />
             </div>
@@ -918,13 +918,13 @@ export default function Dashboard() {
           >
             {campaignsLoading ? (
               <div className="p-5 space-y-3">
-                {[1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full rounded-xl bg-slate-800" />)}
+                {[1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full rounded-xl bg-muted dark:bg-slate-800" />)}
               </div>
             ) : campaigns.length ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-slate-800">
+                    <tr className="border-b border-border dark:border-slate-800">
                       <th className="px-5 py-2.5 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Campaign</th>
                       <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Progress</th>
                       <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider hidden md:table-cell">Recipients</th>
@@ -933,27 +933,27 @@ export default function Dashboard() {
                       <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/60">
+                  <tbody className="divide-y divide-border dark:divide-slate-800/60">
                     {campaigns.map(c => {
                       const s = getCampaignStatus(c);
                       const done = (c.sentCount ?? 0) + (c.draftedCount ?? 0);
                       const pct  = c.totalLeads > 0 ? Math.round((done / c.totalLeads) * 100) : 0;
                       return (
-                        <tr key={c.id} className="hover:bg-slate-800/30 transition-colors">
+                        <tr key={c.id} className="hover:bg-secondary/40 dark:hover:bg-slate-800/30 transition-colors">
                           <td className="px-5 py-3.5">
-                            <p className="font-medium text-slate-100 text-sm truncate max-w-[160px]">{c.name}</p>
+                            <p className="font-medium text-foreground dark:text-slate-100 text-sm truncate max-w-[160px]">{c.name}</p>
                             <p className="text-[11px] text-slate-500 mt-0.5">{c.sendMode === "smtp" ? "SMTP" : "Gmail"}</p>
                           </td>
                           <td className="px-3 py-3.5 hidden sm:table-cell">
                             <div className="w-24">
-                              <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                              <div className="h-1.5 bg-secondary dark:bg-slate-800 rounded-full overflow-hidden">
                                 <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
                               </div>
                               <p className="text-[10px] text-slate-500 mt-1">{done}/{c.totalLeads}</p>
                             </div>
                           </td>
                           <td className="px-3 py-3.5 hidden md:table-cell">
-                            <p className="text-sm text-slate-300 tabular-nums">{c.totalLeads.toLocaleString()}</p>
+                            <p className="text-sm text-muted-foreground dark:text-slate-300 tabular-nums">{c.totalLeads.toLocaleString()}</p>
                           </td>
                           <td className="px-3 py-3.5">
                             <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${s.bg} ${s.text}`}>
@@ -982,13 +982,13 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-14 text-slate-500">
-                <div className="h-12 w-12 rounded-2xl bg-slate-800 flex items-center justify-center mb-3">
+                <div className="h-12 w-12 rounded-2xl bg-secondary dark:bg-slate-800 flex items-center justify-center mb-3">
                   <Zap className="h-6 w-6 opacity-30" />
                 </div>
-                <p className="text-sm font-medium text-slate-400">No campaigns yet</p>
+                <p className="text-sm font-medium text-muted-foreground dark:text-slate-400">No campaigns yet</p>
                 <p className="text-xs mt-1 mb-4 text-slate-500">Upload leads to create your first campaign</p>
                 <Button asChild variant="outline" size="sm"
-                  className="rounded-xl gap-1.5 text-xs border-slate-700 hover:bg-slate-800 text-slate-300 bg-transparent">
+                  className="rounded-xl gap-1.5 text-xs border-border dark:border-slate-700 hover:bg-secondary dark:hover:bg-slate-800 text-muted-foreground dark:text-slate-300 bg-transparent">
                   <Link href="/leads/import"><UploadCloud className="h-3.5 w-3.5" /> Upload Leads</Link>
                 </Button>
               </div>
@@ -1007,10 +1007,10 @@ export default function Dashboard() {
               </Button>
             }
           >
-            <div className="divide-y divide-slate-800/50">
+            <div className="divide-y divide-border dark:divide-slate-800/50">
               {draftsLoading ? (
                 <div className="p-5 space-y-3">
-                  {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full rounded-xl bg-slate-800" />)}
+                  {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full rounded-xl bg-muted dark:bg-slate-800" />)}
                 </div>
               ) : recentDrafts?.data?.length ? (
                 recentDrafts.data.map(draft => {
@@ -1018,20 +1018,20 @@ export default function Dashboard() {
                   const isFailed  = draft.status === "failed";
                   return (
                     <div key={draft.id}
-                      className="px-5 py-3.5 flex items-center gap-4 hover:bg-slate-800/30 transition-colors">
+                      className="px-5 py-3.5 flex items-center gap-4 hover:bg-secondary/40 dark:hover:bg-slate-800/30 transition-colors">
                       <div className={`h-8 w-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                        isSuccess ? "bg-green-500/10" : isFailed ? "bg-red-500/10" : "bg-slate-700/60"
+                        isSuccess ? "bg-green-500/10" : isFailed ? "bg-red-500/10" : "bg-muted dark:bg-slate-700/60"
                       }`}>
                         <Mail className={`h-3.5 w-3.5 ${
-                          isSuccess ? "text-green-400" : isFailed ? "text-red-400" : "text-slate-400"
+                          isSuccess ? "text-green-400" : isFailed ? "text-red-400" : "text-muted-foreground dark:text-slate-400"
                         }`} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-slate-100 text-sm truncate">{draft.subject || <span className="italic text-slate-500">No subject</span>}</p>
+                        <p className="font-medium text-foreground dark:text-slate-100 text-sm truncate">{draft.subject || <span className="italic text-slate-500">No subject</span>}</p>
                         <p className="text-xs text-slate-500 mt-0.5">{fmtTime(draft.createdAt)}</p>
                       </div>
                       <span className={`text-xs font-medium px-2.5 py-1 rounded-full flex-shrink-0 ${
-                        isSuccess ? "bg-green-500/10 text-green-400" : isFailed ? "bg-red-500/10 text-red-400" : "bg-slate-700/60 text-slate-400"
+                        isSuccess ? "bg-green-500/10 text-green-400" : isFailed ? "bg-red-500/10 text-red-400" : "bg-muted dark:bg-slate-700/60 text-muted-foreground dark:text-slate-400"
                       }`}>
                         {draft.status}
                       </span>
@@ -1041,7 +1041,7 @@ export default function Dashboard() {
               ) : (
                 <div className="flex flex-col items-center justify-center py-14 text-slate-500">
                   <Mail className="h-10 w-10 mb-3 opacity-20" />
-                  <p className="text-sm font-medium text-slate-400">No drafts yet</p>
+                  <p className="text-sm font-medium text-muted-foreground dark:text-slate-400">No drafts yet</p>
                   <Button asChild variant="ghost" size="sm" className="mt-3 text-blue-400 hover:text-blue-300 text-xs gap-1">
                     <Link href="/leads/import">Upload leads to create drafts →</Link>
                   </Button>
@@ -1064,10 +1064,10 @@ export default function Dashboard() {
               ].map((a, i) => (
                 <motion.div key={a.label} custom={i} initial="hidden" animate="show" variants={fadeUp}>
                   <Link href={a.href}>
-                    <div className="group flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 hover:border-slate-700 hover:bg-slate-800/60 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 transition-all duration-150 cursor-pointer">
+                    <div className="group flex items-center gap-3 rounded-xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 px-4 py-3 hover:border-border dark:hover:border-slate-700 hover:bg-secondary/80 dark:hover:bg-slate-800/60 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 transition-all duration-150 cursor-pointer">
                       <a.icon className="h-4 w-4 text-slate-400 group-hover:text-slate-200 transition-colors flex-shrink-0" />
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-200 leading-tight">{a.label}</p>
+                        <p className="text-sm font-medium text-foreground dark:text-slate-200 leading-tight">{a.label}</p>
                         <p className="text-[11px] text-slate-500 truncate">{a.desc}</p>
                       </div>
                       <ChevronRight className="h-3.5 w-3.5 text-slate-600 group-hover:text-slate-400 group-hover:translate-x-0.5 transition-all ml-auto flex-shrink-0" />
@@ -1085,22 +1085,22 @@ export default function Dashboard() {
         <div className="space-y-4 lg:sticky lg:top-4">
 
           {/* Account Overview */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-800">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Account Overview</p>
+          <div className="rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 overflow-hidden">
+            <div className="px-5 py-4 border-b border-border dark:border-slate-800">
+              <p className="text-xs font-semibold text-muted-foreground dark:text-slate-400 uppercase tracking-wider">Account Overview</p>
             </div>
             <div className="p-5 space-y-4">
               <div className="flex items-center gap-3">
                 {user?.avatarUrl ? (
-                  <img src={user.avatarUrl} alt={user.name} className="h-11 w-11 rounded-full object-cover ring-2 ring-slate-700 flex-shrink-0" />
+                  <img src={user.avatarUrl} alt={user.name} className="h-11 w-11 rounded-full object-cover ring-2 ring-border dark:ring-slate-700 flex-shrink-0" />
                 ) : (
-                  <div className="h-11 w-11 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold flex-shrink-0 ring-2 ring-slate-700">
+                  <div className="h-11 w-11 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold flex-shrink-0 ring-2 ring-border dark:ring-slate-700">
                     {initials}
                   </div>
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-white text-sm leading-tight">{user?.name}</p>
-                  <p className="text-xs text-slate-400 mt-0.5 truncate">{user?.email}</p>
+                  <p className="font-semibold text-foreground dark:text-white text-sm leading-tight">{user?.name}</p>
+                  <p className="text-xs text-muted-foreground dark:text-slate-400 mt-0.5 truncate">{user?.email}</p>
                   <div className="flex items-center gap-1.5 mt-1.5">
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 border border-blue-500/20 text-blue-400">
                       <Zap className="h-2.5 w-2.5" />
@@ -1111,15 +1111,15 @@ export default function Dashboard() {
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-xl bg-slate-800/50 border border-slate-700/60 px-3 py-2.5">
+                <div className="rounded-xl bg-secondary/60 dark:bg-slate-800/50 border border-border dark:border-slate-700/60 px-3 py-2.5">
                   <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Company</p>
-                  <p className="text-xs text-slate-200 font-medium mt-0.5 truncate">
+                  <p className="text-xs text-foreground dark:text-slate-200 font-medium mt-0.5 truncate">
                     {branding?.companyName || <span className="text-slate-500 italic">Not set</span>}
                   </p>
                 </div>
-                <div className="rounded-xl bg-slate-800/50 border border-slate-700/60 px-3 py-2.5">
+                <div className="rounded-xl bg-secondary/60 dark:bg-slate-800/50 border border-border dark:border-slate-700/60 px-3 py-2.5">
                   <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Current Plan</p>
-                  <p className="text-xs text-slate-200 font-medium mt-0.5 truncate">
+                  <p className="text-xs text-foreground dark:text-slate-200 font-medium mt-0.5 truncate">
                     {billing?.plan.name ?? <span className="text-slate-500">—</span>}
                   </p>
                 </div>
@@ -1127,7 +1127,7 @@ export default function Dashboard() {
 
               <Link href="/settings">
                 <Button variant="outline" size="sm"
-                  className="w-full h-8 text-xs rounded-xl border-slate-700 hover:bg-slate-800 text-slate-300 bg-transparent transition-all duration-200">
+                  className="w-full h-8 text-xs rounded-xl border-border dark:border-slate-700 hover:bg-secondary dark:hover:bg-slate-800 text-muted-foreground dark:text-slate-300 bg-transparent transition-all duration-200">
                   Manage Profile
                 </Button>
               </Link>
@@ -1135,10 +1135,10 @@ export default function Dashboard() {
           </div>
 
           {/* Sending Account */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between gap-3">
+          <div className="rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 overflow-hidden">
+            <div className="px-5 py-4 border-b border-border dark:border-slate-800 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/5 border border-slate-700 flex-shrink-0">
+                <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/5 border border-border dark:border-slate-700 flex-shrink-0">
                   <svg viewBox="0 0 24 24" className="h-[13px] w-[13px]" aria-hidden="true">
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                     <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -1146,24 +1146,24 @@ export default function Dashboard() {
                     <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                   </svg>
                 </div>
-                <p className="text-sm font-semibold text-slate-100">Gmail</p>
+                <p className="text-sm font-semibold text-foreground dark:text-slate-100">Gmail</p>
               </div>
               {gmailLoading ? null : gmailStatus?.connected ? (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-500/10 border border-green-500/20 text-green-400 flex-shrink-0">
                   <span className="h-1.5 w-1.5 rounded-full bg-green-400" /> Connected
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-700/60 border border-slate-600 text-slate-400 flex-shrink-0">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-muted dark:bg-slate-700/60 border border-border/80 dark:border-slate-600 text-muted-foreground dark:text-slate-400 flex-shrink-0">
                   Not connected
                 </span>
               )}
             </div>
             <div className="px-5 py-4 space-y-3">
               {gmailLoading ? (
-                <Skeleton className="h-8 w-full bg-slate-800" />
+                <Skeleton className="h-8 w-full bg-muted dark:bg-slate-800" />
               ) : gmailStatus?.connected ? (
                 <>
-                  <p className="text-sm text-slate-200 truncate">{gmailStatus.email}</p>
+                  <p className="text-sm text-foreground dark:text-slate-200 truncate">{gmailStatus.email}</p>
                   <p className="text-[11px] text-slate-500">Authenticated with Google OAuth</p>
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" onClick={handleDisconnectGmail}
@@ -1171,7 +1171,7 @@ export default function Dashboard() {
                       <Unlink className="h-3.5 w-3.5 mr-1.5" />Disconnect
                     </Button>
                     <Button variant="outline" size="sm" onClick={handleConnectGmail} disabled={connectingGmail}
-                      className="flex-1 h-8 text-xs rounded-xl border-slate-700 hover:bg-slate-800 text-slate-200 bg-transparent transition-all duration-200">
+                      className="flex-1 h-8 text-xs rounded-xl border-border dark:border-slate-700 hover:bg-secondary dark:hover:bg-slate-800 text-foreground dark:text-slate-200 bg-transparent transition-all duration-200">
                       {connectingGmail ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Reconnect"}
                     </Button>
                   </div>
@@ -1189,17 +1189,17 @@ export default function Dashboard() {
           </div>
 
           {/* Usage */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-800">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Usage</p>
+          <div className="rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 overflow-hidden">
+            <div className="px-5 py-4 border-b border-border dark:border-slate-800">
+              <p className="text-xs font-semibold text-muted-foreground dark:text-slate-400 uppercase tracking-wider">Usage</p>
             </div>
             <div className="p-5">
               {!billing ? (
                 <div className="flex items-center gap-4">
-                  <Skeleton className="h-[76px] w-[76px] rounded-full bg-slate-800 flex-shrink-0" />
+                  <Skeleton className="h-[76px] w-[76px] rounded-full bg-muted dark:bg-slate-800 flex-shrink-0" />
                   <div className="space-y-2 flex-1">
-                    <Skeleton className="h-4 w-24 bg-slate-800" />
-                    <Skeleton className="h-3 w-20 bg-slate-800" />
+                    <Skeleton className="h-4 w-24 bg-muted dark:bg-slate-800" />
+                    <Skeleton className="h-3 w-20 bg-muted dark:bg-slate-800" />
                   </div>
                 </div>
               ) : (
@@ -1207,25 +1207,25 @@ export default function Dashboard() {
                   <div className="relative flex-shrink-0">
                     <CircularProgress pct={emailUsagePct ?? 0} size={76} />
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-sm font-bold text-white">{emailUsagePct ?? 0}%</span>
+                      <span className="text-sm font-bold text-foreground dark:text-white">{emailUsagePct ?? 0}%</span>
                     </div>
                   </div>
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex justify-between text-xs">
-                      <span className="text-slate-400">Emails used</span>
-                      <span className="text-slate-200 font-semibold tabular-nums">
+                      <span className="text-muted-foreground dark:text-slate-400">Emails used</span>
+                      <span className="text-foreground dark:text-slate-200 font-semibold tabular-nums">
                         {billing.usage.emailsSentThisMonth.toLocaleString()}
                       </span>
                     </div>
                     <div className="flex justify-between text-xs">
-                      <span className="text-slate-400">Monthly limit</span>
-                      <span className="text-slate-200 font-semibold tabular-nums">
+                      <span className="text-muted-foreground dark:text-slate-400">Monthly limit</span>
+                      <span className="text-foreground dark:text-slate-200 font-semibold tabular-nums">
                         {billing.plan.monthlyEmailLimit === -1 ? "∞" : billing.plan.monthlyEmailLimit.toLocaleString()}
                       </span>
                     </div>
                     <div className="flex justify-between text-xs">
-                      <span className="text-slate-400">Remaining</span>
-                      <span className="text-slate-200 font-semibold tabular-nums">
+                      <span className="text-muted-foreground dark:text-slate-400">Remaining</span>
+                      <span className="text-foreground dark:text-slate-200 font-semibold tabular-nums">
                         {billing.plan.monthlyEmailLimit === -1
                           ? "∞"
                           : Math.max(0, billing.plan.monthlyEmailLimit - billing.usage.emailsSentThisMonth).toLocaleString()}
@@ -1236,7 +1236,7 @@ export default function Dashboard() {
               )}
               <Link href="/plans">
                 <Button variant="outline" size="sm"
-                  className="w-full h-8 text-xs rounded-xl border-slate-700 hover:bg-slate-800 text-slate-200 bg-transparent transition-all duration-200">
+                  className="w-full h-8 text-xs rounded-xl border-border dark:border-slate-700 hover:bg-secondary dark:hover:bg-slate-800 text-foreground dark:text-slate-200 bg-transparent transition-all duration-200">
                   <CreditCard className="h-3.5 w-3.5 mr-1.5" />Manage Plan
                 </Button>
               </Link>
@@ -1244,11 +1244,11 @@ export default function Dashboard() {
           </div>
 
           {/* Live Activity Feed */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+          <div className="rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 overflow-hidden">
+            <div className="px-5 py-4 border-b border-border dark:border-slate-800 flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-slate-100">Activity Feed</p>
+                  <p className="text-sm font-semibold text-foreground dark:text-slate-100">Activity Feed</p>
                   <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live
                   </span>
@@ -1273,7 +1273,7 @@ export default function Dashboard() {
                 onClick={handleRefreshActivity}
                 disabled={activityRefreshing}
                 title="Refresh activity"
-                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-secondary dark:hover:bg-slate-800 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
                 <RefreshCw className={`h-3.5 w-3.5 transition-transform duration-500 ${activityRefreshing ? "animate-spin" : ""}`} />
               </button>
             </div>
@@ -1299,7 +1299,7 @@ export default function Dashboard() {
                 <div className="p-4 max-h-72 overflow-auto">
                   {isLoading ? (
                     <div className="space-y-2">
-                      {[1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full rounded-lg bg-slate-800" />)}
+                      {[1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full rounded-lg bg-muted dark:bg-slate-800" />)}
                     </div>
                   ) : merged.length > 0 ? (
                     <AnimatePresence initial={false}>
@@ -1312,12 +1312,12 @@ export default function Dashboard() {
                             return (
                               <motion.div key={`a-${item.id}`}
                                 initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
-                                className="flex items-start gap-3 px-2 py-2 rounded-xl hover:bg-slate-800/40 transition-colors">
+                                className="flex items-start gap-3 px-2 py-2 rounded-xl hover:bg-secondary/50 dark:hover:bg-slate-800/40 transition-colors">
                                 <div className={`h-6 w-6 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${ai.bg}`}>
                                   <Icon className={`h-3 w-3 ${ai.color}`} />
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                  <p className="text-xs text-slate-200 leading-tight">{item.description}</p>
+                                  <p className="text-xs text-foreground dark:text-slate-200 leading-tight">{item.description}</p>
                                   <p className="text-[10px] text-slate-500 mt-0.5">{timeAgo(item.createdAt)}</p>
                                 </div>
                                 <p className="text-[10px] text-slate-600 flex-shrink-0 mt-0.5">{fmtTime(item.createdAt)}</p>
@@ -1328,14 +1328,14 @@ export default function Dashboard() {
                           return (
                             <motion.div key={`o-${event.id}`}
                               initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
-                              className="flex items-start gap-3 px-2 py-2 rounded-xl hover:bg-slate-800/40 transition-colors">
+                              className="flex items-start gap-3 px-2 py-2 rounded-xl hover:bg-secondary/50 dark:hover:bg-slate-800/40 transition-colors">
                               <div className={`h-6 w-6 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                                event.isAppleMail ? "bg-slate-700/60" : "bg-emerald-500/10"
+                                event.isAppleMail ? "bg-muted dark:bg-slate-700/60" : "bg-emerald-500/10"
                               }`}>
-                                <Eye className={`h-3 w-3 ${event.isAppleMail ? "text-slate-400" : "text-emerald-400"}`} />
+                                <Eye className={`h-3 w-3 ${event.isAppleMail ? "text-muted-foreground dark:text-slate-400" : "text-emerald-400"}`} />
                               </div>
                               <div className="min-w-0 flex-1">
-                                <p className="text-xs font-medium text-slate-200 truncate">
+                                <p className="text-xs font-medium text-foreground dark:text-slate-200 truncate">
                                   {event.customerName ?? event.email ?? "Recipient"} opened email
                                 </p>
                                 <p className="text-[10px] text-slate-500 mt-0.5">{timeAgo(event.openedAt)}</p>
@@ -1349,7 +1349,7 @@ export default function Dashboard() {
                   ) : (
                     <div className="flex flex-col items-center justify-center py-8 text-slate-500">
                       <Activity className="h-8 w-8 mb-2 opacity-20" />
-                      <p className="text-xs font-medium text-slate-400">No recent activity</p>
+                      <p className="text-xs font-medium text-muted-foreground dark:text-slate-400">No recent activity</p>
                       <p className="text-[11px] mt-1 text-center">Events appear here as your campaigns run.</p>
                     </div>
                   )}

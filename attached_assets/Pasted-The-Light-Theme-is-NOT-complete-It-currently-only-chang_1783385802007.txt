@@ -1,0 +1,276 @@
+The Light Theme is NOT complete. It currently only changes the page background while nearly every component (cards, panels, inputs, sidebar sections, branding cards, dashboard cards, settings cards, etc.) still uses the dark theme colors.
+
+I want a COMPLETE Light Theme, not a color inversion.
+
+Do NOT modify the Dark Theme. It is already correct.
+
+====================================
+GOAL
+====================================
+
+Create a proper design system with separate colors for Light and Dark mode.
+
+Instead of every component using hardcoded dark colors, all surfaces should use semantic theme variables.
+
+For example:
+
+Background
+Surface
+Surface Secondary
+Border
+Input Background
+Sidebar Background
+Muted Background
+Primary Text
+Secondary Text
+Muted Text
+Primary Button
+Secondary Button
+Success
+Warning
+Danger
+
+Every card, panel and component must use these semantic colors instead of fixed navy backgrounds.
+
+====================================
+LIGHT THEME DESIGN
+====================================
+
+Page background
+
+#F6F8FC
+
+Main cards
+
+#FFFFFF
+
+Secondary cards
+
+#FAFBFD
+
+Sidebar
+
+#FFFFFF
+
+Topbar
+
+#FFFFFF
+
+Input background
+
+#FAFBFD
+
+Borders
+
+#E5EAF3
+
+Card shadow
+
+0 1px 2px rgba(16,24,40,.05)
+
+Card radius
+
+16px
+
+====================================
+TEXT
+====================================
+
+Primary
+
+#111827
+
+Secondary
+
+#475467
+
+Muted
+
+#667085
+
+Titles should be dark.
+
+Descriptions should be medium gray.
+
+Muted labels should not disappear.
+
+====================================
+BUTTONS
+====================================
+
+Primary
+
+Blue
+
+Secondary
+
+White with border
+
+Danger
+
+White with red border
+
+Never use dark buttons in Light Mode except for destructive confirmations.
+
+====================================
+SIDEBAR
+====================================
+
+The sidebar should become a premium SaaS sidebar similar to Vercel, Stripe or Linear.
+
+Background
+
+White
+
+Section labels
+
+Small uppercase gray
+
+Selected item
+
+Soft blue background
+
+Blue left indicator
+
+Hover
+
+Light gray
+
+Remove heavy borders.
+
+====================================
+CARDS
+====================================
+
+Every dashboard card
+
+Every settings card
+
+Every campaign card
+
+Every mailbox card
+
+Every profile card
+
+Every plan card
+
+Every branding card
+
+must become white cards with subtle borders and shadows.
+
+NO dark navy cards in Light Mode.
+
+====================================
+FORMS
+====================================
+
+Inputs
+
+White / light gray
+
+Borders
+
+#D9DEE8
+
+Focus
+
+Blue border
+
+Soft blue glow
+
+====================================
+STATUS BADGES
+====================================
+
+Connected
+
+Light green background
+
+Dark green text
+
+Disconnected
+
+Light red background
+
+Dark red text
+
+Enterprise
+
+Light blue background
+
+Blue text
+
+====================================
+TABLES
+====================================
+
+White rows
+
+Light borders
+
+Alternating hover state
+
+====================================
+EMPTY STATES
+====================================
+
+Empty state cards should remain white.
+
+Icons should use soft gray.
+
+Buttons remain blue.
+
+====================================
+DASHBOARD
+====================================
+
+Dashboard cards should become white.
+
+Charts should stay colorful.
+
+Do not keep navy cards on a white page.
+
+====================================
+SETTINGS
+====================================
+
+Branding section
+
+White
+
+Gmail card
+
+White
+
+Plan card
+
+White
+
+Need Help card
+
+White
+
+Profile card
+
+White
+
+Signature Preview
+
+White
+
+Everything should feel like a native Light Mode instead of Dark Mode placed on a white background.
+
+====================================
+REQUIREMENTS
+====================================
+
+• Do NOT touch backend code.
+• Do NOT modify business logic.
+• Do NOT modify API calls.
+• Do NOT change functionality.
+• Only improve the theme system.
+• Use semantic theme tokens instead of hardcoded colors.
+• Every page (Dashboard, Settings, Campaigns, Mailbox, Templates, Upload & Send, etc.) must automatically inherit the Light Theme.
+• The Dark Theme must remain pixel-identical to its current appearance.
+
+The goal is to make the Light Theme look as polished as the Dark Theme, similar to Linear, Vercel, Stripe Dashboard, Clerk, and Notion.
