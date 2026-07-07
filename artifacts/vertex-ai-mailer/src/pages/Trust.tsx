@@ -165,7 +165,7 @@ export default function Trust() {
       </section>
 
       {/* Dark trust section */}
-      <section className="py-20 px-5 bg-slate-900">
+      <section className="py-20 px-5 bg-slate-900 dark:bg-slate-900">
         <div className="container mx-auto max-w-5xl">
           <div className="text-center mb-12">
             <h2 className="text-3xl sm:text-4xl font-bold text-white mb-3">Our commitments to you</h2>
@@ -183,7 +183,7 @@ export default function Trust() {
               "IMAP is write-only — Sent folder only",
             ].map((item, i) => (
               <FadeUp key={item} delay={i * 0.06}>
-                <div className="flex items-start gap-3 bg-slate-800/50 rounded-2xl p-5 border border-slate-700/50 hover:border-slate-600 transition-colors">
+                <div className="flex items-start gap-3 bg-white/5 rounded-2xl p-5 border border-white/10 hover:border-white/20 transition-colors">
                   <CheckCircle2 className="h-4.5 w-4.5 text-emerald-400 flex-shrink-0 mt-0.5" style={{ height: 18, width: 18 }} />
                   <span className="text-sm text-slate-200 font-medium leading-snug">{item}</span>
                 </div>

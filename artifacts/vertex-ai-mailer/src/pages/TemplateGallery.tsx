@@ -438,7 +438,7 @@ function PreviewModal({
                 <button
                   onClick={() => setViewMode("desktop")}
                   className={`h-7 px-2 flex items-center gap-1 text-xs transition-colors ${
-                    viewMode === "desktop" ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"
+                    viewMode === "desktop" ? "bg-foreground text-background" : "text-slate-500 hover:bg-slate-50"
                   }`}
                 >
                   <Monitor className="h-3.5 w-3.5" />
@@ -446,7 +446,7 @@ function PreviewModal({
                 <button
                   onClick={() => setViewMode("mobile")}
                   className={`h-7 px-2 flex items-center gap-1 text-xs transition-colors ${
-                    viewMode === "mobile" ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"
+                    viewMode === "mobile" ? "bg-foreground text-background" : "text-slate-500 hover:bg-slate-50"
                   }`}
                 >
                   <Smartphone className="h-3.5 w-3.5" />

@@ -674,7 +674,7 @@ export default function Campaigns() {
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-xl">Keep</AlertDialogCancel>
             <AlertDialogAction
-              className="rounded-xl bg-slate-700 hover:bg-slate-800"
+              className="rounded-xl bg-secondary text-secondary-foreground hover:bg-secondary/80"
               onClick={doArchive}
               disabled={!!loadingAction}
             >

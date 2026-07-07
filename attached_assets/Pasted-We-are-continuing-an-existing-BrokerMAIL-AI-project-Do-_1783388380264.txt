@@ -1,0 +1,137 @@
+We are continuing an existing BrokerMAIL AI project. Do NOT redesign or restart anything from scratch.
+
+First, read the entire project and understand the current implementation before making any changes.
+
+Current status:
+
+• Dashboard has been completely redesigned.
+• Settings page has been redesigned.
+• Sidebar has been reorganized.
+• Premium plan cards and support cards are implemented.
+• Dashboard onboarding checklist is implemented.
+• Activity Feed refresh functionality exists.
+• Business logic must remain unchanged.
+
+The previous Replit session ran out of credits while implementing the Light Theme.
+
+---------------------------------------
+YOUR TASK
+---------------------------------------
+
+Finish implementing a COMPLETE Light Theme across the application.
+
+This is NOT a simple color inversion.
+
+The current issue is that many components still use hardcoded:
+
+bg-slate-900
+bg-slate-800
+text-white
+
+instead of semantic theme colors.
+
+The previous analysis found approximately 38 affected files and 187+ hardcoded dark color occurrences.
+
+Continue from that work.
+
+Do NOT restart the implementation.
+
+---------------------------------------
+REQUIREMENTS
+---------------------------------------
+
+1. Replace hardcoded colors with semantic theme colors.
+
+2. Dark Theme must remain visually identical.
+
+3. Light Theme must become a professionally designed SaaS UI similar to:
+
+• Linear
+• Stripe Dashboard
+• Vercel
+• Clerk
+• Notion
+
+4. Update every page including:
+
+Dashboard
+
+Settings
+
+Campaigns
+
+Templates
+
+Template Gallery
+
+Compose Email
+
+Upload & Send
+
+Sent Emails
+
+Mailbox
+
+Suppression List
+
+Plans & Billing
+
+Support
+
+Admin pages
+
+Dialogs
+
+Tables
+
+Forms
+
+Cards
+
+Charts
+
+Modals
+
+Dropdowns
+
+5. Use semantic colors instead of fixed colors.
+
+6. Cards should become white.
+
+7. Sidebar should become white.
+
+8. Inputs should become light.
+
+9. Borders should become subtle.
+
+10. Keep blue accents.
+
+---------------------------------------
+IMPORTANT
+---------------------------------------
+
+Do NOT change backend logic.
+
+Do NOT change API endpoints.
+
+Do NOT rename state variables.
+
+Do NOT modify business logic.
+
+Only improve UI.
+
+---------------------------------------
+BEFORE EDITING
+---------------------------------------
+
+First inspect the project.
+
+Determine which files still contain hardcoded dark colors.
+
+Continue from the previous implementation instead of restarting.
+
+Only after understanding the current state should you begin editing.
+
+Work file-by-file until every remaining hardcoded dark surface has been converted into proper theme-aware styling.
+
+Remove any temporary backup files (.bak) or prompt text files that were created during the previous session if they are no longer needed.

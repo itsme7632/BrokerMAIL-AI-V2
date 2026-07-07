@@ -44,11 +44,11 @@ export default function AdminLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="mb-4 p-3 rounded-2xl bg-white/5 border border-white/10">
+          <div className="mb-4 p-3 rounded-2xl bg-muted border border-border">
             <img
               src="/logo-icon.png"
               alt="BrokerMail AI"
@@ -58,23 +58,23 @@ export default function AdminLogin() {
           <img
             src="/logo-horizontal.png"
             alt="BrokerMail AI"
-            className="h-9 w-auto object-contain brightness-0 invert"
+            className="h-9 w-auto object-contain dark:brightness-0 dark:invert"
             style={{ maxWidth: "180px" }}
           />
           <div className="flex items-center gap-1.5 mt-3">
-            <ShieldCheck className="h-3.5 w-3.5 text-blue-400" />
-            <span className="text-blue-400 text-xs font-medium tracking-wider uppercase">Admin Portal</span>
+            <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+            <span className="text-primary text-xs font-medium tracking-wider uppercase">Admin Portal</span>
           </div>
         </div>
 
         {/* Card */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-xl">
-          <h2 className="text-white text-lg font-semibold mb-1">Sign in to Admin</h2>
-          <p className="text-slate-400 text-sm mb-6">Restricted access — admin accounts only.</p>
+        <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
+          <h2 className="text-foreground text-lg font-semibold mb-1">Sign in to Admin</h2>
+          <p className="text-muted-foreground text-sm mb-6">Restricted access — admin accounts only.</p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Email</label>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Email</label>
               <Input
                 type="email"
                 value={email}
@@ -82,11 +82,11 @@ export default function AdminLogin() {
                 placeholder="admin@brokermail.ai"
                 required
                 autoComplete="email"
-                className="h-11 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-blue-500/20 rounded-xl"
+                className="h-11 rounded-xl"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Password</label>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Password</label>
               <Input
                 type="password"
                 value={password}
@@ -94,13 +94,13 @@ export default function AdminLogin() {
                 placeholder="••••••••"
                 required
                 autoComplete="current-password"
-                className="h-11 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-blue-500/20 rounded-xl"
+                className="h-11 rounded-xl"
               />
             </div>
 
             {error && (
-              <div className="flex items-start gap-2 p-3 bg-red-950/50 border border-red-800/50 rounded-xl">
-                <span className="text-red-400 text-sm">{error}</span>
+              <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-xl">
+                <span className="text-destructive text-sm">{error}</span>
               </div>
             )}
 
@@ -114,9 +114,9 @@ export default function AdminLogin() {
           </form>
         </div>
 
-        <p className="text-center text-slate-600 text-xs mt-6">
+        <p className="text-center text-muted-foreground text-xs mt-6">
           Not an admin?{" "}
-          <a href="/login" className="text-slate-400 hover:text-slate-300 transition-colors">
+          <a href="/login" className="text-foreground hover:text-muted-foreground transition-colors">
             Go to user login →
           </a>
         </p>

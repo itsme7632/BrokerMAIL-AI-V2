@@ -195,10 +195,10 @@ function AnalyticsChart({ data }: { data: AnalyticsDay[] }) {
               <div className="w-full rounded-t-[2px] bg-blue-500 transition-opacity" style={{ height: `${sentH}%`, minHeight: d.sent > 0 ? "2px" : "0" , opacity: isHov ? 1 : 0.8 }} />
 
               {isHov && (
-                <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-10 bg-slate-900 text-white text-xs rounded-lg px-2.5 py-1.5 whitespace-nowrap shadow-xl pointer-events-none">
+                <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-10 bg-popover text-popover-foreground border border-border text-xs rounded-lg px-2.5 py-1.5 whitespace-nowrap shadow-xl pointer-events-none">
                   <p className="font-semibold">{new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</p>
                   <p>✉ {d.sent} sent</p>
-                  {d.failed > 0 && <p className="text-red-300">✗ {d.failed} failed</p>}
+                  {d.failed > 0 && <p className="text-destructive dark:text-red-300">✗ {d.failed} failed</p>}
                 </div>
               )}
             </div>
@@ -958,7 +958,7 @@ export default function Admin() {
                           ? s === "error" ? "bg-red-600 text-white"
                           : s === "warn"  ? "bg-amber-500 text-white"
                           : s === "info"  ? "bg-blue-600 text-white"
-                          : "bg-slate-800 text-white"
+                          : "bg-foreground text-background"
                           : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
                       }`}>{s === "all" ? "All" : s}</button>
                   ))}

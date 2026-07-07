@@ -528,7 +528,7 @@ export default function Home() {
       </section>
 
       {/* Trust */}
-      <section className="py-24 px-5 bg-slate-900">
+      <section className="py-24 px-5 bg-slate-900 dark:bg-slate-900">
         <div className="container mx-auto max-w-5xl">
           <div className="text-center mb-14">
             <h2 className="text-3xl sm:text-4xl font-bold text-white mb-3">Built for real transport businesses</h2>
@@ -537,7 +537,7 @@ export default function Home() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {trust.map((item, i) => (
               <FadeUp key={i} delay={i * 0.07}>
-                <div className="flex items-center gap-3 bg-slate-800/50 rounded-2xl p-5 border border-slate-700/50 hover:border-slate-600 transition-colors">
+                <div className="flex items-center gap-3 bg-white/5 rounded-2xl p-5 border border-white/10 hover:border-white/20 transition-colors">
                   <div className="h-9 w-9 rounded-xl bg-blue-500/20 flex items-center justify-center flex-shrink-0">
                     <item.icon className="h-4 w-4 text-blue-400" />
                   </div>
