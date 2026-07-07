@@ -1,0 +1,303 @@
+The Resend integration is already complete.
+
+Do NOT change or replace the current Resend integration.
+
+Continue building on the existing email-service.ts and use the current RESEND_API_KEY implementation.
+
+Our goal is to complete the entire authentication and email verification system for BrokerMAIL AI.
+
+1. Email Verification System
+
+Implement a production-ready email verification flow.
+
+Database
+
+Create a new table for email verification codes.
+
+Fields should include:
+
+userId
+verificationCode (store hashed, never plaintext)
+expiresAt
+usedAt
+createdAt
+resendCount
+lastSentAt
+
+Verification codes must be:
+
+Random 6-digit numeric codes
+Single use
+Expire after 10 minutes
+Securely hashed before storing
+Registration Flow
+
+Current flow:
+
+Register
+
+↓
+
+Account Created
+
+Replace with:
+
+Register
+
+↓
+
+Create User
+
+↓
+
+Email Verified = false
+
+↓
+
+Generate Verification Code
+
+↓
+
+Store Code
+
+↓
+
+Send Verification Email via Resend
+
+↓
+
+Redirect to Verify Email page
+
+2. Verify Email Page
+
+Create a new page.
+
+/verify-email
+
+Design must match BrokerMAIL AI.
+
+Features:
+
+Premium design
+6 separate OTP input boxes
+Auto move to next digit
+Paste support
+Mobile friendly
+Countdown timer
+Verify button
+Back to Login
+3. Resend Verification Code
+
+Add:
+
+Resend Code
+
+Requirements:
+
+Disabled for first 60 seconds
+Maximum 5 resend attempts per hour
+Old code becomes invalid
+Generate a brand-new code
+Send via Resend
+4. Verification Email Template
+
+Completely redesign.
+
+Must match BrokerMAIL AI branding.
+
+Include:
+
+BrokerMAIL AI Logo
+
+Blue gradient
+
+Large verification code
+
+Verify Email button
+
+Code expiration
+
+Security warning
+
+Support footer
+
+Responsive
+
+Professional SaaS design
+
+5. Welcome Email
+
+When verification succeeds:
+
+Automatically send:
+
+Welcome to BrokerMAIL AI 🎉
+
+Include:
+
+Welcome message
+
+Getting Started checklist
+
+✓ Verify Email
+
+⬜ Connect Gmail
+
+⬜ Connect SMTP
+
+⬜ Upload Leads
+
+⬜ Create Campaign
+
+Large Dashboard button
+
+6. Forgot Password Email
+
+Redesign existing template.
+
+Include:
+
+Large Reset Password button
+
+Expiration notice
+
+Security notice
+
+Professional styling
+
+BrokerMAIL AI branding
+
+7. Password Changed Email
+
+Redesign existing template.
+
+Include:
+
+Confirmation
+
+Time
+
+IP (if available)
+
+Device (if available)
+
+Security notice
+
+Support link
+
+8. Login Restrictions
+
+Until email is verified:
+
+User cannot access dashboard.
+
+After login:
+
+If emailVerified == false
+
+Redirect ONLY to:
+
+/verify-email
+
+Do not allow access to the application until verification completes.
+
+9. Login Page Improvements
+
+Keep existing design.
+
+Add:
+
+Show/Hide Password
+
+Remember Me
+
+Forgot Password
+
+Better validation
+
+Loading state
+
+Error animations
+
+10. Register Page Improvements
+
+Keep current branding.
+
+Add:
+
+Confirm Password
+
+Show/Hide Password
+
+Show/Hide Confirm Password
+
+Password Strength Meter
+
+Requirements checklist
+
+Live password match indicator
+
+Better validation
+
+11. Password Rules
+
+Minimum:
+
+8 characters
+Uppercase
+Lowercase
+Number
+Special character
+
+Show live checklist while typing.
+
+12. Security
+
+Implement:
+
+Rate limit verification attempts
+Rate limit resend requests
+Rate limit forgot password requests
+Single-use verification codes
+Single-use reset tokens
+Constant-time verification comparisons
+Secure hashing
+Audit logging
+13. Email Templates
+
+Do NOT use Resend Dashboard Templates.
+
+Keep all HTML email templates inside the BrokerMAIL AI codebase.
+
+Create a reusable layout.
+
+Every email should share:
+
+BrokerMAIL AI Logo
+Blue branding
+Responsive layout
+Footer
+Support link
+Copyright
+14. Keep Existing Features
+
+Do NOT modify:
+
+Campaign sending
+Gmail integration
+SMTP integration
+SMTP quota recovery system
+Upload & Send
+Campaign engine
+
+Only extend the authentication system.
+
+15. Final Requirements
+
+Before finishing:
+
+Run TypeScript typecheck
+Run production build
+Fix every error
+Review code
+Ensure no existing functionality is broken
