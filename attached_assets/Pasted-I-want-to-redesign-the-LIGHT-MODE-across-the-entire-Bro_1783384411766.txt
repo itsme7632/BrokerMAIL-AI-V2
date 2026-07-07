@@ -1,0 +1,217 @@
+I want to redesign the LIGHT MODE across the entire BrokerMAIL AI application. The dark mode should remain EXACTLY as it is because it already looks premium. This task is ONLY for the light theme.
+IMPORTANT:
+‌Do NOT change any business logic.
+‌Do NOT change any API calls.
+‌Do NOT change any React state, hooks, event handlers, routing, authentication, or backend.
+‌This is a UI/UX polish task only.
+‌Preserve every existing feature and layout.
+‌The goal is to make Light Mode feel like a premium SaaS (Linear, Vercel, Clerk, Stripe, Notion), not a simple color inversion.
+====================================================================
+GLOBAL DESIGN SYSTEM (LIGHT MODE)
+====================================================================
+Current issue:
+The light mode looks like a dark theme sitting on a white page. Cards are too dark, contrast is too harsh, and the interface feels unfinished.
+Redesign the entire light theme using these design tokens.
+Page Background:
+#F6F8FC
+Primary Cards:
+Background: #FFFFFF
+Secondary Panels:
+#FAFBFD
+Inputs:
+#FAFBFD
+Sidebar:
+#FFFFFF
+Top Navigation:
+#FFFFFF
+Borders:
+#E7EAF3
+Input Borders:
+#D7DCE5
+Primary Text:
+#111827
+Secondary Text:
+#667085
+Muted Text:
+#98A2B3
+Primary Blue:
+#2563EB
+Primary Hover:
+#1D4ED8
+Success:
+Background #ECFDF3
+Text #027A48
+Warning:
+Background #FFF8E1
+Danger:
+Background #FEF3F2
+Info:
+Background #EFF6FF
+Cards should have:
+border-radius:16px
+1px subtle border
+very soft shadow
+box-shadow:
+0 1px 2px rgba(16,24,40,.05)
+NO heavy shadows.
+====================================================================
+SIDEBAR
+====================================================================
+The sidebar currently feels disconnected.
+Redesign it to match modern SaaS dashboards.
+Requirements:
+• White background
+• Very subtle right border
+• Hover = light blue background
+• Active item = soft blue background
+• Blue left indicator
+• Better spacing
+• Softer icons
+• Better typography
+• Keep grouped navigation exactly as it currently works
+Do NOT change navigation structure.
+====================================================================
+TOPBAR
+====================================================================
+Use white background.
+Subtle bottom border.
+Buttons:
+Primary
+Blue
+Secondary
+White
+Border only
+Notification/Profile
+Soft hover.
+====================================================================
+CARDS
+====================================================================
+Every card in light mode should become:
+White background
+Subtle border
+Soft shadow
+More padding
+Better spacing
+No dark backgrounds.
+====================================================================
+INPUTS
+====================================================================
+Use:
+Background:
+#FAFBFD
+Border:
+#D7DCE5
+On focus:
+Blue border
+Soft blue glow
+No dark inputs anywhere in light mode.
+====================================================================
+BUTTONS
+====================================================================
+Primary:
+Blue
+Hover darker blue
+Secondary:
+White
+Gray border
+Danger:
+White background
+Red border
+Red text
+====================================================================
+STATUS BADGES
+====================================================================
+Replace glowing badges with modern pill badges.
+Examples:
+Connected
+Green pill
+Disconnected
+Gray pill
+Warning
+Yellow pill
+Danger
+Red pill
+====================================================================
+TABLES
+====================================================================
+White table
+Alternating hover
+Subtle row separators
+No dark headers.
+====================================================================
+MODALS
+====================================================================
+White background
+Large radius
+Soft shadow
+Gray border
+====================================================================
+SETTINGS PAGE
+====================================================================
+The Settings page already has a premium layout.
+Do NOT redesign the structure.
+Only update colors and surfaces for Light Mode.
+Every section should feel clean instead of dark.
+Branding preview should use white surfaces.
+Signature preview should look like a printed email card.
+====================================================================
+DASHBOARD
+====================================================================
+Keep the exact dashboard layout.
+Do NOT move cards.
+Only improve colors.
+All dashboard widgets should use white cards.
+Account Health should use white panels.
+Getting Started should use white cards.
+Activity cards should be white.
+Statistics cards should be white.
+====================================================================
+FORMS
+====================================================================
+All labels
+Better spacing
+Muted gray
+Focus state
+Blue
+Validation
+Modern colors
+====================================================================
+DANGER ZONES
+====================================================================
+Do NOT use dark red backgrounds.
+Instead:
+White card
+Thin red border
+Light red icon
+Danger buttons remain outlined red.
+====================================================================
+ANIMATIONS
+====================================================================
+Keep animations subtle.
+Hover elevation:
+translateY(-1px)
+Transition:
+200ms ease
+Buttons:
+Small shadow
+Cards:
+Tiny lift
+No excessive animation.
+====================================================================
+ACCESSIBILITY
+====================================================================
+Ensure excellent contrast.
+Readable typography.
+Consistent spacing.
+Nothing should feel cramped.
+====================================================================
+IMPORTANT
+====================================================================
+Dark mode must remain EXACTLY the same.
+Only redesign Light Mode.
+Do NOT break responsiveness.
+Do NOT touch backend.
+Do NOT touch API.
+Do NOT change functionality.
+Do NOT remove any feature.
+Only improve the visual design and create a premium Light Mode experience throughout the entire application.
