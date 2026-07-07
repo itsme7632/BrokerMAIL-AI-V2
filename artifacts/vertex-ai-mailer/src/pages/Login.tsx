@@ -67,9 +67,11 @@ export default function Login() {
   const onSubmit = async (data: LoginFormValues) => {
     try {
       setIsSubmitting(true);
-      const loggedInUser = await login({ email: data.email, password: data.password });
-      if (loggedInUser.role === "admin") {
+      const res = await login({ email: data.email, password: data.password });
+      if (res.user.role === "admin") {
         setLocation("/admin/dashboard");
+      } else if (!res.user.emailVerified) {
+        setLocation("/verify-email");
       } else {
         const inMaintenance = await getMaintenanceMode();
         setLocation(inMaintenance ? "/maintenance" : "/dashboard");

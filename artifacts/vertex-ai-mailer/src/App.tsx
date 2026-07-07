@@ -23,6 +23,7 @@ import Register from "@/pages/Register";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
 import AuthCallback from "@/pages/AuthCallback";
+import VerifyEmail from "@/pages/VerifyEmail";
 import Dashboard from "@/pages/Dashboard";
 import LeadsImport from "@/pages/LeadsImport";
 import Templates from "@/pages/Templates";
@@ -77,6 +78,7 @@ function Router() {
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/auth/callback" component={AuthCallback} />
+      <Route path="/verify-email" component={VerifyEmail} />
 
       {/* Admin auth */}
       <Route path="/admin/login" component={AdminLogin} />

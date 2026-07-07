@@ -120,12 +120,20 @@ export default function Register() {
   const onSubmit = async (data: RegisterFormValues) => {
     try {
       setIsSubmitting(true);
-      const newUser = await register({ name: data.name, email: data.email, password: data.password });
-      toast({
-        title: "Account created!",
-        description: "Welcome to BrokerMAIL AI. Let's get started.",
-      });
-      setLocation(newUser.role === "admin" ? "/admin/dashboard" : "/dashboard");
+      const res = await register({ name: data.name, email: data.email, password: data.password });
+      if (res.requiresVerification) {
+        toast({
+          title: "Account created!",
+          description: "Check your email for a 6-digit verification code.",
+        });
+        setLocation("/verify-email");
+      } else {
+        toast({
+          title: "Account created!",
+          description: "Welcome to BrokerMAIL AI. Let's get started.",
+        });
+        setLocation(res.user.role === "admin" ? "/admin/dashboard" : "/dashboard");
+      }
     } catch (err: any) {
       toast({
         variant: "destructive",
