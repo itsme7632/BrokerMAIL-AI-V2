@@ -335,27 +335,27 @@ function EmailPreviewModal({ emailId, open, onClose }: { emailId: number | null;
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-4xl w-full h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
-        <DialogHeader className="px-6 py-4 border-b border-slate-200 flex-shrink-0">
+      <DialogContent className="max-w-4xl w-full h-[92vh] flex flex-col p-0 gap-0 overflow-hidden">
+        <DialogHeader className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-200 flex-shrink-0">
           <div className="min-w-0">
-            <DialogTitle className="text-base font-semibold text-slate-900 truncate">
-              {loadingPreview ? <Skeleton className="h-5 w-64" /> : (preview?.subject ?? "Email Preview")}
+            <DialogTitle className="text-sm sm:text-base font-semibold text-slate-900 truncate">
+              {loadingPreview ? <Skeleton className="h-5 w-48 sm:w-64" /> : (preview?.subject ?? "Email Preview")}
             </DialogTitle>
             {preview && (
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5">
-                <span className="text-xs text-slate-500 flex items-center gap-1"><AtSign className="h-3 w-3" /> {preview.to}</span>
-                {preview.customerName && <span className="text-xs text-slate-500 flex items-center gap-1"><User className="h-3 w-3" /> {preview.customerName}</span>}
-                {preview.sentAt && <span className="text-xs text-slate-500 flex items-center gap-1"><Calendar className="h-3 w-3" />{new Date(preview.sentAt).toLocaleString()}</span>}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                <span className="text-xs text-slate-500 flex items-center gap-1 truncate max-w-[200px] sm:max-w-none"><AtSign className="h-3 w-3 flex-shrink-0" /> {preview.to}</span>
+                {preview.customerName && <span className="text-xs text-slate-500 flex items-center gap-1 hidden sm:flex"><User className="h-3 w-3 flex-shrink-0" /> {preview.customerName}</span>}
+                {preview.sentAt && <span className="text-xs text-slate-500 flex items-center gap-1 hidden sm:flex"><Calendar className="h-3 w-3 flex-shrink-0" />{new Date(preview.sentAt).toLocaleString()}</span>}
               </div>
             )}
             {hasEngagement && (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 pt-2 border-t border-slate-100">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 pt-1.5 border-t border-slate-100">
                 {timeline!.openCount > 0 && (
                   <span className="text-xs text-violet-700 flex items-center gap-1">
                     <Eye className="h-3 w-3" />
                     <strong>{timeline!.openCount}</strong> open{timeline!.openCount !== 1 ? "s" : ""}
                     {timeline!.firstOpenedAt && (
-                      <span className="text-slate-400 ml-1">
+                      <span className="text-slate-400 ml-1 hidden sm:inline">
                         · first {formatRelativeTime(timeline!.firstOpenedAt)}
                         {timeline!.openCount > 1 && timeline!.lastOpenedAt
                           ? ` · last ${formatRelativeTime(timeline!.lastOpenedAt)}`
@@ -374,18 +374,23 @@ function EmailPreviewModal({ emailId, open, onClose }: { emailId: number | null;
             )}
           </div>
         </DialogHeader>
-        <div className="flex flex-1 overflow-hidden min-h-0">
-          <div className="flex-1 overflow-auto bg-slate-50">
+
+        {/* Body: preview on top on mobile, side-by-side on md+ */}
+        <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0">
+          {/* Email preview */}
+          <div className="flex-1 overflow-auto bg-slate-50 min-h-0">
             {loadingPreview ? (
-              <div className="p-6 space-y-3"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/4" /><Skeleton className="h-40 w-full" /></div>
+              <div className="p-4 space-y-3"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/4" /><Skeleton className="h-40 w-full" /></div>
             ) : preview?.html ? (
-              <iframe srcDoc={preview.html} className="w-full h-full border-0 min-h-[400px]" title="Email Preview" sandbox="allow-same-origin" />
+              <iframe srcDoc={preview.html} className="w-full h-full border-0 min-h-[260px] md:min-h-[400px]" title="Email Preview" sandbox="allow-same-origin" />
             ) : (
-              <div className="flex items-center justify-center h-full text-slate-400 text-sm">Preview not available</div>
+              <div className="flex items-center justify-center h-full py-12 text-slate-400 text-sm">Preview not available</div>
             )}
           </div>
-          <div className="w-64 flex-shrink-0 overflow-y-auto p-4 bg-white border-l border-slate-200">
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4 flex items-center gap-1.5">
+
+          {/* Activity timeline — below preview on mobile, right panel on md+ */}
+          <div className="md:w-64 flex-shrink-0 overflow-y-auto p-4 bg-white border-t md:border-t-0 md:border-l border-slate-200 max-h-52 md:max-h-none">
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
               <Clock className="h-3.5 w-3.5" /> Activity Timeline
             </h3>
             {loadingTimeline ? (
