@@ -1,0 +1,274 @@
+We are redesigning the entire authentication experience for BrokerMAIL AI.
+
+The dashboard is now premium and modern. The Login, Signup, Forgot Password and Reset Password pages must match the same quality.
+
+========================
+GOAL
+========================
+
+Create a premium SaaS authentication experience.
+
+Think:
+- Linear
+- Vercel
+- Clerk
+- Notion
+- Stripe Dashboard
+
+Clean.
+Modern.
+Professional.
+Minimal.
+
+Do NOT use generic template styling.
+
+Keep BrokerMAIL AI branding.
+
+==================================
+LOGIN PAGE IMPROVEMENTS
+==================================
+
+Redesign the page completely.
+
+Improve spacing, typography and layout.
+
+The login card should feel premium.
+
+Add:
+
+✓ Show / Hide password (eye icon)
+
+✓ Remember Me checkbox
+
+✓ Forgot Password link
+
+✓ Loading spinner while signing in
+
+✓ Better validation messages
+
+✓ Disable Sign In button while submitting
+
+✓ Press Enter to submit
+
+✓ Autofocus email field
+
+✓ Proper browser autocomplete
+
+==================================
+SIGNUP PAGE IMPROVEMENTS
+==================================
+
+Redesign the signup page to match login.
+
+Replace the current simple form with a premium layout.
+
+Required fields:
+
+• Full Name
+• Email
+• Password
+• Confirm Password
+
+Password field:
+
+✓ eye icon
+✓ password strength indicator
+✓ minimum requirements shown
+✓ live validation
+
+Confirm password:
+
+✓ eye icon
+✓ instant "Passwords match" validation
+
+Prevent submission until:
+
+- email valid
+- password valid
+- passwords match
+
+==================================
+PASSWORD REQUIREMENTS
+==================================
+
+Display requirements while typing.
+
+Minimum:
+
+✓ 8+ characters
+
+Recommended:
+
+✓ uppercase
+✓ lowercase
+✓ number
+✓ special character
+
+Show green checkmarks as requirements become satisfied.
+
+==================================
+FORGOT PASSWORD
+==================================
+
+First verify the existing backend.
+
+Check whether password reset already exists.
+
+Specifically inspect:
+
+- admin user management
+- password reset APIs
+- token generation
+- email sending
+
+If reset functionality already exists:
+
+Create a polished Forgot Password page.
+
+Flow:
+
+User enters email
+
+↓
+
+Success screen
+
+"We've sent a password reset link if an account exists."
+
+↓
+
+Email
+
+↓
+
+Reset Password page
+
+↓
+
+Choose new password
+
+↓
+
+Confirm password
+
+↓
+
+Success
+
+↓
+
+Redirect to Login
+
+==================================
+IF RESET PASSWORD DOES NOT EXIST
+==================================
+
+Implement the complete feature.
+
+Backend:
+
+✓ secure reset token
+
+✓ expiry
+
+✓ one-time use
+
+✓ hashed token storage
+
+✓ email sending
+
+✓ invalidate old tokens
+
+Frontend:
+
+Forgot Password page
+
+Reset Password page
+
+Success page
+
+Error page for expired token
+
+==================================
+ADMIN PANEL
+==================================
+
+Inspect current Admin Panel.
+
+If admins can already reset passwords:
+
+Integrate with the same backend.
+
+If not:
+
+Add Admin Reset Password functionality.
+
+Requirements:
+
+Admin opens user
+
+↓
+
+Reset Password
+
+↓
+
+Generate temporary password
+OR
+Send password reset email
+
+Never display current password.
+
+==================================
+UI IMPROVEMENTS
+==================================
+
+Improve branding.
+
+Add subtle gradients.
+
+Improve logo positioning.
+
+Better typography.
+
+Better spacing.
+
+Animated button hover states.
+
+Smooth page transitions.
+
+Better focus rings.
+
+Modern input styling.
+
+Premium shadows.
+
+Consistent border radius.
+
+Responsive on all devices.
+
+==================================
+MOBILE
+==================================
+
+Must look excellent on phones.
+
+No overflow.
+
+Comfortable spacing.
+
+Large tap targets.
+
+==================================
+IMPORTANT
+==================================
+
+DO NOT break authentication.
+
+DO NOT modify auth logic unnecessarily.
+
+Reuse existing backend wherever possible.
+
+Only implement missing backend functionality if password reset does not already exist.
+
+Before writing new reset-password code, first inspect the existing authentication system and admin panel so we do not duplicate features.
