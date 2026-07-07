@@ -1,0 +1,285 @@
+We need to polish the Dashboard behavior and remove placeholder/mock functionality. This is NOT a UI redesign. Preserve the current design and backend. Only fix behavior and make every status meaningful.
+
+IMPORTANT
+
+- Do NOT change backend APIs unless absolutely necessary.
+- Do NOT invent fake states.
+- Do NOT hardcode status values.
+- Reuse existing API responses and state wherever possible.
+- Remove placeholder/mock behavior.
+- Keep the current UI.
+
+====================================================
+1. SMTP STATUS
+====================================================
+
+The Dashboard currently shows:
+
+SMTP
+No mailbox
+
+even though SMTP is already connected.
+
+This is incorrect.
+
+Find the same source of truth used by the Mailbox page.
+
+The Dashboard must display the REAL SMTP connection state.
+
+Examples:
+
+Connected
+Healthy
+Disconnected
+
+Do NOT hardcode this.
+
+Reuse the existing mailbox/API state.
+
+====================================================
+2. CAMPAIGN ENGINE
+====================================================
+
+The Dashboard currently shows
+
+Campaign Engine
+Idle
+
+This wording is confusing.
+
+End users do not know what "Campaign Engine" means.
+
+Replace it with something meaningful.
+
+If there is no backend state for a campaign worker,
+
+replace this tile with:
+
+Campaign Status
+
+Examples:
+
+No Active Campaigns
+
+Running
+
+Paused
+
+Completed
+
+Processing
+
+Use existing campaign information.
+
+If no campaign exists,
+
+show:
+
+No Active Campaigns
+
+instead of "Idle".
+
+====================================================
+3. GETTING STARTED
+====================================================
+
+This card should behave intelligently.
+
+Each task should automatically complete using existing data.
+
+Connect Gmail
+
+Use gmailConnected.
+
+Complete Branding
+
+Detect from branding information.
+
+Company Name
+
+Logo
+
+Website
+
+Phone
+
+etc.
+
+Upload First Leads
+
+Use upload/campaign data.
+
+Create First Campaign
+
+Use campaign count.
+
+Send First Email
+
+Use sent email history.
+
+====================================================
+
+If ALL FIVE tasks are complete
+
+Automatically hide the Getting Started card.
+
+Replace it with a compact success card.
+
+Example
+
+✨ BrokerMAIL AI is fully configured.
+
+Everything is ready.
+
+Compose Email →
+
+or
+
+View Campaigns →
+
+====================================================
+4. MANUAL CHECKMARKS
+====================================================
+
+Each checklist row currently has a circle.
+
+Make it functional.
+
+If a user clicks the circle,
+
+mark that task complete manually.
+
+Store the completion per user.
+
+If backend support already exists,
+
+reuse it.
+
+Otherwise use a lightweight persistent solution
+(local storage or existing user preferences).
+
+When backend later reports the task complete,
+
+backend state should override the manual state.
+
+====================================================
+5. ACTIVITY FEED
+====================================================
+
+The refresh button is currently mock.
+
+Make it functional.
+
+Clicking Refresh should:
+
+reload the activity
+
+show a loading spinner
+
+disable the button while loading
+
+rotate the refresh icon
+
+then smoothly update the list.
+
+If no new activity exists,
+
+show:
+
+"No new activity"
+
+instead of pretending data changed.
+
+====================================================
+6. LIVE ACTIVITY
+====================================================
+
+Animate new entries.
+
+Fade in.
+
+Slide slightly.
+
+Newest activity always on top.
+
+Do not duplicate existing entries.
+
+====================================================
+7. ACCOUNT HEALTH
+====================================================
+
+Every status chip must display real information.
+
+Gmail
+
+Real connection.
+
+SMTP
+
+Real connection.
+
+Campaign Status
+
+Real campaign state.
+
+Quota
+
+Real remaining quota.
+
+Subscription
+
+Real subscription.
+
+No placeholders.
+
+No fake values.
+
+====================================================
+8. EMPTY STATES
+====================================================
+
+Whenever data is unavailable,
+
+display a proper empty state.
+
+Never show:
+
+Undefined
+
+Null
+
+Idle
+
+Unknown
+
+Mock values.
+
+====================================================
+9. CODE QUALITY
+====================================================
+
+Remove every placeholder and TODO related to these dashboard widgets.
+
+Avoid duplicated API requests.
+
+Reuse existing dashboard state wherever possible.
+
+Do not introduce unnecessary backend endpoints.
+
+====================================================
+10. FINAL GOAL
+====================================================
+
+The Dashboard should behave like a production SaaS.
+
+Every visible status must reflect real application state.
+
+Every button should work.
+
+No mock refresh buttons.
+
+No placeholder status text.
+
+No fake health indicators.
+
+No fake completion logic.

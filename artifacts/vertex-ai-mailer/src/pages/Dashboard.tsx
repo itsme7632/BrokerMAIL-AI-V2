@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useGetDashboardStats, useGetDashboardActivity, useGetGmailStatus, useGetDrafts, type ActivityItem } from "@workspace/api-client-react";
 import { useAuth } from "@/context/AuthContext";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -82,6 +82,13 @@ interface BillingData {
   usage: { emailsSentThisMonth: number; smtpAccountsUsed: number };
 }
 
+interface MailboxData {
+  smtpHost:   string;
+  smtpPort:   number;
+  smtpUser:   string;
+  smtpSecure: string;
+}
+
 // ─── Circular SVG progress ────────────────────────────────────────────────────
 
 function CircularProgress({ pct, size = 76 }: { pct: number; size?: number }) {
@@ -158,26 +165,27 @@ function SectionCard({ title, subtitle, icon: Icon, iconBg, action, children }: 
 // ─── Onboarding card ──────────────────────────────────────────────────────────
 
 interface OnboardingStep {
-  id:          string;
-  icon:        React.ElementType;
-  iconBg:      string;
-  iconColor:   string;
-  title:       string;
-  description: string;
-  done:        boolean;
-  btnLabel:    string;
-  btnHref?:    string;
-  btnAction?:  () => void;
+  id:                string;
+  icon:              React.ElementType;
+  iconBg:            string;
+  iconColor:         string;
+  title:             string;
+  description:       string;
+  done:              boolean;
+  btnLabel:          string;
+  btnHref?:          string;
+  btnAction?:        () => void;
+  onManualComplete?: () => void;
 }
 
 function OnboardingCard({
   steps, completedCount, allDone, seenComplete, dataReady,
 }: {
-  steps:         OnboardingStep[];
+  steps:          OnboardingStep[];
   completedCount: number;
-  allDone:       boolean;
-  seenComplete:  boolean;
-  dataReady:     boolean;
+  allDone:        boolean;
+  seenComplete:   boolean;
+  dataReady:      boolean;
 }) {
   const pct = Math.round((completedCount / steps.length) * 100);
 
@@ -268,7 +276,7 @@ function OnboardingCard({
             <motion.div key={step.id}
               custom={i} initial="hidden" animate="show" variants={fadeUp}
               className={`flex items-start gap-4 px-5 py-4 transition-colors ${step.done ? "opacity-60" : "hover:bg-slate-800/30"}`}>
-              {/* Completion indicator */}
+              {/* Completion indicator — clickable circle to manually mark done */}
               <div className="flex-shrink-0 w-5 flex items-center justify-center mt-0.5">
                 <AnimatePresence mode="wait">
                   {step.done ? (
@@ -281,7 +289,12 @@ function OnboardingCard({
                     <motion.div key="circle"
                       initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
                       exit={{ scale: 0, opacity: 0 }}>
-                      <Circle className="h-5 w-5 text-slate-600" />
+                      <button
+                        onClick={() => step.onManualComplete?.()}
+                        title="Mark as done"
+                        className="group/circle p-0.5 rounded-full hover:scale-110 transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                        <Circle className="h-5 w-5 text-slate-600 group-hover/circle:text-slate-400 transition-colors" />
+                      </button>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -333,10 +346,10 @@ function OnboardingCard({
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { data: stats,        isLoading: statsLoading }    = useGetDashboardStats();
-  const { data: activity,     isLoading: activityLoading } = useGetDashboardActivity({ limit: 10 });
-  const { data: gmailStatus,  isLoading: gmailLoading }    = useGetGmailStatus();
-  const { data: recentDrafts, isLoading: draftsLoading }   = useGetDrafts({ page: 1, limit: 6 });
+  const { data: stats,        isLoading: statsLoading }                              = useGetDashboardStats();
+  const { data: activity,     isLoading: activityLoading, refetch: refetchActivity } = useGetDashboardActivity({ limit: 10 });
+  const { data: gmailStatus,  isLoading: gmailLoading }                              = useGetGmailStatus();
+  const { data: recentDrafts, isLoading: draftsLoading }                             = useGetDrafts({ page: 1, limit: 6 });
 
   const [quota,            setQuota]           = useState<QuotaData | null>(null);
   const [quotaLoading,     setQuotaLoading]    = useState(true);
@@ -344,24 +357,30 @@ export default function Dashboard() {
   const [campaignsLoading, setCampaignsLoading]= useState(true);
   const [connectingGmail,  setConnectingGmail] = useState(false);
   const [liveActivity,     setLiveActivity]    = useState<OpenEvent[]>([]);
+  const liveActivityRef = useRef<OpenEvent[]>([]);
   const [liveLoading,      setLiveLoading]     = useState(true);
+  const [activityRefreshing, setActivityRefreshing] = useState(false);
+  const [refreshNoNew,     setRefreshNoNew]    = useState(false);
   const [suppressionStats, setSuppressionStats]= useState<{
     totalSuppressed: number;
     lastSuppressionAt: string | null;
     topReasons: { reason: string; count: number }[];
   } | null>(null);
-  const [billing,  setBilling]  = useState<BillingData | null>(null);
-  const [branding, setBranding] = useState<{
+  const [billing,   setBilling]   = useState<BillingData | null>(null);
+  const [branding,  setBranding]  = useState<{
     companyName?: string | null;
     logoUrl?:     string | null;
     website?:     string | null;
     phone?:       string | null;
   } | null>(null);
+  const [mailbox,   setMailbox]   = useState<MailboxData | null>(null);
+  const [mailboxLoading, setMailboxLoading] = useState(true);
 
-  // Onboarding: track if user has ever seen the all-complete celebration
-  const [onboardingSeenComplete, setOnboardingSeenComplete] = useState<boolean>(() =>
-    typeof window !== "undefined" && localStorage.getItem("bm_onboarding_done") === "1"
-  );
+  // Onboarding: track if user has ever seen the all-complete celebration (per-user)
+  const [onboardingSeenComplete, setOnboardingSeenComplete] = useState<boolean>(false);
+
+  // Onboarding: manually-checked steps (per-user localStorage, backend overrides when it reports done)
+  const [manuallyCompleted, setManuallyCompleted] = useState<Set<string>>(new Set<string>());
 
   const firstName = user?.name?.split(" ")[0] ?? "there";
   const token     = () => localStorage.getItem("auth_token") ?? "";
@@ -428,15 +447,52 @@ export default function Dashboard() {
       .then(r => r.ok ? r.json() : null).then(d => d && setBranding(d)).catch(() => {});
   }, []);
 
-  const fetchLiveActivity = useCallback(async () => {
+  // Fetch real SMTP mailbox state (same source as Mailbox settings page)
+  useEffect(() => {
+    async function fetchMailbox() {
+      setMailboxLoading(true);
+      try {
+        const res = await fetch("/api/mailbox", { headers: { Authorization: `Bearer ${token()}` } });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.smtpUser) setMailbox(data as MailboxData);
+          else setMailbox(null);
+        }
+      } catch { /* ignore */ }
+      finally { setMailboxLoading(false); }
+    }
+    fetchMailbox();
+  }, []);
+
+  // Keep ref in sync with state so fetchLiveActivity can read it synchronously
+  useEffect(() => { liveActivityRef.current = liveActivity; }, [liveActivity]);
+
+  const fetchLiveActivity = useCallback(async (): Promise<number> => {
     try {
       const res = await fetch("/api/notifications/live?limit=8", { headers: { Authorization: `Bearer ${token()}` } });
       if (res.ok) {
         const d = await res.json();
-        setLiveActivity(d.events ?? []);
+        // Deduplicate within the incoming payload itself
+        const seenIncoming = new Set<number>();
+        const incoming: OpenEvent[] = (d.events ?? [] as OpenEvent[]).filter((e: OpenEvent) => {
+          if (seenIncoming.has(e.id)) return false;
+          seenIncoming.add(e.id);
+          return true;
+        });
+        // Deduplicate against current state (via ref for synchronous access)
+        const existingIds = new Set(liveActivityRef.current.map(e => e.id));
+        const newOnes = incoming.filter(e => !existingIds.has(e.id));
+        if (newOnes.length > 0) {
+          const merged = [...newOnes, ...liveActivityRef.current]
+            .sort((a, b) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime())
+            .slice(0, 20);
+          setLiveActivity(merged);
+        }
+        return newOnes.length;
       }
     } catch {}
     finally { setLiveLoading(false); }
+    return 0;
   }, []);
 
   useEffect(() => {
@@ -444,6 +500,54 @@ export default function Dashboard() {
     const id = setInterval(fetchLiveActivity, 10_000);
     return () => clearInterval(id);
   }, [fetchLiveActivity]);
+
+  // Functional refresh: reloads both historical activity and live events, shows spinner.
+  // Shows "No new activity" message when refresh finds nothing new.
+  const handleRefreshActivity = useCallback(async () => {
+    if (activityRefreshing) return;
+    setActivityRefreshing(true);
+    setRefreshNoNew(false);
+    try {
+      const [, liveNewCount] = await Promise.all([refetchActivity(), fetchLiveActivity()]);
+      if ((liveNewCount ?? 0) === 0) {
+        setRefreshNoNew(true);
+        setTimeout(() => setRefreshNoNew(false), 3000);
+      }
+    } finally {
+      setActivityRefreshing(false);
+    }
+  }, [activityRefreshing, refetchActivity, fetchLiveActivity]);
+
+  // Per-user onboarding state: load from localStorage once user is known.
+  // Always reset both values so state never bleeds between accounts.
+  useEffect(() => {
+    if (user?.id == null) {
+      setOnboardingSeenComplete(false);
+      setManuallyCompleted(new Set<string>());
+      return;
+    }
+    setOnboardingSeenComplete(localStorage.getItem(`bm_onboarding_done:${user.id}`) === "1");
+    try {
+      const stored = localStorage.getItem(`bm_ob_manual:${user.id}`);
+      setManuallyCompleted(stored ? new Set<string>(JSON.parse(stored)) : new Set<string>());
+    } catch {
+      setManuallyCompleted(new Set<string>());
+    }
+  }, [user?.id]);
+
+  // Manual onboarding step completion — writes to per-user key
+  const handleManualComplete = useCallback((id: string) => {
+    setManuallyCompleted(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      try {
+        if (user?.id != null) {
+          localStorage.setItem(`bm_ob_manual:${user.id}`, JSON.stringify([...next]));
+        }
+      } catch {}
+      return next;
+    });
+  }, [user?.id]);
 
   // ── Derived values ──────────────────────────────────────────────────────────
 
@@ -460,27 +564,34 @@ export default function Dashboard() {
     ? Math.min(100, Math.round((billing.usage.emailsSentThisMonth / billing.plan.monthlyEmailLimit) * 100))
     : null;
 
-  // ── Onboarding completion flags ─────────────────────────────────────────────
-  const ob_gmail     = !gmailLoading    && gmailStatus?.connected === true;
-  const ob_branding  = !!(branding && (branding.companyName || branding.logoUrl) && (branding.website || branding.phone || branding.logoUrl));
-  const ob_leads     = !statsLoading    && (stats?.totalLeads ?? 0) > 0;
-  const ob_campaign  = !statsLoading    && (stats?.totalCampaigns ?? 0) > 0;
-  const ob_email     = !!(billing       && billing.usage.emailsSentThisMonth > 0);
+  // ── Onboarding completion flags — backend state OR manually-checked ─────────
+  const ob_gmail_be    = !gmailLoading && gmailStatus?.connected === true;
+  const ob_branding_be = !!(branding && (branding.companyName || branding.logoUrl) && (branding.website || branding.phone || branding.logoUrl));
+  const ob_leads_be    = !statsLoading && (stats?.totalLeads ?? 0) > 0;
+  const ob_campaign_be = !statsLoading && (stats?.totalCampaigns ?? 0) > 0;
+  const ob_email_be    = !!(billing    && billing.usage.emailsSentThisMonth > 0);
 
-  const obSteps = [ob_gmail, ob_branding, ob_leads, ob_campaign, ob_email];
-  const obCompleted  = obSteps.filter(Boolean).length;
-  const obAllDone    = obCompleted === 5;
-  const obDataReady  = !gmailLoading && !statsLoading; // enough data loaded to show progress
+  // Backend overrides manual; manual only fills in gaps while backend is falsy
+  const ob_gmail    = ob_gmail_be    || manuallyCompleted.has("gmail");
+  const ob_branding = ob_branding_be || manuallyCompleted.has("branding");
+  const ob_leads    = ob_leads_be    || manuallyCompleted.has("leads");
+  const ob_campaign = ob_campaign_be || manuallyCompleted.has("campaign");
+  const ob_email    = ob_email_be    || manuallyCompleted.has("email");
 
-  // Persist once user has seen the celebration so we downgrade to mini-card
+  const obSteps     = [ob_gmail, ob_branding, ob_leads, ob_campaign, ob_email];
+  const obCompleted = obSteps.filter(Boolean).length;
+  const obAllDone   = obCompleted === 5;
+  const obDataReady = !gmailLoading && !statsLoading;
+
+  // Persist once user has seen the celebration so we downgrade to mini-card (per-user key)
   useEffect(() => {
-    if (!obAllDone || onboardingSeenComplete) return;
+    if (!obAllDone || onboardingSeenComplete || user?.id == null) return;
     const t = setTimeout(() => {
-      localStorage.setItem("bm_onboarding_done", "1");
+      localStorage.setItem(`bm_onboarding_done:${user.id}`, "1");
       setOnboardingSeenComplete(true);
     }, 4500);
     return () => clearTimeout(t);
-  }, [obAllDone, onboardingSeenComplete]);
+  }, [obAllDone, onboardingSeenComplete, user?.id]);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
@@ -500,13 +611,35 @@ export default function Dashboard() {
     },
     {
       label: "SMTP",
-      desc: quotaLoading ? "Checking…" : quota?.smtpConnected ? "Connected" : "No mailbox",
-      status: quotaLoading ? "loading" : quota?.smtpConnected ? "ok" : "neutral",
+      desc: mailboxLoading
+        ? "Checking…"
+        : mailbox?.smtpUser
+          ? mailbox.smtpUser
+          : "No mailbox",
+      status: mailboxLoading ? "loading" : mailbox?.smtpUser ? "ok" : "neutral",
     },
     {
-      label: "Campaign Engine",
-      desc: campaignsLoading ? "Checking…" : activeCampaigns > 0 ? `${activeCampaigns} running` : coolingCampaigns > 0 ? `${coolingCampaigns} cooling` : "Idle",
-      status: campaignsLoading ? "loading" : activeCampaigns > 0 ? "ok" : "neutral",
+      label: "Campaign Status",
+      desc: campaignsLoading
+        ? "Checking…"
+        : activeCampaigns > 0
+          ? `${activeCampaigns} running`
+          : coolingCampaigns > 0
+            ? `${coolingCampaigns} cooling down`
+            : campaigns.some(c => c.status === "paused")
+              ? "Paused"
+              : campaigns.some(c => c.status === "pending")
+                ? "Pending"
+                : campaigns.length > 0
+                  ? "No active campaigns"
+                  : "No campaigns yet",
+      status: campaignsLoading
+        ? "loading"
+        : activeCampaigns > 0
+          ? "ok"
+          : coolingCampaigns > 0
+            ? "warn"
+            : "neutral",
     },
     {
       label: "Quota",
@@ -586,59 +719,64 @@ export default function Dashboard() {
       {(() => {
         const onboardingStepDefs: OnboardingStep[] = [
           {
-            id:          "gmail",
-            icon:        Mail,
-            iconBg:      "bg-blue-500/10 border-blue-500/20",
-            iconColor:   "text-blue-400",
-            title:       "Connect Gmail",
-            description: "Connect your Google account to send emails and create Gmail drafts.",
-            done:        ob_gmail,
-            btnLabel:    "Connect Gmail",
-            btnAction:   handleConnectGmail,
+            id:               "gmail",
+            icon:             Mail,
+            iconBg:           "bg-blue-500/10 border-blue-500/20",
+            iconColor:        "text-blue-400",
+            title:            "Connect Gmail",
+            description:      "Connect your Google account to send emails and create Gmail drafts.",
+            done:             ob_gmail,
+            btnLabel:         "Connect Gmail",
+            btnAction:        handleConnectGmail,
+            onManualComplete: () => handleManualComplete("gmail"),
           },
           {
-            id:          "branding",
-            icon:        Building2,
-            iconBg:      "bg-purple-500/10 border-purple-500/20",
-            iconColor:   "text-purple-400",
-            title:       "Complete Company Branding",
-            description: "Upload your company logo and add your business information in Settings.",
-            done:        ob_branding,
-            btnLabel:    "Open Settings",
-            btnHref:     "/settings",
+            id:               "branding",
+            icon:             Building2,
+            iconBg:           "bg-purple-500/10 border-purple-500/20",
+            iconColor:        "text-purple-400",
+            title:            "Complete Company Branding",
+            description:      "Upload your company logo and add your business information in Settings.",
+            done:             ob_branding,
+            btnLabel:         "Open Settings",
+            btnHref:          "/settings",
+            onManualComplete: () => handleManualComplete("branding"),
           },
           {
-            id:          "leads",
-            icon:        Users,
-            iconBg:      "bg-amber-500/10 border-amber-500/20",
-            iconColor:   "text-amber-400",
-            title:       "Upload Your First Leads",
-            description: "Import a CSV or Excel file of contacts to start your first campaign.",
-            done:        ob_leads,
-            btnLabel:    "Upload Leads",
-            btnHref:     "/leads/import",
+            id:               "leads",
+            icon:             Users,
+            iconBg:           "bg-amber-500/10 border-amber-500/20",
+            iconColor:        "text-amber-400",
+            title:            "Upload Your First Leads",
+            description:      "Import a CSV or Excel file of contacts to start your first campaign.",
+            done:             ob_leads,
+            btnLabel:         "Upload Leads",
+            btnHref:          "/leads/import",
+            onManualComplete: () => handleManualComplete("leads"),
           },
           {
-            id:          "campaign",
-            icon:        Megaphone,
-            iconBg:      "bg-indigo-500/10 border-indigo-500/20",
-            iconColor:   "text-indigo-400",
-            title:       "Create Your First Campaign",
-            description: "Start your first outreach campaign to reach your leads.",
-            done:        ob_campaign,
-            btnLabel:    "Open Campaigns",
-            btnHref:     "/campaigns",
+            id:               "campaign",
+            icon:             Megaphone,
+            iconBg:           "bg-indigo-500/10 border-indigo-500/20",
+            iconColor:        "text-indigo-400",
+            title:            "Create Your First Campaign",
+            description:      "Start your first outreach campaign to reach your leads.",
+            done:             ob_campaign,
+            btnLabel:         "Open Campaigns",
+            btnHref:          "/campaigns",
+            onManualComplete: () => handleManualComplete("campaign"),
           },
           {
-            id:          "email",
-            icon:        Send,
-            iconBg:      "bg-emerald-500/10 border-emerald-500/20",
-            iconColor:   "text-emerald-400",
-            title:       "Send Your First Email",
-            description: "Send your first quote or follow-up to a contact.",
-            done:        ob_email,
-            btnLabel:    "Compose Email",
-            btnHref:     "/compose",
+            id:               "email",
+            icon:             Send,
+            iconBg:           "bg-emerald-500/10 border-emerald-500/20",
+            iconColor:        "text-emerald-400",
+            title:            "Send Your First Email",
+            description:      "Send your first quote or follow-up to a contact.",
+            done:             ob_email,
+            btnLabel:         "Compose Email",
+            btnHref:          "/compose",
+            onManualComplete: () => handleManualComplete("email"),
           },
         ];
 
@@ -1115,11 +1253,28 @@ export default function Dashboard() {
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">Recent account events</p>
+                <AnimatePresence mode="wait">
+                  {refreshNoNew ? (
+                    <motion.p key="no-new"
+                      initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
+                      className="text-[11px] text-slate-500 mt-0.5 italic">
+                      No new activity
+                    </motion.p>
+                  ) : (
+                    <motion.p key="subtitle"
+                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                      className="text-xs text-slate-500 mt-0.5">
+                      Recent account events
+                    </motion.p>
+                  )}
+                </AnimatePresence>
               </div>
-              <button onClick={fetchLiveActivity}
-                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-all">
-                <RefreshCw className="h-3.5 w-3.5" />
+              <button
+                onClick={handleRefreshActivity}
+                disabled={activityRefreshing}
+                title="Refresh activity"
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                <RefreshCw className={`h-3.5 w-3.5 transition-transform duration-500 ${activityRefreshing ? "animate-spin" : ""}`} />
               </button>
             </div>
 
@@ -1181,7 +1336,7 @@ export default function Dashboard() {
                               </div>
                               <div className="min-w-0 flex-1">
                                 <p className="text-xs font-medium text-slate-200 truncate">
-                                  {event.customerName ?? event.email ?? "Unknown"} opened email
+                                  {event.customerName ?? event.email ?? "Recipient"} opened email
                                 </p>
                                 <p className="text-[10px] text-slate-500 mt-0.5">{timeAgo(event.openedAt)}</p>
                               </div>
