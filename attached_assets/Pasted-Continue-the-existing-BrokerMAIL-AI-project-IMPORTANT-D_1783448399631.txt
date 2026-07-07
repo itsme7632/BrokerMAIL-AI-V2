@@ -1,0 +1,225 @@
+Continue the existing BrokerMAIL AI project.
+
+IMPORTANT:
+
+Do NOT restart this task.
+
+Do NOT redesign anything.
+
+Do NOT rewrite the SMTP recovery system.
+
+Do NOT implement any new features.
+
+Do NOT touch the authentication system.
+
+Authentication work is considered COMPLETE.
+
+The previous Replit session stopped only because the daily credit limit was reached.
+
+--------------------------------------------------
+PROJECT STATUS
+--------------------------------------------------
+
+Authentication
+
+✓ Resend integration completed
+✓ Password Reset completed
+✓ Forgot Password completed
+✓ Reset Password completed
+✓ Admin password reset completed
+✓ Email Verification completed
+✓ Verify Email page completed
+✓ Register redirect completed
+✓ Login redirect completed
+✓ ProtectedRoute verification completed
+✓ Welcome email completed
+✓ Verification email completed
+
+Leave ALL authentication code unchanged unless it is directly related to this bug.
+
+--------------------------------------------------
+CURRENT PROBLEM
+--------------------------------------------------
+
+SMTP campaigns no longer send.
+
+This regression appeared AFTER implementing the SMTP quota recovery system.
+
+Previously campaigns worked perfectly.
+
+Now:
+
+• Campaign enters "Sending"
+• 0 emails processed
+• Every lead remains "Queued"
+• SMTP mailbox has remaining quota
+• Campaign never progresses
+• No errors shown in UI
+
+--------------------------------------------------
+THIS IS A DEBUGGING TASK
+--------------------------------------------------
+
+DO NOT begin changing code.
+
+First inspect the existing implementation.
+
+Trace the COMPLETE campaign pipeline.
+
+Campaign Start
+
+↓
+
+Queue Creation
+
+↓
+
+processCampaignJobQueue()
+
+↓
+
+processCampaignFully()
+
+↓
+
+Mailbox Selection
+
+↓
+
+Quota Check
+
+↓
+
+SMTP Send
+
+↓
+
+Status Update
+
+↓
+
+Next Lead
+
+For EVERY step determine:
+
+✓ Is this function entered?
+
+✓ Does it return early?
+
+✓ Is it awaiting forever?
+
+✓ Is it sleeping forever?
+
+✓ Is a Promise never resolving?
+
+✓ Is quota recovery blocking execution?
+
+✓ Is mailbox incorrectly marked quota_reached?
+
+✓ Is coolingUntil causing an immediate wait?
+
+✓ Is handleMailboxQuotaReached() called incorrectly?
+
+✓ Is runQuotaRecovery() starting when it should not?
+
+✓ Is probe mode blocking all campaigns?
+
+✓ Is sentThisHour preventing the first send?
+
+✓ Is activeJobs preventing worker execution?
+
+--------------------------------------------------
+FILES TO INSPECT
+--------------------------------------------------
+
+artifacts/api-server/src/lib/smtp-quota.ts
+
+artifacts/api-server/src/routes/campaigns.ts
+
+artifacts/api-server/src/routes/mailbox.ts
+
+app.ts
+
+SMTP worker
+
+Campaign queue
+
+Mailbox selection
+
+Campaign status updates
+
+--------------------------------------------------
+ALSO CHECK
+--------------------------------------------------
+
+Database mailbox values:
+
+quota_reached
+
+cooling_until
+
+cooldown_minutes
+
+probe_retry_minutes
+
+max_per_hour
+
+sent_this_hour
+
+last_reset_at
+
+Campaign table:
+
+status
+
+paused
+
+cooling_down
+
+queued
+
+--------------------------------------------------
+IF NEEDED
+--------------------------------------------------
+
+Add temporary logging to every major stage.
+
+Do NOT remove it until the root cause is confirmed.
+
+--------------------------------------------------
+EXPECTED DELIVERABLE
+--------------------------------------------------
+
+Before changing code provide:
+
+1. Exact file
+
+2. Exact function
+
+3. Exact line or block causing the stall
+
+4. Why the regression appeared
+
+5. Why it worked before
+
+6. Smallest possible fix
+
+Only AFTER identifying the root cause should you implement the minimal fix.
+
+Do NOT refactor unrelated code.
+
+Do NOT redesign the SMTP recovery system.
+
+Keep the fix as small and safe as possible.
+
+After implementing:
+
+• Run typecheck
+
+• Run production build
+
+• Verify campaigns process leads again
+
+• Remove temporary debug logs
+
+• Summarize exactly what changed.

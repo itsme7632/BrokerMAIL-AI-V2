@@ -201,20 +201,23 @@ export async function processCampaignJobQueue(
           .where(eq(mailboxesTable.id, box.id));
 
         if (boxQuota?.quotaStatus === "quota_reached") {
-          // Recovery loop is already handling this — stop the processor and let it take over
+          // This processor was restarted as the recovery probe. The hourly count is still
+          // high from sends made before the quota was hit — that is expected. Do NOT break
+          // here: breaking silently freezes the campaign in "Sending" with 0 emails and no
+          // error because the finally block sees activeQCount > 0 and leaves status unchanged.
+          // Fall through and attempt the send — that send IS the probe.
           logger.info({ jobId, campaignId, sentThisHour, maxPerHour },
-            "[QUEUE] Hourly limit exceeded — recovery loop already active, stopping processor");
+            "[QUEUE] In quota recovery probe mode — hourly count high from pre-quota sends, skipping preemptive check, attempting probe send");
+        } else {
+          // First detection of preemptive hourly limit — treat as quota reached
+          const reason = `Hourly send limit reached: ${sentThisHour}/${maxPerHour} emails sent in the last 60 minutes`;
+          logger.warn({ jobId, campaignId, sentThisHour, maxPerHour },
+            "[QUEUE] Preemptive quota pause — hourly limit reached, pausing mailbox and campaigns");
+          await handleMailboxQuotaReached(box.id, user.id, reason);
+          runQuotaRecovery(box.id, user.id, startCampaignProcessor).catch(err2 =>
+            logger.error({ err: err2 }, "[SMTP-QUOTA] Recovery loop error (preemptive hourly limit)"));
           break;
         }
-
-        // First detection of preemptive hourly limit — treat as quota reached
-        const reason = `Hourly send limit reached: ${sentThisHour}/${maxPerHour} emails sent in the last 60 minutes`;
-        logger.warn({ jobId, campaignId, sentThisHour, maxPerHour },
-          "[QUEUE] Preemptive quota pause — hourly limit reached, pausing mailbox and campaigns");
-        await handleMailboxQuotaReached(box.id, user.id, reason);
-        runQuotaRecovery(box.id, user.id, startCampaignProcessor).catch(err2 =>
-          logger.error({ err: err2 }, "[SMTP-QUOTA] Recovery loop error (preemptive hourly limit)"));
-        break;
       }
 
       // ── Grab next pending OR ready-deferred item ───────────────────────
@@ -687,20 +690,26 @@ export async function processCampaignFully(
           .where(eq(mailboxesTable.id, box.id));
 
         if (boxQuota?.quotaStatus === "quota_reached") {
-          // Recovery loop is already running — stop this processor; it will be restarted when the probe succeeds
+          // This processor was restarted as the recovery probe. The hourly count is still
+          // high from sends made before the quota was hit — that is expected. Do NOT break
+          // here: breaking silently freezes the campaign in "Sending" with 0 emails and no
+          // error because the finally block sees activeQCount > 0 and leaves status unchanged.
+          // Instead, fall through and attempt the send. That send IS the probe: if it
+          // succeeds, clearMailboxQuotaIfNeeded clears quota_status and the recovery loop
+          // exits cleanly; if it fails with a quota error, handleMailboxQuotaReached
+          // (probe-failure branch) extends the cooldown and the loop retries.
           logger.info({ campaignId, sentThisHour, maxPerHour },
-            "[CAMPAIGN] Hourly limit exceeded — quota recovery loop already active, stopping processor");
+            "[CAMPAIGN] In quota recovery probe mode — hourly count high from pre-quota sends, skipping preemptive check, attempting probe send");
+        } else {
+          // First detection of preemptive hourly limit — engage the full quota recovery system
+          const reason = `Hourly send limit reached: ${sentThisHour}/${maxPerHour} emails sent in the last 60 minutes`;
+          logger.warn({ campaignId, sentThisHour, maxPerHour },
+            "[CAMPAIGN] Preemptive quota pause — hourly limit reached, pausing mailbox and all campaigns");
+          await handleMailboxQuotaReached(box.id, user.id, reason);
+          runQuotaRecovery(box.id, user.id, startCampaignProcessor).catch(err2 =>
+            logger.error({ err: err2 }, "[SMTP-QUOTA] Recovery loop error (processCampaignFully preemptive)"));
           break;
         }
-
-        // First detection of preemptive hourly limit — engage the full quota recovery system
-        const reason = `Hourly send limit reached: ${sentThisHour}/${maxPerHour} emails sent in the last 60 minutes`;
-        logger.warn({ campaignId, sentThisHour, maxPerHour },
-          "[CAMPAIGN] Preemptive quota pause — hourly limit reached, pausing mailbox and all campaigns");
-        await handleMailboxQuotaReached(box.id, user.id, reason);
-        runQuotaRecovery(box.id, user.id, startCampaignProcessor).catch(err2 =>
-          logger.error({ err: err2 }, "[SMTP-QUOTA] Recovery loop error (processCampaignFully preemptive)"));
-        break;
       }
 
       // Clear cooling_down only when the full rolling 60-min quota window has cleared.
