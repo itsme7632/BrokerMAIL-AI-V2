@@ -39,12 +39,15 @@ export interface User {
   timezone?: string | null;
   /** @nullable */
   aiTone?: string | null;
+  emailVerified: boolean;
   createdAt: string;
 }
 
 export interface AuthResponse {
   user: User;
   token: string;
+  /** Present on registration when email verification is required */
+  requiresVerification?: boolean;
 }
 
 export interface LoginInput {

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { User, LoginInput, RegisterInput, setAuthTokenGetter, useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
+import { User, AuthResponse, LoginInput, RegisterInput, setAuthTokenGetter, useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
 import { login as apiLogin, register as apiRegister, logout as apiLogout } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -12,9 +12,10 @@ setAuthTokenGetter(() => localStorage.getItem("auth_token"));
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (data: LoginInput) => Promise<User>;
-  register: (data: RegisterInput) => Promise<User>;
+  login: (data: LoginInput) => Promise<AuthResponse>;
+  register: (data: RegisterInput) => Promise<AuthResponse>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -50,18 +51,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [isError, token]);
 
-  const login = async (data: LoginInput): Promise<User> => {
+  const login = async (data: LoginInput): Promise<AuthResponse> => {
     const res = await apiLogin(data);
     setToken(res.token);
     queryClient.setQueryData(getGetMeQueryKey(), res.user);
-    return res.user as User;
+    return res;
   };
 
-  const register = async (data: RegisterInput): Promise<User> => {
+  const register = async (data: RegisterInput): Promise<AuthResponse> => {
     const res = await apiRegister(data);
     setToken(res.token);
     queryClient.setQueryData(getGetMeQueryKey(), res.user);
-    return res.user as User;
+    return res;
   };
 
   const logout = async () => {
@@ -74,8 +75,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const refreshUser = async () => {
+    await queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isLoading: isLoading && !!token, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isLoading: isLoading && !!token, login, register, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

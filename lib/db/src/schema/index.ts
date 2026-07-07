@@ -18,3 +18,4 @@ export * from "./composer_drafts";
 export * from "./design_templates";
 export * from "./composer_email_templates";
 export * from "./password_reset_tokens";
+export * from "./email_verification_codes";

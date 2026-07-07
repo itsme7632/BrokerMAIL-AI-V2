@@ -33,6 +33,8 @@ export const usersTable = pgTable("users", {
   credits: integer("credits").notNull().default(0),
   status: text("status").notNull().default("active"),
   lastActiveAt: timestamp("last_active_at"),
+  // ── Email verification ───────────────────────────────────────────────────
+  emailVerified: boolean("email_verified").notNull().default(false),
   // ─────────────────────────────────────────────────────────────────────────
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

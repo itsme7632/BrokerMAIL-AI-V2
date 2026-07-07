@@ -34,6 +34,11 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
       setLocation("/login");
       return;
     }
+    // Block unverified users — redirect to email verification
+    if (!isLoading && user && !user.emailVerified) {
+      setLocation("/verify-email");
+      return;
+    }
     if (!isLoading && user && maintenanceOn && !isAdmin) {
       setLocation("/maintenance");
     }
@@ -48,6 +53,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) return null;
+  if (!user.emailVerified) return null;
   if (maintenanceOn && !isAdmin) return null;
 
   return <>{children}</>;
