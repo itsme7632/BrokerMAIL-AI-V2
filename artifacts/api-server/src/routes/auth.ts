@@ -5,7 +5,7 @@ import { eq, and, gt, isNull } from "drizzle-orm";
 import { LoginBody, RegisterBody } from "@workspace/api-zod";
 import { signToken, hashPassword, comparePassword, requireAuth } from "../lib/auth";
 import { getGoogleAuthUrl, getGmailAuthUrl, exchangeCode, getOAuthUserInfo, getOAuthRedirectUri } from "../lib/gmail";
-import { sendSystemEmail, buildPasswordResetEmail } from "../lib/system-email";
+import { sendTransactionalEmail, buildPasswordResetEmail } from "../lib/email-service";
 
 const router: IRouter = Router();
 
@@ -264,7 +264,7 @@ router.post("/auth/forgot-password", async (req, res): Promise<void> => {
     const resetUrl = `${getAppBaseUrl()}/reset-password?token=${rawToken}`;
     const { html, text } = buildPasswordResetEmail(user.name, resetUrl);
 
-    await sendSystemEmail({ to: user.email, subject: "Reset your BrokerMAIL AI password", html, text });
+    await sendTransactionalEmail({ to: user.email, subject: "Reset your BrokerMAIL AI password", html, text });
 
     req.log.info({ userId: user.id }, "Password reset email dispatched");
   } catch (err) {

@@ -1,4 +1,5 @@
 - [Vertex AI Mailer stack](vertex-ai-mailer-stack.md) — key decisions for this project's auth, AI, Gmail, and DB layer
+- [Resend email service](email-service-resend.md) — transactional emails use email-service.ts + Resend; system-email.ts deleted; hard-fail in prod on missing key
 - [Deep import path gotcha](deep-import-paths.md) — workspace libs must export via package.json; deep src/ imports break Vite bundling
 - [OAuth flow pattern](oauth-flow-pattern.md) — single /api/auth/callback for all OAuth flows; state param routes; relative redirects; frontend capture page
 - [Campaign completion logic](campaign-completion-logic.md) — correct completion check is sent+failed===totalLeads via leadsTable, NOT emailQueue.pending===0

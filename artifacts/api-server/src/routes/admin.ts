@@ -873,7 +873,7 @@ router.post("/admin/users/:id/send-reset-email", requireAdmin, async (req, res):
   try {
     const crypto = await import("crypto");
     const { passwordResetTokensTable } = await import("@workspace/db");
-    const { sendSystemEmail, buildPasswordResetEmail } = await import("../lib/system-email");
+    const { sendTransactionalEmail, buildPasswordResetEmail } = await import("../lib/email-service");
 
     const rawToken  = crypto.randomBytes(32).toString("hex");
     const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
@@ -889,7 +889,7 @@ router.post("/admin/users/:id/send-reset-email", requireAdmin, async (req, res):
     const resetUrl = `${appUrl}/reset-password?token=${rawToken}`;
     const { html, text } = buildPasswordResetEmail(user.name, resetUrl);
 
-    await sendSystemEmail({ to: user.email, subject: "Reset your BrokerMAIL AI password", html, text });
+    await sendTransactionalEmail({ to: user.email, subject: "Reset your BrokerMAIL AI password", html, text });
 
     logger.info({ adminId: req.user?.id, targetUserId: user.id }, "Admin sent password reset email");
     res.json({ ok: true, message: `Password reset email sent to ${user.email}` });
