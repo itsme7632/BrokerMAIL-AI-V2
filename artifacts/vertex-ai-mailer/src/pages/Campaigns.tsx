@@ -85,7 +85,7 @@ function getStatusInfo(c: EnrichedCampaign) {
 
 function lastActivityLabel(c: EnrichedCampaign): string {
   if (c.status === "paused" && c.pauseReason === "SMTP_QUOTA_REACHED") {
-    return `Paused · SMTP quota reached ${timeAgo(c.updatedAt)}`;
+    return `Paused (SMTP Cooling Down) · ${timeAgo(c.updatedAt)}`;
   }
   switch (c.status) {
     case "sending":      return `Active · ${timeAgo(c.updatedAt)}`;

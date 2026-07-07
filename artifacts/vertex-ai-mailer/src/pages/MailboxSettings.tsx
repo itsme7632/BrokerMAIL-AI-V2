@@ -213,7 +213,7 @@ const EMPTY_FORM: MailboxForm = {
   fromName: "", replyTo: "",
   batchSize: 10,
   delaySeconds: 15,
-  maxPerHour: 100,
+  maxPerHour: 50,
   cooldownMinutes: 60,
   probeRetryMinutes: 5,
 };
@@ -368,7 +368,7 @@ export default function MailboxSettings() {
             replyTo:  data.replyTo  ?? "",
             batchSize:         data.batchSize         ?? 10,
             delaySeconds:      data.delaySeconds      ?? 15,
-            maxPerHour:        data.maxPerHour        ?? 100,
+            maxPerHour:        data.maxPerHour        ?? 50,
             cooldownMinutes:   data.cooldownMinutes   ?? 60,
             probeRetryMinutes: data.probeRetryMinutes ?? 5,
           });
@@ -785,12 +785,72 @@ export default function MailboxSettings() {
               </p>
             </div>
 
+            {/* ── Quota Recovery Settings ─────────────────────────────────────── */}
+            <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-700/40">
+              <div className="flex items-center gap-2">
+                <TimerReset className="h-4 w-4 text-slate-400" />
+                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  Quota Recovery Settings
+                </label>
+              </div>
+              <p className="text-xs text-slate-400 -mt-1">
+                When a quota error is detected, BrokerMAIL AI automatically pauses, waits, probes, and resumes.
+              </p>
+
+              {/* Cooldown duration */}
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5 text-slate-400" />
+                    Initial cooldown (minutes)
+                  </label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={1440}
+                    value={form.cooldownMinutes}
+                    onChange={e => {
+                      const v = parseInt(e.target.value);
+                      if (!isNaN(v) && v > 0) set("cooldownMinutes", v);
+                    }}
+                    className="h-9 rounded-xl font-mono text-sm"
+                  />
+                  <p className="text-xs text-slate-400">
+                    How long to wait after detecting a quota error before probing. Default: 60 min.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                    <RefreshCw className="h-3.5 w-3.5 text-slate-400" />
+                    Probe retry interval (minutes)
+                  </label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={120}
+                    value={form.probeRetryMinutes}
+                    onChange={e => {
+                      const v = parseInt(e.target.value);
+                      if (!isNaN(v) && v > 0) set("probeRetryMinutes", v);
+                    }}
+                    className="h-9 rounded-xl font-mono text-sm"
+                  />
+                  <p className="text-xs text-slate-400">
+                    Extra wait added after each failed probe email. Default: 5 min.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Summary */}
             <div className="flex flex-wrap gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-700/40 border border-slate-100 dark:border-slate-700/60">
               {[
                 { icon: Clock, text: `${form.delaySeconds}s between emails` },
                 { icon: Zap,   text: `${form.batchSize} per batch` },
                 { icon: Gauge, text: `${form.maxPerHour}/hr max` },
+                { icon: TimerReset, text: `${form.cooldownMinutes}min cooldown` },
+                { icon: RefreshCw,  text: `${form.probeRetryMinutes}min probe retry` },
               ].map(({ icon: Icon, text }) => (
                 <div key={text} className="flex items-center gap-1.5">
                   <Icon className="h-3.5 w-3.5 text-violet-500" />

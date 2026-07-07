@@ -192,7 +192,9 @@ export async function handleMailboxQuotaReached(
     }
 
   } else {
-    // Probe failure — extend cooldown by probeRetryMinutes, update already-paused campaigns
+    // Probe failure — extend cooldown by probeRetryMinutes, update all quota-paused campaigns.
+    // Also pause any campaigns currently in "sending" state (catches the probe campaign
+    // which was temporarily resumed but failed; its pauseReason was cleared by the recovery loop).
     await db.update(mailboxesTable).set({
       quotaCooldownUntil: cooldownUntil,
       quotaSmtpResponse:  smtpResponse,
@@ -200,12 +202,25 @@ export async function handleMailboxQuotaReached(
       updatedAt:          now,
     }).where(eq(mailboxesTable.id, mailboxId));
 
+    // Re-pause quota-paused campaigns (update their cooldown timestamps)
     await db.update(campaignsTable).set({
       cooldownUntil,
       updatedAt: now,
     }).where(and(
       eq(campaignsTable.userId, userId),
       eq(campaignsTable.pauseReason, "SMTP_QUOTA_REACHED"),
+    ));
+
+    // Also catch any "sending" campaigns that may have been the probe (pauseReason cleared)
+    await db.update(campaignsTable).set({
+      status:       "paused",
+      pauseReason:  "SMTP_QUOTA_REACHED",
+      cooldownUntil,
+      updatedAt:    now,
+    }).where(and(
+      eq(campaignsTable.userId, userId),
+      eq(campaignsTable.status, "sending"),
+      // Only campaigns belonging to this mailbox's user that have no other pause reason
     ));
 
     logger.warn({
@@ -349,40 +364,68 @@ export async function runQuotaRecovery(
         break;
       }
 
-      // ── Resume campaigns (they were paused for quota) ──────────────────────
-      // Setting them back to 'sending' + clearing pauseReason allows the
-      // processor to pick up the next pending item (the probe).
-      const resumed = await db.update(campaignsTable).set({
+      // ── Find all campaigns still paused for quota ─────────────────────────
+      const allPaused = await db
+        .select({ id: campaignsTable.id, name: campaignsTable.name })
+        .from(campaignsTable)
+        .where(and(
+          eq(campaignsTable.userId, userId),
+          eq(campaignsTable.pauseReason, "SMTP_QUOTA_REACHED"),
+        ));
+
+      // ── No-campaign fallback ───────────────────────────────────────────────
+      // If there are no paused campaigns (all completed/cancelled during cooldown),
+      // we cannot send a probe email. Clear the quota state so that the next
+      // campaign or manual send can attempt freely. If the quota is still active,
+      // the first real send will re-detect it and re-trigger recovery.
+      if (allPaused.length === 0) {
+        logger.info({ mailboxId, userId },
+          "[SMTP-QUOTA] No paused campaigns to probe — clearing quota state. Next send will verify health.");
+
+        await db.update(mailboxesTable).set({
+          quotaStatus:        null,
+          quotaReachedAt:     null,
+          quotaCooldownUntil: null,
+          quotaSmtpResponse:  null,
+          quotaProbeCount:    0,
+          updatedAt:          new Date(),
+        }).where(eq(mailboxesTable.id, mailboxId));
+
+        await logActivity(userId, "mailbox_resumed",
+          `Mailbox ${mailboxEmail} quota state cleared — no active campaigns to probe; next send will verify.`,
+          { mailboxId, mailboxEmail });
+
+        break;
+      }
+
+      // ── Step 1: Resume exactly ONE campaign for the probe ─────────────────
+      // Only ONE campaign is resumed and started. Its first real send IS the probe.
+      // All remaining campaigns stay paused until the probe succeeds.
+      const probeCandidate = allPaused[0];
+
+      await db.update(campaignsTable).set({
         status:       "sending",
         pauseReason:  null,
         cooldownUntil: null,
         updatedAt:    new Date(),
-      }).where(and(
-        eq(campaignsTable.userId, userId),
-        eq(campaignsTable.pauseReason, "SMTP_QUOTA_REACHED"),
-      )).returning({ id: campaignsTable.id, name: campaignsTable.name });
+      }).where(eq(campaignsTable.id, probeCandidate.id));
 
       logger.info({
         mailboxId,
         userId,
-        resumedCampaigns: resumed.map(c => c.id),
-      }, "[SMTP-PROBE] Cooldown expired — campaigns resumed, starting probe send");
+        probeCampaignId: probeCandidate.id,
+        remainingPaused: allPaused.length - 1,
+      }, "[SMTP-PROBE] Cooldown expired — starting single probe via one campaign; remaining campaigns stay paused");
 
-      // Activity: campaigns resumed for probe
-      for (const c of resumed) {
-        await logActivity(userId, "campaign_resumed",
-          `Campaign "${c.name}" resumed for SMTP probe on ${mailboxEmail}.`,
-          { campaignId: c.id, campaignName: c.name, mailboxId });
-      }
+      await logActivity(userId, "smtp_probe_started",
+        `Sending probe email via campaign "${probeCandidate.name}" on ${mailboxEmail}. ${allPaused.length - 1} other campaign(s) remain paused.`,
+        { mailboxId, mailboxEmail, probeCampaignId: probeCandidate.id });
 
-      // ── Restart processors — their first send IS the probe ─────────────────
-      for (const { id: campaignId } of resumed) {
-        startCampaignProcessorFn(campaignId).catch(err =>
-          logger.error({ err, campaignId }, "[SMTP-PROBE] Campaign processor restart failed"),
-        );
-      }
+      startCampaignProcessorFn(probeCandidate.id).catch(err =>
+        logger.error({ err, campaignId: probeCandidate.id }, "[SMTP-PROBE] Probe campaign processor restart failed"),
+      );
 
-      // ── Monitor for probe result (up to 2 minutes) ─────────────────────────
+      // ── Step 2: Monitor for probe result (up to 2 minutes) ────────────────
       let elapsed      = 0;
       let probeCleared = false;
       while (elapsed < PROBE_WINDOW_MS) {
@@ -399,15 +442,47 @@ export async function runQuotaRecovery(
       }
 
       if (probeCleared) {
+        // ── Step 3: Probe succeeded — resume ALL remaining paused campaigns ──
         logger.info({ mailboxId, userId },
-          "[SMTP-QUOTA] Recovered — probe email sent successfully, quota state cleared");
+          "[SMTP-QUOTA] Probe succeeded — resuming all remaining campaigns");
+
+        const remaining: Array<{ id: number; name: string }> = await db.update(campaignsTable).set({
+          status:       "sending",
+          pauseReason:  null,
+          cooldownUntil: null,
+          updatedAt:    new Date(),
+        }).where(and(
+          eq(campaignsTable.userId, userId),
+          eq(campaignsTable.pauseReason, "SMTP_QUOTA_REACHED"),
+        )).returning({ id: campaignsTable.id, name: campaignsTable.name });
+
+        for (const c of remaining) {
+          await logActivity(userId, "campaign_resumed",
+            `Campaign "${c.name}" resumed after successful SMTP probe on ${mailboxEmail}.`,
+            { campaignId: c.id, campaignName: c.name, mailboxId });
+          startCampaignProcessorFn(c.id).catch(err =>
+            logger.error({ err, campaignId: c.id }, "[SMTP-PROBE] Campaign processor restart failed"),
+          );
+        }
+
         break; // exit the outer while loop
       }
 
-      // Probe failed — handleMailboxQuotaReached was called again inside the processor,
-      // which extended the cooldown. The outer loop continues with the new cooldown.
-      logger.warn({ mailboxId, userId },
-        "[SMTP-QUOTA] Probe window expired without quota clear — likely re-triggered, looping with extended cooldown");
+      // ── Probe failed ───────────────────────────────────────────────────────
+      // handleMailboxQuotaReached was called again inside the probe processor,
+      // which extended the cooldown. However, the probe campaign has pauseReason=null
+      // (we cleared it above), so we must explicitly re-pause it to keep it consistent.
+      await db.update(campaignsTable).set({
+        status:      "paused",
+        pauseReason: "SMTP_QUOTA_REACHED",
+        updatedAt:   new Date(),
+      }).where(and(
+        eq(campaignsTable.id, probeCandidate.id),
+        eq(campaignsTable.status, "sending"),  // only if it's still sending (not already re-paused)
+      ));
+
+      logger.warn({ mailboxId, userId, probeCampaignId: probeCandidate.id },
+        "[SMTP-QUOTA] Probe window expired — quota still active, extended cooldown, looping");
     }
   } catch (err) {
     logger.error({ err, mailboxId, userId }, "[SMTP-QUOTA] Recovery loop threw unexpectedly");

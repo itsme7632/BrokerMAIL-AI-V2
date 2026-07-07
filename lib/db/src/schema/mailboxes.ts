@@ -21,7 +21,7 @@ export const mailboxesTable = pgTable("mailboxes", {
   isActive: boolean("is_active").notNull().default(true),
   batchSize: integer("batch_size").notNull().default(10),
   delaySeconds: integer("delay_seconds").notNull().default(15),
-  maxPerHour: integer("max_per_hour").notNull().default(100),
+  maxPerHour: integer("max_per_hour").notNull().default(50),
   // ── SMTP provider quota recovery state ──────────────────────────────────────
   // Set when the SMTP server rejects a send with a quota/rate-limit error.
   // Cleared automatically once a probe email sends successfully.

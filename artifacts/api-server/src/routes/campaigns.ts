@@ -680,55 +680,27 @@ export async function processCampaignFully(
       const maxPerHour   = box.maxPerHour ?? 100;
 
       if (sentThisHour >= maxPerHour) {
-        // Only write a new cooldownUntil if one is not already active.
-        // Without this guard, every loop iteration after a pause/resume resets
-        // the clock to NOW+3600, erasing the remaining cooldown time.
-        const nowMs = Date.now();
-        const [campCd] = await db.select({ cooldownUntil: campaignsTable.cooldownUntil })
-          .from(campaignsTable).where(eq(campaignsTable.id, campaignId));
-        const existingCooldown = campCd?.cooldownUntil;
-        if (!existingCooldown || existingCooldown.getTime() <= nowMs) {
-          const cooldownUntil = new Date(nowMs + 3_600_000);
-          await db.update(campaignsTable).set({
-            status: "cooling_down", cooldownUntil, updatedAt: new Date(),
-          }).where(eq(campaignsTable.id, campaignId));
-          logger.info({ campaignId, sentThisHour, maxPerHour, cooldownUntil },
-            "[CAMPAIGN] Hourly quota reached — new cooldown set for 60 min");
-        } else {
-          // Existing cooldown still active — preserve it, only update status
-          await db.update(campaignsTable)
-            .set({ status: "cooling_down", updatedAt: new Date() })
-            .where(eq(campaignsTable.id, campaignId));
-          const remainingSecs = Math.ceil((existingCooldown.getTime() - nowMs) / 1000);
-          logger.info({ campaignId, sentThisHour, maxPerHour, cooldownUntil: existingCooldown, remainingSecs },
-            "[CAMPAIGN] Hourly quota still exceeded — preserving existing cooldown, not resetting");
+        // Check if the mailbox is already in quota_reached state (recovery loop may be running)
+        const [boxQuota] = await db
+          .select({ quotaStatus: mailboxesTable.quotaStatus })
+          .from(mailboxesTable)
+          .where(eq(mailboxesTable.id, box.id));
+
+        if (boxQuota?.quotaStatus === "quota_reached") {
+          // Recovery loop is already running — stop this processor; it will be restarted when the probe succeeds
+          logger.info({ campaignId, sentThisHour, maxPerHour },
+            "[CAMPAIGN] Hourly limit exceeded — quota recovery loop already active, stopping processor");
+          break;
         }
-        await sleep(60_000);
-        // Re-read cooldownUntil from DB (may have been updated by another path)
-        const [campCdNow] = await db.select({ cooldownUntil: campaignsTable.cooldownUntil })
-          .from(campaignsTable).where(eq(campaignsTable.id, campaignId));
-        if (!campCdNow?.cooldownUntil || new Date() >= campCdNow.cooldownUntil) {
-          // Cooldown timer expired — only resume if the full rolling 60-min window has cleared.
-          // If any sends remain within the window, stay in cooling_down to avoid quota probing.
-          const [freshHourlyRow] = await db.select({ count: sql<number>`count(*)::int` })
-            .from(emailQueueTable)
-            .where(and(
-              eq(emailQueueTable.mailboxId, box.id),
-              isNotNull(emailQueueTable.firstAttemptAt),
-              gte(emailQueueTable.firstAttemptAt, new Date(Date.now() - 3_600_000)),
-            ));
-          const freshSentThisHour = freshHourlyRow?.count ?? 0;
-          if (freshSentThisHour === 0) {
-            await db.update(campaignsTable).set({
-              status: "sending", cooldownUntil: null, updatedAt: new Date(),
-            }).where(eq(campaignsTable.id, campaignId));
-            logger.info({ campaignId, maxPerHour }, "[CAMPAIGN] Cooldown expired and quota window fully cleared — resuming");
-          } else {
-            logger.info({ campaignId, freshSentThisHour, maxPerHour },
-              "[CAMPAIGN] Cooldown timer expired but quota window not fully cleared — staying in cooling_down");
-          }
-        }
-        continue;
+
+        // First detection of preemptive hourly limit — engage the full quota recovery system
+        const reason = `Hourly send limit reached: ${sentThisHour}/${maxPerHour} emails sent in the last 60 minutes`;
+        logger.warn({ campaignId, sentThisHour, maxPerHour },
+          "[CAMPAIGN] Preemptive quota pause — hourly limit reached, pausing mailbox and all campaigns");
+        await handleMailboxQuotaReached(box.id, user.id, reason);
+        runQuotaRecovery(box.id, user.id, startCampaignProcessor).catch(err2 =>
+          logger.error({ err: err2 }, "[SMTP-QUOTA] Recovery loop error (processCampaignFully preemptive)"));
+        break;
       }
 
       // Clear cooling_down only when the full rolling 60-min quota window has cleared.

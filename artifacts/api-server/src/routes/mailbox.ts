@@ -99,23 +99,12 @@ async function processJobQueue(jobId: string, box: Mailbox, template: Template, 
       const maxPerHour   = box.maxPerHour ?? 100;
 
       if (sentThisHour >= maxPerHour) {
-        // Check if the mailbox is already in quota_reached state (recovery loop running)
-        const [boxQuota] = await db
-          .select({ quotaStatus: mailboxesTable.quotaStatus })
-          .from(mailboxesTable)
-          .where(eq(mailboxesTable.id, box.id));
-
-        if (boxQuota?.quotaStatus === "quota_reached") {
-          break; // Recovery loop is already running — stop the processor
-        }
-
-        const reason = `Hourly send limit reached: ${sentThisHour}/${maxPerHour} emails sent in the last 60 minutes`;
-        logger.warn({ jobId, mailboxId: box.id, sentThisHour, maxPerHour },
-          "[MAILBOX] Preemptive quota pause — hourly limit reached, pausing mailbox and campaigns");
-        await handleMailboxQuotaReached(box.id, user.id, reason);
-        runQuotaRecovery(box.id, user.id, startCampaignProcessor).catch(err2 =>
-          logger.error({ err: err2 }, "[SMTP-QUOTA] Recovery loop error (mailbox preemptive hourly limit)"));
-        break;
+        // Manual bulk-send hit the hourly limit — sleep and retry.
+        // (Full quota recovery is campaign-specific; manual sends just wait for the window to clear.)
+        logger.info({ jobId, mailboxId: box.id, sentThisHour, maxPerHour },
+          "[MAILBOX] Hourly limit reached — sleeping 60s before retrying");
+        await sleep(60_000);
+        continue;
       }
 
       // ── Grab next pending OR ready-deferred item ─────────────────────────
@@ -481,7 +470,7 @@ router.put("/mailbox", requireAuth, async (req, res): Promise<void> => {
     isActive:          true,
     batchSize:          batchSize          ? Number(batchSize)          : 10,
     delaySeconds:       delaySeconds       ? Number(delaySeconds)       : 15,
-    maxPerHour:         maxPerHour         ? Number(maxPerHour)         : 100,
+    maxPerHour:         maxPerHour         ? Number(maxPerHour)         : 50,
     cooldownMinutes:    cooldownMinutes    ? Number(cooldownMinutes)    : 60,
     probeRetryMinutes:  probeRetryMinutes  ? Number(probeRetryMinutes)  : 5,
     updatedAt:         new Date(),
@@ -556,7 +545,7 @@ router.post("/mailbox/save", requireAuth, async (req, res): Promise<void> => {
     isActive:          true,
     batchSize:          batchSize          ? Number(batchSize)          : 10,
     delaySeconds:       delaySeconds       ? Number(delaySeconds)       : 15,
-    maxPerHour:         maxPerHour         ? Number(maxPerHour)         : 100,
+    maxPerHour:         maxPerHour         ? Number(maxPerHour)         : 50,
     cooldownMinutes:    cooldownMinutes    ? Number(cooldownMinutes)    : 60,
     probeRetryMinutes:  probeRetryMinutes  ? Number(probeRetryMinutes)  : 5,
     updatedAt:         new Date(),
