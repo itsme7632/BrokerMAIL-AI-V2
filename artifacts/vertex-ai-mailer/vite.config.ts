@@ -69,6 +69,24 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:8080",
         changeOrigin: true,
+        // When the API server is unreachable (e.g. still building, crashed, or
+        // Replit paused the workflow between sessions), http-proxy normally
+        // writes an HTML-formatted error body.  The frontend calls res.json()
+        // on every API response, so that HTML triggers:
+        //   SyntaxError: Unexpected token '<', "<!DOCTYPE..."
+        // Fix: intercept the proxy error event and always respond with JSON so
+        // every caller gets a parseable error instead of a SyntaxError.
+        configure(proxy) {
+          proxy.on("error", (_err, _req, res) => {
+            if (!("writeHead" in res)) return;
+            (res as import("http").ServerResponse).writeHead(503, {
+              "Content-Type": "application/json",
+            });
+            (res as import("http").ServerResponse).end(
+              JSON.stringify({ error: "API server is temporarily unavailable. Please try again in a moment." }),
+            );
+          });
+        },
       },
     },
   },
