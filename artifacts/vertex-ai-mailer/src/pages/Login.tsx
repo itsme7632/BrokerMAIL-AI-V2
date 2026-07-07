@@ -5,12 +5,13 @@ import { Link, useLocation } from "wouter";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 
 async function getMaintenanceMode(): Promise<boolean> {
@@ -26,8 +27,9 @@ async function getMaintenanceMode(): Promise<boolean> {
 }
 
 const loginSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  email:      z.string().email("Please enter a valid email address"),
+  password:   z.string().min(1, "Password is required"),
+  rememberMe: z.boolean().default(false),
 });
 type LoginFormValues = z.infer<typeof loginSchema>;
 
@@ -44,7 +46,8 @@ export default function Login() {
   const { login, user } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitting, setIsSubmitting]   = useState(false);
+  const [showPassword, setShowPassword]   = useState(false);
 
   // If already logged in, redirect based on role
   if (user) {
@@ -58,22 +61,18 @@ export default function Login() {
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "" },
+    defaultValues: { email: "", password: "", rememberMe: false },
   });
 
   const onSubmit = async (data: LoginFormValues) => {
     try {
       setIsSubmitting(true);
-      const loggedInUser = await login(data);
+      const loggedInUser = await login({ email: data.email, password: data.password });
       if (loggedInUser.role === "admin") {
         setLocation("/admin/dashboard");
       } else {
         const inMaintenance = await getMaintenanceMode();
-        if (inMaintenance) {
-          setLocation("/maintenance");
-        } else {
-          setLocation("/dashboard");
-        }
+        setLocation(inMaintenance ? "/maintenance" : "/dashboard");
       }
     } catch (err: any) {
       toast({
@@ -90,15 +89,15 @@ export default function Login() {
     <AuthLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Welcome back</h1>
-          <p className="text-sm text-slate-500 mt-1.5">Sign in to your account to continue</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Welcome back</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5">Sign in to your account to continue</p>
         </div>
 
         {/* Google OAuth */}
         <button
           type="button"
           onClick={() => window.location.href = "/api/auth/google"}
-          className="w-full h-11 flex items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
+          className="w-full h-11 flex items-center justify-center gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 hover:border-slate-300 transition-all shadow-sm"
         >
           <GoogleIcon />
           Continue with Google
@@ -107,7 +106,7 @@ export default function Login() {
         {/* Divider */}
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t border-slate-100" />
+            <span className="w-full border-t border-slate-100 dark:border-slate-700" />
           </div>
           <div className="relative flex justify-center text-xs">
             <span className="bg-white dark:bg-slate-950 px-3 text-slate-400 uppercase tracking-wider">or</span>
@@ -115,18 +114,20 @@ export default function Login() {
         </div>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" autoComplete="on">
+            {/* Email */}
             <FormField
               control={form.control}
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-slate-700 text-sm font-medium">Email</FormLabel>
+                  <FormLabel className="text-slate-700 dark:text-slate-300 text-sm font-medium">Email</FormLabel>
                   <FormControl>
                     <Input
                       placeholder="you@example.com"
                       type="email"
-                      className="h-11 rounded-xl border-slate-200 bg-white focus:border-blue-500 text-slate-900"
+                      autoComplete="email"
+                      className="h-11 rounded-xl border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:border-blue-500 text-slate-900 dark:text-white"
                       {...field}
                     />
                   </FormControl>
@@ -134,36 +135,82 @@ export default function Login() {
                 </FormItem>
               )}
             />
+
+            {/* Password */}
             <FormField
               control={form.control}
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-slate-700 text-sm font-medium">Password</FormLabel>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <FormLabel className="text-slate-700 dark:text-slate-300 text-sm font-medium mb-0">Password</FormLabel>
+                    <Link
+                      href="/forgot-password"
+                      className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium transition-colors"
+                    >
+                      Forgot password?
+                    </Link>
+                  </div>
                   <FormControl>
-                    <Input
-                      type="password"
-                      className="h-11 rounded-xl border-slate-200 bg-white focus:border-blue-500 text-slate-900"
-                      {...field}
-                    />
+                    <div className="relative">
+                      <Input
+                        type={showPassword ? "text" : "password"}
+                        autoComplete="current-password"
+                        className="h-11 rounded-xl border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 focus:border-blue-500 text-slate-900 dark:text-white pr-11"
+                        {...field}
+                      />
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        onClick={() => setShowPassword(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors p-0.5"
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
+
+            {/* Remember me */}
+            <FormField
+              control={form.control}
+              name="rememberMe"
+              render={({ field }) => (
+                <FormItem className="flex items-center gap-2.5 space-y-0">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      id="remember-me"
+                      className="border-slate-300 dark:border-slate-600"
+                    />
+                  </FormControl>
+                  <FormLabel htmlFor="remember-me" className="text-sm text-slate-600 dark:text-slate-400 font-normal cursor-pointer">
+                    Remember me
+                  </FormLabel>
+                </FormItem>
+              )}
+            />
+
             <Button
               type="submit"
               className="w-full h-11 rounded-xl font-medium shadow-sm mt-2"
               disabled={isSubmitting}
             >
-              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Sign in"}
+              {isSubmitting
+                ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Signing in…</>
+                : "Sign in"}
             </Button>
           </form>
         </Form>
 
-        <p className="text-center text-sm text-slate-500">
+        <p className="text-center text-sm text-slate-500 dark:text-slate-400">
           Don't have an account?{" "}
-          <Link href="/register" className="text-blue-600 hover:text-blue-700 font-medium">
+          <Link href="/register" className="text-blue-600 hover:text-blue-700 dark:text-blue-400 font-medium">
             Sign up
           </Link>
         </p>

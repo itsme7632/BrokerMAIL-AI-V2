@@ -855,6 +855,86 @@ router.get("/admin/users/:id/credit-history", requireAdmin, async (req, res): Pr
   res.json(logs.map(l => ({ ...l, createdAt: l.createdAt.toISOString() })));
 });
 
+// ─── Admin: Send password reset email to a user ───────────────────────────────
+
+router.post("/admin/users/:id/send-reset-email", requireAdmin, async (req, res): Promise<void> => {
+  const targetId = parseInt((req.params.id as string), 10);
+  if (!targetId || isNaN(targetId)) {
+    res.status(400).json({ error: "Invalid user id" });
+    return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, targetId));
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  try {
+    const crypto = await import("crypto");
+    const { passwordResetTokensTable } = await import("@workspace/db");
+    const { sendSystemEmail, buildPasswordResetEmail } = await import("../lib/system-email");
+
+    const rawToken  = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 60 minutes
+
+    await db.insert(passwordResetTokensTable).values({ userId: user.id, tokenHash, expiresAt });
+
+    const appUrl = process.env.PUBLIC_URL
+      ?? (process.env.REPLIT_DOMAINS ? `https://${process.env.REPLIT_DOMAINS.split(",")[0].trim()}` : null)
+      ?? (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null)
+      ?? "http://localhost:3000";
+
+    const resetUrl = `${appUrl}/reset-password?token=${rawToken}`;
+    const { html, text } = buildPasswordResetEmail(user.name, resetUrl);
+
+    await sendSystemEmail({ to: user.email, subject: "Reset your BrokerMAIL AI password", html, text });
+
+    logger.info({ adminId: req.user?.id, targetUserId: user.id }, "Admin sent password reset email");
+    res.json({ ok: true, message: `Password reset email sent to ${user.email}` });
+  } catch (err: any) {
+    logger.error({ err }, "admin send-reset-email error");
+    res.status(500).json({ error: err?.message ?? "Failed to send reset email" });
+  }
+});
+
+// ─── Admin: Set temporary password for a user ────────────────────────────────
+
+router.post("/admin/users/:id/set-temp-password", requireAdmin, async (req, res): Promise<void> => {
+  const targetId = parseInt((req.params.id as string), 10);
+  if (!targetId || isNaN(targetId)) {
+    res.status(400).json({ error: "Invalid user id" });
+    return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, targetId));
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  try {
+    const crypto = await import("crypto");
+    const { hashPassword } = await import("../lib/auth");
+
+    // Generate a cryptographically secure temporary password (20 hex chars = 80 bits of entropy)
+    const tempPassword = crypto.randomBytes(10).toString("hex");
+
+    const passwordHash = await hashPassword(tempPassword);
+    await db.update(usersTable)
+      .set({ passwordHash, updatedAt: new Date() })
+      .where(eq(usersTable.id, user.id));
+
+    logger.info({ adminId: req.user?.id, targetUserId: user.id }, "Admin set temporary password");
+    // Return the plain-text temp password once — admin must relay it to the user
+    res.json({ ok: true, temporaryPassword: tempPassword });
+  } catch (err: any) {
+    logger.error({ err }, "admin set-temp-password error");
+    res.status(500).json({ error: err?.message ?? "Failed to set temporary password" });
+  }
+});
+
 // ─── Support Tickets ──────────────────────────────────────────────────────────
 
 router.get("/admin/support", requireAdmin, async (req, res): Promise<void> => {

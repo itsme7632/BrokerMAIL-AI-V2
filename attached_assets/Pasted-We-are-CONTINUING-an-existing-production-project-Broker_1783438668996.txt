@@ -1,0 +1,316 @@
+We are CONTINUING an existing production project (BrokerMAIL AI). This is NOT a new project.
+
+IMPORTANT:
+Do not redesign from scratch.
+Do not replace existing authentication.
+Do not duplicate functionality.
+First inspect the current codebase and continue exactly where the previous session stopped.
+
+=========================================
+PROJECT STATUS
+=========================================
+
+The following work is already completed:
+
+✓ Dashboard redesigned
+✓ Settings page redesigned
+✓ Sidebar redesigned
+✓ Mobile responsive improvements
+✓ SMTP quota detection & automatic recovery system
+✓ SMTP cooldown/probe settings
+✓ Campaign recovery system
+✓ Activity feed improvements
+✓ Plans & Billing improvements
+✓ Light/Dark mode support
+✓ Production deployment pipeline
+
+The previous Replit session had already designed premium authentication pages but ran out of credits before implementing them.
+
+DO NOT redesign again.
+
+Continue implementation.
+
+=========================================
+WHAT WAS ALREADY DESIGNED
+=========================================
+
+Premium authentication experience consisting of:
+
+1. Login
+2. Register
+3. Forgot Password
+4. Reset Password
+
+The visual design has already been approved.
+
+Use the existing BrokerMAIL AI design language used throughout the dashboard.
+
+=========================================
+FIRST TASK
+=========================================
+
+Before writing code, inspect the current authentication system.
+
+Determine:
+
+• Current auth flow
+• Login implementation
+• Register implementation
+• Google OAuth
+• User table
+• Password hashing
+• JWT/session handling
+• Existing email service
+• Admin user management
+• Existing reset-password functionality (if any)
+
+DO NOT implement duplicate functionality.
+
+Reuse existing services whenever possible.
+
+=========================================
+LOGIN PAGE
+=========================================
+
+Upgrade the existing Login page.
+
+Requirements:
+
+✓ Premium modern layout
+
+✓ Responsive
+
+✓ Show / Hide password (eye icon)
+
+✓ Remember Me
+
+✓ Forgot Password link
+
+✓ Better validation
+
+✓ Loading spinner
+
+✓ Disabled button while submitting
+
+✓ Proper browser autocomplete
+
+✓ Enter key submits form
+
+✓ Improved typography
+
+✓ Better spacing
+
+✓ Smooth animations
+
+=========================================
+REGISTER PAGE
+=========================================
+
+Upgrade the existing Register page.
+
+Fields:
+
+• Full Name
+
+• Email
+
+• Password
+
+• Confirm Password
+
+Password:
+
+✓ Eye toggle
+
+✓ Strength meter
+
+✓ Live password requirements
+
+✓ Instant validation
+
+Confirm Password:
+
+✓ Eye toggle
+
+✓ Live "Passwords match" validation
+
+Do not allow registration until validation passes.
+
+=========================================
+PASSWORD REQUIREMENTS
+=========================================
+
+Show requirements while typing.
+
+Minimum:
+
+✓ 8 characters
+
+Recommended:
+
+✓ Uppercase
+
+✓ Lowercase
+
+✓ Number
+
+✓ Special character
+
+Display green checkmarks as requirements are satisfied.
+
+=========================================
+FORGOT PASSWORD
+=========================================
+
+Password reset is currently NOT implemented.
+
+Build the complete backend.
+
+Requirements:
+
+Create secure reset tokens.
+
+Store only hashed tokens.
+
+Expiry:
+
+60 minutes
+
+One-time use.
+
+Generate secure random tokens.
+
+Never expose password hashes.
+
+Email contains secure reset URL.
+
+If email does not exist, always return:
+
+"If an account exists, we've sent a password reset email."
+
+Never reveal account existence.
+
+=========================================
+RESET PASSWORD
+=========================================
+
+Create Reset Password page.
+
+Fields:
+
+• New Password
+
+• Confirm Password
+
+Features:
+
+✓ Eye toggles
+
+✓ Password strength
+
+✓ Requirements
+
+✓ Match validation
+
+✓ Success page
+
+✓ Invalid token page
+
+✓ Expired token page
+
+After success:
+
+Redirect to Login.
+
+=========================================
+ADMIN PANEL
+=========================================
+
+Inspect current Admin Panel.
+
+If password reset already exists:
+
+Reuse it.
+
+If not:
+
+Add Admin Reset Password.
+
+Admin options:
+
+1.
+
+Send password reset email
+
+or
+
+2.
+
+Generate temporary password
+
+Never expose stored passwords.
+
+=========================================
+EMAILS
+=========================================
+
+Reuse existing email service.
+
+Create a clean HTML password reset email matching BrokerMAIL AI branding.
+
+=========================================
+SECURITY
+=========================================
+
+Use secure random tokens.
+
+Hash reset tokens before storing.
+
+Expire after 60 minutes.
+
+Invalidate after first use.
+
+Rate limit reset requests.
+
+Prevent email enumeration.
+
+=========================================
+RESPONSIVE
+=========================================
+
+Desktop
+
+Tablet
+
+Mobile
+
+Must all look premium.
+
+=========================================
+IMPORTANT
+=========================================
+
+Do NOT modify working authentication unless necessary.
+
+Do NOT break Google OAuth.
+
+Do NOT break Admin authentication.
+
+Do NOT remove existing features.
+
+=========================================
+WORKFLOW
+=========================================
+
+Work in small verified steps.
+
+After each major milestone:
+
+• Build
+• Fix TypeScript errors
+• Verify routing
+• Verify authentication still works
+
+Only then continue.
+
+Do not stop until the complete authentication system is fully implemented and production-ready.

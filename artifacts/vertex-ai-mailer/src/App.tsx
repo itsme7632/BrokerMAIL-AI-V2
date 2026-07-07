@@ -20,6 +20,8 @@ import About from "@/pages/About";
 import Help from "@/pages/Help";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword";
 import AuthCallback from "@/pages/AuthCallback";
 import Dashboard from "@/pages/Dashboard";
 import LeadsImport from "@/pages/LeadsImport";
@@ -72,6 +74,8 @@ function Router() {
       <Route path="/help" component={Help} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
+      <Route path="/forgot-password" component={ForgotPassword} />
+      <Route path="/reset-password" component={ResetPassword} />
       <Route path="/auth/callback" component={AuthCallback} />
 
       {/* Admin auth */}

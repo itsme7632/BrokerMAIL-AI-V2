@@ -1,11 +1,55 @@
+import crypto from "crypto";
 import { Router, type IRouter } from "express";
-import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, usersTable, passwordResetTokensTable } from "@workspace/db";
+import { eq, and, gt, isNull } from "drizzle-orm";
 import { LoginBody, RegisterBody } from "@workspace/api-zod";
 import { signToken, hashPassword, comparePassword, requireAuth } from "../lib/auth";
 import { getGoogleAuthUrl, getGmailAuthUrl, exchangeCode, getOAuthUserInfo, getOAuthRedirectUri } from "../lib/gmail";
+import { sendSystemEmail, buildPasswordResetEmail } from "../lib/system-email";
 
 const router: IRouter = Router();
+
+// ─── Simple in-memory rate limiter for auth-sensitive endpoints ───────────────
+// Keyed by IP. Resets every WINDOW_MS.
+const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const MAX_ATTEMPTS = 5;
+
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + WINDOW_MS });
+    return true; // allowed
+  }
+  entry.count += 1;
+  return entry.count <= MAX_ATTEMPTS;
+}
+
+// Clean up stale entries every 30 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of rateLimitMap.entries()) {
+    if (now > val.resetAt) rateLimitMap.delete(key);
+  }
+}, 30 * 60 * 1000);
+
+// ─── Helper: resolve app base URL ─────────────────────────────────────────────
+function getAppBaseUrl(): string {
+  return (
+    process.env.PUBLIC_URL ??
+    (process.env.REPLIT_DOMAINS
+      ? `https://${process.env.REPLIT_DOMAINS.split(",")[0].trim()}`
+      : null) ??
+    (process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : null) ??
+    "http://localhost:3000"
+  );
+}
+
+// ─── Login ────────────────────────────────────────────────────────────────────
 
 router.post("/auth/login", async (req, res): Promise<void> => {
   const parsed = LoginBody.safeParse(req.body);
@@ -35,6 +79,8 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   });
 });
 
+// ─── Register ─────────────────────────────────────────────────────────────────
+
 router.post("/auth/register", async (req, res): Promise<void> => {
   const parsed = RegisterBody.safeParse(req.body);
   if (!parsed.success) {
@@ -60,9 +106,13 @@ router.post("/auth/register", async (req, res): Promise<void> => {
   });
 });
 
+// ─── Logout ───────────────────────────────────────────────────────────────────
+
 router.post("/auth/logout", async (_req, res): Promise<void> => {
   res.json({ message: "Logged out successfully" });
 });
+
+// ─── Me ───────────────────────────────────────────────────────────────────────
 
 router.get("/auth/me", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
@@ -73,53 +123,35 @@ router.get("/auth/me", requireAuth, async (req, res): Promise<void> => {
   });
 });
 
-/**
- * Kick off the Google sign-in flow. Redirects to Google with state="google-login".
- */
+// ─── Google OAuth: initiate sign-in ──────────────────────────────────────────
+
 router.get("/auth/google", (_req, res): void => {
   const url = getGoogleAuthUrl();
   res.redirect(url);
 });
 
+// ─── Google OAuth: unified callback ──────────────────────────────────────────
+
 /**
- * Unified OAuth callback for ALL Google OAuth flows.
- *
- * This is the single redirect URI registered in Google Cloud Console.
- * The `state` query param tells us which flow triggered the callback:
- *   - "google-login"          → sign-in / register flow
- *   - "gmail-connect:<userId>" → Gmail account connection for an existing user
- *
- * On success the server issues a redirect to a frontend route:
- *   - Login:         /auth/callback?token=<jwt>
- *   - Gmail connect: /settings?gmail=connected
- *
- * Because the frontend SPA and the API are served from the same origin in
- * both dev (Vite proxy) and production (Replit reverse proxy), relative
- * redirects work correctly — no FRONTEND_URL variable needed.
+ * Single redirect URI registered in Google Cloud Console.
+ * The `state` query param routes the flow:
+ *   - "google-login"            → sign-in / register
+ *   - "gmail-connect:<userId>"  → Gmail account connection for existing user
  */
 router.get("/auth/callback", async (req, res): Promise<void> => {
-  const code = req.query.code as string | undefined;
-  const state = (req.query.state as string | undefined) ?? "";
+  const code       = req.query.code as string | undefined;
+  const state      = (req.query.state as string | undefined) ?? "";
   const oauthError = req.query.error as string | undefined;
 
-  // Google may return an error (e.g. user denied access)
   if (oauthError) {
     req.log.warn({ oauthError, state }, "OAuth denied by user");
-    if (state.startsWith("gmail-connect:")) {
-      res.redirect("/settings?error=oauth_denied");
-    } else {
-      res.redirect("/login?error=oauth_denied");
-    }
+    res.redirect(state.startsWith("gmail-connect:") ? "/settings?error=oauth_denied" : "/login?error=oauth_denied");
     return;
   }
 
   if (!code) {
     req.log.warn({ state }, "OAuth callback missing code");
-    if (state.startsWith("gmail-connect:")) {
-      res.redirect("/settings?error=no_code");
-    } else {
-      res.redirect("/login?error=no_code");
-    }
+    res.redirect(state.startsWith("gmail-connect:") ? "/settings?error=no_code" : "/login?error=no_code");
     return;
   }
 
@@ -132,7 +164,7 @@ router.get("/auth/callback", async (req, res): Promise<void> => {
       return;
     }
 
-    // ── Gmail connect flow ───────────────────────────────────────────────────
+    // ── Gmail connect ────────────────────────────────────────────────────────
     if (state.startsWith("gmail-connect:")) {
       const userId = parseInt(state.split(":")[1], 10);
       if (!userId || isNaN(userId)) {
@@ -141,19 +173,19 @@ router.get("/auth/callback", async (req, res): Promise<void> => {
       }
       const userInfo = await getOAuthUserInfo(tokens.access_token);
       await db.update(usersTable).set({
-        gmailConnected: true,
-        gmailEmail: userInfo.email ?? null,
+        gmailConnected:   true,
+        gmailEmail:       userInfo.email ?? null,
         gmailAccessToken: tokens.access_token,
         gmailRefreshToken: tokens.refresh_token ?? null,
         gmailTokenExpiry: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
-        updatedAt: new Date(),
+        updatedAt:        new Date(),
       }).where(eq(usersTable.id, userId));
       req.log.info({ userId, gmailEmail: userInfo.email }, "Gmail connected");
       res.redirect("/settings?gmail=connected");
       return;
     }
 
-    // ── Google sign-in / register flow ──────────────────────────────────────
+    // ── Google sign-in / register ────────────────────────────────────────────
     const userInfo = await getOAuthUserInfo(tokens.access_token);
     if (!userInfo.email) {
       req.log.error({ state }, "Google OAuth returned no email");
@@ -164,17 +196,16 @@ router.get("/auth/callback", async (req, res): Promise<void> => {
     let [user] = await db.select().from(usersTable).where(eq(usersTable.email, userInfo.email));
     if (!user) {
       [user] = await db.insert(usersTable).values({
-        email: userInfo.email,
-        name: userInfo.name ?? userInfo.email,
+        email:     userInfo.email,
+        name:      userInfo.name ?? userInfo.email,
         avatarUrl: userInfo.picture ?? null,
-        googleId: userInfo.id ?? null,
+        googleId:  userInfo.id ?? null,
       }).returning();
       req.log.info({ email: userInfo.email }, "New user created via Google OAuth");
     } else {
-      // Keep avatar / googleId in sync
       if (!user.googleId || !user.avatarUrl) {
         await db.update(usersTable).set({
-          googleId: user.googleId ?? userInfo.id ?? null,
+          googleId:  user.googleId ?? userInfo.id ?? null,
           avatarUrl: user.avatarUrl ?? userInfo.picture ?? null,
           updatedAt: new Date(),
         }).where(eq(usersTable.id, user.id));
@@ -183,24 +214,176 @@ router.get("/auth/callback", async (req, res): Promise<void> => {
     }
 
     const jwtToken = signToken({ userId: user.id, email: user.email, role: user.role });
-    // Redirect to the dedicated frontend handler page that stores the token
     res.redirect(`/auth/callback?token=${jwtToken}`);
   } catch (err) {
     req.log.error({ err, state }, "OAuth callback error");
-    if (state.startsWith("gmail-connect:")) {
-      res.redirect("/settings?error=oauth_failed");
-    } else {
-      res.redirect("/login?error=oauth_failed");
-    }
+    res.redirect(state.startsWith("gmail-connect:") ? "/settings?error=oauth_failed" : "/login?error=oauth_failed");
   }
 });
 
-/**
- * Expose the OAuth redirect URI so the frontend can display it as a hint
- * in the settings / admin UI (helps with Google Console configuration).
- */
+// ─── OAuth redirect URI (for UI hints) ───────────────────────────────────────
+
 router.get("/auth/oauth-redirect-uri", (_req, res): void => {
   res.json({ redirectUri: getOAuthRedirectUri() });
+});
+
+// ─── Forgot Password ──────────────────────────────────────────────────────────
+
+router.post("/auth/forgot-password", async (req, res): Promise<void> => {
+  // Always return same message to prevent email enumeration
+  const successMsg = { message: "If an account exists, we've sent a password reset email." };
+
+  const ip = (req.ip ?? "unknown").split(":").pop() ?? "unknown";
+  if (!checkRateLimit(ip)) {
+    res.status(429).json({ error: "Too many requests. Please try again later." });
+    return;
+  }
+
+  const email = (req.body as { email?: string })?.email?.trim().toLowerCase();
+  if (!email) {
+    res.json(successMsg);
+    return;
+  }
+
+  try {
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+
+    if (!user) {
+      // Deliberate: do not reveal whether the email exists
+      res.json(successMsg);
+      return;
+    }
+
+    // Generate a cryptographically secure random token
+    const rawToken  = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 60 minutes
+
+    await db.insert(passwordResetTokensTable).values({ userId: user.id, tokenHash, expiresAt });
+
+    const resetUrl = `${getAppBaseUrl()}/reset-password?token=${rawToken}`;
+    const { html, text } = buildPasswordResetEmail(user.name, resetUrl);
+
+    await sendSystemEmail({ to: user.email, subject: "Reset your BrokerMAIL AI password", html, text });
+
+    req.log.info({ userId: user.id }, "Password reset email dispatched");
+  } catch (err) {
+    req.log.error({ err }, "forgot-password error");
+    // Fall through — still return success to prevent enumeration
+  }
+
+  res.json(successMsg);
+});
+
+// ─── Verify Reset Token (GET — used by frontend to pre-validate token) ───────
+
+router.get("/auth/verify-reset-token", async (req, res): Promise<void> => {
+  const token = req.query.token as string | undefined;
+  if (!token) {
+    res.json({ valid: false, reason: "missing" });
+    return;
+  }
+
+  const tokenHash   = crypto.createHash("sha256").update(token).digest("hex");
+  const [resetToken] = await db
+    .select()
+    .from(passwordResetTokensTable)
+    .where(
+      and(
+        eq(passwordResetTokensTable.tokenHash, tokenHash),
+        isNull(passwordResetTokensTable.usedAt),
+      ),
+    );
+
+  if (!resetToken) {
+    res.json({ valid: false, reason: "invalid" });
+    return;
+  }
+
+  if (resetToken.expiresAt < new Date()) {
+    res.json({ valid: false, reason: "expired" });
+    return;
+  }
+
+  res.json({ valid: true });
+});
+
+// ─── Reset Password ───────────────────────────────────────────────────────────
+
+router.post("/auth/reset-password", async (req, res): Promise<void> => {
+  const { token, password } = req.body as { token?: string; password?: string };
+
+  if (!token || !password) {
+    res.status(400).json({ error: "Token and password are required" });
+    return;
+  }
+
+  if (password.length < 8) {
+    res.status(400).json({ error: "Password must be at least 8 characters" });
+    return;
+  }
+
+  const tokenHash    = crypto.createHash("sha256").update(token).digest("hex");
+  const [resetToken] = await db
+    .select()
+    .from(passwordResetTokensTable)
+    .where(
+      and(
+        eq(passwordResetTokensTable.tokenHash, tokenHash),
+        isNull(passwordResetTokensTable.usedAt),
+      ),
+    );
+
+  if (!resetToken) {
+    res.status(400).json({ error: "invalid_token" });
+    return;
+  }
+
+  if (resetToken.expiresAt < new Date()) {
+    res.status(400).json({ error: "expired_token" });
+    return;
+  }
+
+  const newHash = await hashPassword(password);
+
+  // Consume token + update password in one transaction.
+  // The conditional WHERE on usedAt IS NULL prevents replay even under
+  // concurrent requests — only the first writer wins the token row.
+  await db.transaction(async (tx) => {
+    const now = new Date();
+    const [consumed] = await tx
+      .update(passwordResetTokensTable)
+      .set({ usedAt: now })
+      .where(
+        and(
+          eq(passwordResetTokensTable.id, resetToken.id),
+          isNull(passwordResetTokensTable.usedAt),
+        ),
+      )
+      .returning({ id: passwordResetTokensTable.id });
+
+    if (!consumed) {
+      // Another request consumed this token first
+      throw Object.assign(new Error("Token already used"), { alreadyUsed: true });
+    }
+
+    await tx
+      .update(usersTable)
+      .set({ passwordHash: newHash, updatedAt: now })
+      .where(eq(usersTable.id, resetToken.userId));
+  }).catch((err: any) => {
+    if (err?.alreadyUsed) {
+      res.status(400).json({ error: "invalid_token" });
+    } else {
+      throw err;
+    }
+  });
+
+  // If we already replied via the catch block, don't send another response
+  if (res.headersSent) return;
+
+  req.log.info({ userId: resetToken.userId }, "Password reset successfully");
+  res.json({ message: "Password updated successfully" });
 });
 
 export default router;
