@@ -99,8 +99,23 @@ async function processJobQueue(jobId: string, box: Mailbox, template: Template, 
       const maxPerHour   = box.maxPerHour ?? 100;
 
       if (sentThisHour >= maxPerHour) {
-        await sleep(60_000);
-        continue;
+        // Check if the mailbox is already in quota_reached state (recovery loop running)
+        const [boxQuota] = await db
+          .select({ quotaStatus: mailboxesTable.quotaStatus })
+          .from(mailboxesTable)
+          .where(eq(mailboxesTable.id, box.id));
+
+        if (boxQuota?.quotaStatus === "quota_reached") {
+          break; // Recovery loop is already running — stop the processor
+        }
+
+        const reason = `Hourly send limit reached: ${sentThisHour}/${maxPerHour} emails sent in the last 60 minutes`;
+        logger.warn({ jobId, mailboxId: box.id, sentThisHour, maxPerHour },
+          "[MAILBOX] Preemptive quota pause — hourly limit reached, pausing mailbox and campaigns");
+        await handleMailboxQuotaReached(box.id, user.id, reason);
+        runQuotaRecovery(box.id, user.id, startCampaignProcessor).catch(err2 =>
+          logger.error({ err: err2 }, "[SMTP-QUOTA] Recovery loop error (mailbox preemptive hourly limit)"));
+        break;
       }
 
       // ── Grab next pending OR ready-deferred item ─────────────────────────
@@ -341,10 +356,12 @@ router.get("/mailbox", requireAuth, async (req, res): Promise<void> => {
     imapPassSet:   !!box.imapPassEncrypted,
     fromName:      box.fromName      ?? "",
     replyTo:       box.replyTo       ?? "",
-    isActive:      box.isActive,
-    batchSize:     box.batchSize     ?? 10,
-    delaySeconds:  box.delaySeconds  ?? 15,
-    maxPerHour:    box.maxPerHour    ?? 100,
+    isActive:           box.isActive,
+    batchSize:          box.batchSize          ?? 10,
+    delaySeconds:       box.delaySeconds       ?? 15,
+    maxPerHour:         box.maxPerHour         ?? 100,
+    cooldownMinutes:    box.cooldownMinutes    ?? 60,
+    probeRetryMinutes:  box.probeRetryMinutes  ?? 5,
   });
 });
 
@@ -423,6 +440,7 @@ router.put("/mailbox", requireAuth, async (req, res): Promise<void> => {
     imapHost, imapPort, imapUser, imapPass,
     fromName, replyTo,
     batchSize, delaySeconds, maxPerHour,
+    cooldownMinutes, probeRetryMinutes,
   } = req.body as Record<string, string | number>;
 
   if (!smtpHost || !smtpPort || !smtpUser) {
@@ -461,9 +479,11 @@ router.put("/mailbox", requireAuth, async (req, res): Promise<void> => {
     fromName:          fromName ? String(fromName) : null,
     replyTo:           replyTo  ? String(replyTo)  : null,
     isActive:          true,
-    batchSize:         batchSize    ? Number(batchSize)    : 10,
-    delaySeconds:      delaySeconds ? Number(delaySeconds) : 15,
-    maxPerHour:        maxPerHour   ? Number(maxPerHour)   : 100,
+    batchSize:          batchSize          ? Number(batchSize)          : 10,
+    delaySeconds:       delaySeconds       ? Number(delaySeconds)       : 15,
+    maxPerHour:         maxPerHour         ? Number(maxPerHour)         : 100,
+    cooldownMinutes:    cooldownMinutes    ? Number(cooldownMinutes)    : 60,
+    probeRetryMinutes:  probeRetryMinutes  ? Number(probeRetryMinutes)  : 5,
     updatedAt:         new Date(),
   };
 
@@ -495,6 +515,7 @@ router.post("/mailbox/save", requireAuth, async (req, res): Promise<void> => {
     imapHost, imapPort, imapUser, imapPass,
     fromName, replyTo,
     batchSize, delaySeconds, maxPerHour,
+    cooldownMinutes, probeRetryMinutes,
   } = req.body as Record<string, string | number>;
 
   if (!smtpHost || !smtpPort || !smtpUser) {
@@ -533,9 +554,11 @@ router.post("/mailbox/save", requireAuth, async (req, res): Promise<void> => {
     fromName:          fromName ? String(fromName) : null,
     replyTo:           replyTo  ? String(replyTo)  : null,
     isActive:          true,
-    batchSize:         batchSize    ? Number(batchSize)    : 10,
-    delaySeconds:      delaySeconds ? Number(delaySeconds) : 15,
-    maxPerHour:        maxPerHour   ? Number(maxPerHour)   : 100,
+    batchSize:          batchSize          ? Number(batchSize)          : 10,
+    delaySeconds:       delaySeconds       ? Number(delaySeconds)       : 15,
+    maxPerHour:         maxPerHour         ? Number(maxPerHour)         : 100,
+    cooldownMinutes:    cooldownMinutes    ? Number(cooldownMinutes)    : 60,
+    probeRetryMinutes:  probeRetryMinutes  ? Number(probeRetryMinutes)  : 5,
     updatedAt:         new Date(),
   };
 

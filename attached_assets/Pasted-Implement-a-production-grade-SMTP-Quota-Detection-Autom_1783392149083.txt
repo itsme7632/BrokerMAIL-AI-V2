@@ -1,0 +1,339 @@
+Implement a production-grade SMTP Quota Detection & Automatic Recovery system for BrokerMAIL AI.
+
+IMPORTANT RULES
+
+- Do NOT break any existing campaign logic.
+- Do NOT remove any existing features.
+- Do NOT change API endpoints unless absolutely necessary.
+- This should be an enhancement to the current sending engine.
+- Production-ready only.
+- No mock data.
+
+====================================================
+GOAL
+====================================================
+
+BrokerMAIL AI should automatically detect SMTP hourly limits, pause affected campaigns, wait intelligently, test the mailbox, and resume automatically once the quota resets.
+
+====================================================
+STEP 1
+PREVENT HITTING THE LIMIT
+====================================================
+
+Instead of relying only on SMTP failures:
+
+Track emails sent per mailbox during the current rolling hour.
+
+Example:
+
+Mailbox:
+miller@vertexcarship.com
+
+Hourly limit:
+50
+
+Current count:
+49
+
+If sending the next email would exceed the configured hourly limit:
+
+DO NOT SEND.
+
+Instead:
+
+- pause the mailbox
+- pause campaigns using that mailbox
+- set mailbox status = Cooling Down
+
+This prevents unnecessary SMTP failures.
+
+====================================================
+STEP 2
+DETECT SMTP QUOTA ERRORS
+====================================================
+
+If the SMTP server rejects a send attempt with any quota/rate limit response:
+
+Pause immediately.
+
+Also detect deferred quota messages received from Exim.
+
+The following patterns should be treated as SMTP quota reached:
+
+"has exceeded the max emails per hour"
+
+"max emails per hour"
+
+"allowed"
+
+"temporarily deferred"
+
+"retry later"
+
+"rate limit"
+
+"quota exceeded"
+
+"message will be reattempted later"
+
+Specifically support errors like:
+
+Domain vertexcarship.com has exceeded the max emails per hour (51/50 allowed). Message will be reattempted later.
+
+====================================================
+STEP 3
+WHEN QUOTA IS DETECTED
+====================================================
+
+Immediately:
+
+Pause the mailbox.
+
+Pause ALL campaigns using that mailbox.
+
+Do NOT mark queued emails as failed.
+
+Do NOT lose queue order.
+
+Campaign status:
+
+Paused (SMTP Cooling Down)
+
+Mailbox status:
+
+Cooling Down
+
+Store:
+
+time detected
+
+cooldown started
+
+reason
+
+next retry time
+
+====================================================
+STEP 4
+COOLDOWN
+====================================================
+
+Default cooldown:
+
+60 minutes
+
+Countdown visible in dashboard.
+
+Example:
+
+Cooling Down
+
+48 minutes remaining
+
+====================================================
+STEP 5
+SMART RECOVERY
+====================================================
+
+After cooldown expires:
+
+DO NOT resume campaign immediately.
+
+Instead:
+
+Send ONE probe email.
+
+If probe succeeds:
+
+Mailbox Healthy
+
+Resume campaigns automatically.
+
+Continue queue.
+
+If probe fails with another quota error:
+
+Do NOT resume.
+
+Wait another:
+
+5 minutes
+
+Try one probe again.
+
+Repeat until success.
+
+Never resume an entire campaign until one successful probe email confirms the quota has reset.
+
+====================================================
+STEP 6
+DASHBOARD STATUS
+====================================================
+
+Mailbox Health card should display:
+
+Healthy
+
+Cooling Down
+
+Paused
+
+Testing
+
+Offline
+
+Quota Reached
+
+Campaign card should show:
+
+Paused (SMTP Cooling Down)
+
+Testing SMTP
+
+Running
+
+Completed
+
+====================================================
+STEP 7
+ACTIVITY FEED
+====================================================
+
+Add real events:
+
+SMTP quota reached.
+
+Mailbox paused.
+
+Campaign paused.
+
+Probe email successful.
+
+Mailbox resumed.
+
+Campaign resumed.
+
+Include timestamps.
+
+====================================================
+STEP 8
+ADMIN SETTINGS
+====================================================
+
+Mailbox settings should allow configuring:
+
+Hourly SMTP limit
+
+Default:
+
+50
+
+Probe retry interval
+
+Default:
+
+5 minutes
+
+Cooldown
+
+Default:
+
+60 minutes
+
+These should be editable per mailbox.
+
+====================================================
+STEP 9
+DATABASE
+====================================================
+
+Persist:
+
+hourly send counter
+
+last reset
+
+cooldown state
+
+cooldown expires
+
+probe retries
+
+last quota reason
+
+paused campaigns
+
+====================================================
+STEP 10
+AUTO RESET COUNTER
+====================================================
+
+Automatically reset hourly counters every rolling hour.
+
+Never require a server restart.
+
+====================================================
+STEP 11
+LOGGING
+====================================================
+
+Log every quota event.
+
+Example:
+
+[14:55]
+
+Quota reached
+
+Mailbox:
+
+miller@vertexcarship.com
+
+Reason:
+
+Exceeded max emails/hour
+
+Campaign paused
+
+Cooldown:
+
+60 minutes
+
+====================================================
+STEP 12
+SAFETY
+====================================================
+
+If BrokerMAIL AI restarts while cooling down:
+
+Restore all cooldown timers.
+
+Restore paused campaigns.
+
+Continue countdown.
+
+Do NOT restart campaigns early.
+
+====================================================
+EXPECTED RESULT
+====================================================
+
+Instead of repeatedly failing sends, BrokerMAIL AI should behave like a professional email platform:
+
+Send until the configured hourly limit.
+
+Pause automatically before exceeding the limit whenever possible.
+
+Detect SMTP quota errors if they still occur.
+
+Pause mailbox and campaigns.
+
+Wait intelligently.
+
+Test with one probe email.
+
+Resume automatically only after a successful probe.
+
+Display all statuses and countdowns in the dashboard.
+
+Everything must work automatically without user intervention and survive server restarts.

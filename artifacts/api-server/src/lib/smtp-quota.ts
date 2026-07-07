@@ -7,14 +7,17 @@
  *
  *   READY → SENDING → QUOTA_REACHED → COOLING_DOWN → PROBE_SEND
  *                                                   → (success) → READY
- *                                                   → (fail)    → COOLING_DOWN (+10 min)
+ *                                                   → (fail)    → COOLING_DOWN (+probeRetryMinutes)
+ *
+ * Cooldown duration and probe retry interval are configurable per mailbox
+ * (mailboxes.cooldown_minutes / mailboxes.probe_retry_minutes).
  *
  * This module ONLY extends the existing processors — it never replaces them.
  * The probe is the processor's own first send after the cooldown expires.
  */
 
 import {
-  db, mailboxesTable, campaignsTable,
+  db, mailboxesTable, campaignsTable, activityTable,
 } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { logger } from "./logger";
@@ -22,14 +25,34 @@ import { logger } from "./logger";
 // ─── One recovery loop per mailbox (keyed by mailboxId) ──────────────────────
 const activeRecovery = new Map<number, boolean>();
 
-// ─── Default cooldown durations ───────────────────────────────────────────────
-const INITIAL_COOLDOWN_MS = 60 * 60_000;   // 60 minutes on first detection
-const PROBE_EXTEND_MS     = 10 * 60_000;   // +10 minutes per failed probe
-const PROBE_WINDOW_MS     = 120_000;        // wait up to 2 min for probe result
-const PROBE_CHECK_MS      = 15_000;         // poll every 15 s
+// ─── Default cooldown durations (used when mailbox settings are unavailable) ──
+const DEFAULT_COOLDOWN_MINUTES  = 60;  // 60 minutes on first detection
+const DEFAULT_PROBE_RETRY_MINUTES = 5; // +5 minutes per failed probe
+const PROBE_WINDOW_MS           = 120_000; // wait up to 2 min for probe result
+const PROBE_CHECK_MS            = 15_000;  // poll every 15 s
 
 function sleep(ms: number) {
   return new Promise<void>(r => setTimeout(r, ms));
+}
+
+// ─── logActivity ──────────────────────────────────────────────────────────────
+
+async function logActivity(
+  userId: number,
+  type: string,
+  description: string,
+  metadata?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await db.insert(activityTable).values({
+      userId,
+      type,
+      description,
+      metadata: metadata ?? null,
+    });
+  } catch (err) {
+    logger.warn({ err, type }, "[SMTP-QUOTA] Activity log insert failed (non-fatal)");
+  }
 }
 
 // ─── isQuotaReachedError ──────────────────────────────────────────────────────
@@ -38,8 +61,9 @@ function sleep(ms: number) {
  * Provider-agnostic SMTP quota/rate-limit detection.
  *
  * Matches responses from any SMTP provider, not just a single vendor.
- * This is intentionally broader than the existing isProviderRateLimitError
- * to catch responses the narrower version misses.
+ * Covers the specific Exim/cPanel pattern referenced in the spec:
+ *   "Domain X has exceeded the max emails per hour (51/50 allowed).
+ *    Message will be reattempted later."
  */
 export function isQuotaReachedError(err: unknown): boolean {
   const rawMsg =
@@ -52,7 +76,11 @@ export function isQuotaReachedError(err: unknown): boolean {
   const s = rawMsg.toLowerCase();
 
   return (
+    s.includes("has exceeded the max emails per hour") ||
     s.includes("max emails per hour") ||
+    s.includes("exceeded the max emails") ||
+    s.includes("message will be reattempted later") ||
+    s.includes("will be reattempted") ||
     s.includes("hourly limit") ||
     s.includes("daily limit") ||
     s.includes("rate limit") ||
@@ -67,7 +95,10 @@ export function isQuotaReachedError(err: unknown): boolean {
     s.includes("temporarily deferred") ||
     s.includes("temporarily unavailable") ||
     s.includes("try again later") ||
+    s.includes("retry later") ||
     s.includes("slow down") ||
+    // "51/50 allowed" — numeric limit exhausted
+    /\d+\/\d+\s+allowed/.test(s) ||
     // SMTP numeric codes often embedded in the message
     /\b421\b/.test(s) ||   // 421 = service temporarily unavailable / rate limit
     /\b452\b/.test(s)      // 452 = insufficient system storage / quota exceeded
@@ -79,8 +110,8 @@ export function isQuotaReachedError(err: unknown): boolean {
 /**
  * Called the moment a quota error is detected during any SMTP send.
  *
- * First detection  → 60-minute cooldown, campaigns paused with reason.
- * Probe failure    → +10-minute cooldown (compounding), campaigns paused again.
+ * First detection  → cooldownMinutes cooldown (default 60 min), campaigns paused.
+ * Probe failure    → +probeRetryMinutes (default 5 min), campaigns paused again.
  *
  * DOES NOT touch Gmail, IMAP, open-tracking, bounce processing, or the
  * existing hourly quota scheduler. Only SMTP quota state.
@@ -90,23 +121,32 @@ export async function handleMailboxQuotaReached(
   userId: number,
   smtpResponse: string,
 ): Promise<void> {
-  // Determine whether this is the first detection or a probe failure
+  // Determine whether this is the first detection or a probe failure,
+  // and read per-mailbox cooldown settings.
   const [existing] = await db
     .select({
-      quotaStatus:    mailboxesTable.quotaStatus,
-      quotaProbeCount: mailboxesTable.quotaProbeCount,
+      quotaStatus:       mailboxesTable.quotaStatus,
+      quotaProbeCount:   mailboxesTable.quotaProbeCount,
+      cooldownMinutes:   mailboxesTable.cooldownMinutes,
+      probeRetryMinutes: mailboxesTable.probeRetryMinutes,
+      smtpUser:          mailboxesTable.smtpUser,
     })
     .from(mailboxesTable)
     .where(eq(mailboxesTable.id, mailboxId));
 
-  const isFirstDetection = existing?.quotaStatus !== "quota_reached";
-  const probeCount       = isFirstDetection ? 0 : ((existing?.quotaProbeCount ?? 0) + 1);
-  const cooldownMs       = isFirstDetection ? INITIAL_COOLDOWN_MS : PROBE_EXTEND_MS;
-  const now              = new Date();
-  const cooldownUntil    = new Date(Date.now() + cooldownMs);
+  const isFirstDetection  = existing?.quotaStatus !== "quota_reached";
+  const probeCount        = isFirstDetection ? 0 : ((existing?.quotaProbeCount ?? 0) + 1);
+  const cooldownMinutes   = existing?.cooldownMinutes  ?? DEFAULT_COOLDOWN_MINUTES;
+  const probeRetryMinutes = existing?.probeRetryMinutes ?? DEFAULT_PROBE_RETRY_MINUTES;
+  const cooldownMs        = isFirstDetection
+    ? cooldownMinutes * 60_000
+    : probeRetryMinutes * 60_000;
+  const mailboxEmail      = existing?.smtpUser ?? `mailbox #${mailboxId}`;
+  const now               = new Date();
+  const cooldownUntil     = new Date(Date.now() + cooldownMs);
 
-  // Update mailbox quota state
   if (isFirstDetection) {
+    // First detection — set full cooldown and pause campaigns
     await db.update(mailboxesTable).set({
       quotaStatus:        "quota_reached",
       quotaReachedAt:     now,
@@ -120,34 +160,13 @@ export async function handleMailboxQuotaReached(
       mailboxId,
       userId,
       smtpResponse,
-      cooldown:   "60 min",
+      cooldown:      `${cooldownMinutes} min`,
       cooldownUntil: cooldownUntil.toISOString(),
-      nextProbe:  cooldownUntil.toISOString(),
-    }, "[SMTP-QUOTA] Quota detected — mailbox paused, campaigns paused, cooldown: 60 min");
+      nextProbe:     cooldownUntil.toISOString(),
+    }, "[SMTP-QUOTA] Quota detected — mailbox paused, campaigns paused, cooldown started");
 
-  } else {
-    await db.update(mailboxesTable).set({
-      quotaCooldownUntil: cooldownUntil,
-      quotaSmtpResponse:  smtpResponse,
-      quotaProbeCount:    probeCount,
-      updatedAt:          now,
-    }).where(eq(mailboxesTable.id, mailboxId));
-
-    logger.warn({
-      mailboxId,
-      userId,
-      smtpResponse,
-      probeCount,
-      cooldown:   "10 min",
-      cooldownUntil: cooldownUntil.toISOString(),
-      nextProbe:  cooldownUntil.toISOString(),
-    }, "[SMTP-QUOTA] Still rate limited — probe failed, cooldown extended by 10 min");
-  }
-
-  // Pause all active campaigns for this user (sending / cooling_down / pending)
-  // so no processor tries to send while the mailbox is in quota_reached state.
-  if (isFirstDetection) {
-    await db.update(campaignsTable).set({
+    // Pause all active campaigns for this user
+    const paused = await db.update(campaignsTable).set({
       status:       "paused",
       pauseReason:  "SMTP_QUOTA_REACHED",
       cooldownUntil,
@@ -155,9 +174,32 @@ export async function handleMailboxQuotaReached(
     }).where(and(
       eq(campaignsTable.userId, userId),
       inArray(campaignsTable.status, ["sending", "cooling_down", "pending"]),
-    ));
+    )).returning({ id: campaignsTable.id, name: campaignsTable.name });
+
+    // Activity feed events
+    await logActivity(userId, "smtp_quota_reached",
+      `SMTP quota reached on ${mailboxEmail}. Cooling down for ${cooldownMinutes} minutes.`,
+      { mailboxId, mailboxEmail, reason: smtpResponse, cooldownMinutes, cooldownUntil: cooldownUntil.toISOString() });
+
+    await logActivity(userId, "mailbox_paused",
+      `Mailbox ${mailboxEmail} paused — SMTP provider quota reached.`,
+      { mailboxId, mailboxEmail });
+
+    for (const c of paused) {
+      await logActivity(userId, "campaign_paused",
+        `Campaign "${c.name}" paused — SMTP quota reached on ${mailboxEmail}.`,
+        { campaignId: c.id, campaignName: c.name, mailboxId, reason: "SMTP_QUOTA_REACHED" });
+    }
+
   } else {
-    // Update cooldownUntil on already-paused campaigns so the UI countdown refreshes
+    // Probe failure — extend cooldown by probeRetryMinutes, update already-paused campaigns
+    await db.update(mailboxesTable).set({
+      quotaCooldownUntil: cooldownUntil,
+      quotaSmtpResponse:  smtpResponse,
+      quotaProbeCount:    probeCount,
+      updatedAt:          now,
+    }).where(eq(mailboxesTable.id, mailboxId));
+
     await db.update(campaignsTable).set({
       cooldownUntil,
       updatedAt: now,
@@ -165,6 +207,20 @@ export async function handleMailboxQuotaReached(
       eq(campaignsTable.userId, userId),
       eq(campaignsTable.pauseReason, "SMTP_QUOTA_REACHED"),
     ));
+
+    logger.warn({
+      mailboxId,
+      userId,
+      smtpResponse,
+      probeCount,
+      cooldown:      `${probeRetryMinutes} min`,
+      cooldownUntil: cooldownUntil.toISOString(),
+      nextProbe:     cooldownUntil.toISOString(),
+    }, "[SMTP-QUOTA] Still rate limited — probe failed, cooldown extended");
+
+    await logActivity(userId, "smtp_probe_failed",
+      `Probe email failed on ${mailboxEmail} — quota still active. Next retry in ${probeRetryMinutes} minutes.`,
+      { mailboxId, mailboxEmail, probeCount, probeRetryMinutes, cooldownUntil: cooldownUntil.toISOString() });
   }
 }
 
@@ -185,11 +241,13 @@ export async function clearMailboxQuotaIfNeeded(
   userId: number,
 ): Promise<void> {
   const [box] = await db
-    .select({ quotaStatus: mailboxesTable.quotaStatus })
+    .select({ quotaStatus: mailboxesTable.quotaStatus, smtpUser: mailboxesTable.smtpUser })
     .from(mailboxesTable)
     .where(eq(mailboxesTable.id, mailboxId));
 
   if (!box || box.quotaStatus !== "quota_reached") return;
+
+  const mailboxEmail = box.smtpUser ?? `mailbox #${mailboxId}`;
 
   await db.update(mailboxesTable).set({
     quotaStatus:        null,
@@ -204,6 +262,15 @@ export async function clearMailboxQuotaIfNeeded(
     mailboxId,
     userId,
   }, "[SMTP-QUOTA] Recovered — successful send after quota cooldown, mailbox quota state cleared");
+
+  // Activity: probe success + mailbox healthy
+  await logActivity(userId, "smtp_probe_successful",
+    `Probe email succeeded on ${mailboxEmail} — SMTP quota has reset.`,
+    { mailboxId, mailboxEmail });
+
+  await logActivity(userId, "mailbox_resumed",
+    `Mailbox ${mailboxEmail} is healthy — quota cleared, sending can resume.`,
+    { mailboxId, mailboxEmail });
 }
 
 // ─── runQuotaRecovery ─────────────────────────────────────────────────────────
@@ -246,6 +313,7 @@ export async function runQuotaRecovery(
           quotaStatus:        mailboxesTable.quotaStatus,
           quotaCooldownUntil: mailboxesTable.quotaCooldownUntil,
           quotaProbeCount:    mailboxesTable.quotaProbeCount,
+          smtpUser:           mailboxesTable.smtpUser,
         })
         .from(mailboxesTable)
         .where(eq(mailboxesTable.id, mailboxId));
@@ -254,6 +322,8 @@ export async function runQuotaRecovery(
         logger.info({ mailboxId }, "[SMTP-QUOTA] Quota state cleared externally — recovery loop exiting");
         break;
       }
+
+      const mailboxEmail = box.smtpUser ?? `mailbox #${mailboxId}`;
 
       // Sleep until the cooldown expires
       const cooldownUntil = box.quotaCooldownUntil?.getTime() ?? Date.now();
@@ -290,13 +360,20 @@ export async function runQuotaRecovery(
       }).where(and(
         eq(campaignsTable.userId, userId),
         eq(campaignsTable.pauseReason, "SMTP_QUOTA_REACHED"),
-      )).returning({ id: campaignsTable.id });
+      )).returning({ id: campaignsTable.id, name: campaignsTable.name });
 
       logger.info({
         mailboxId,
         userId,
         resumedCampaigns: resumed.map(c => c.id),
       }, "[SMTP-PROBE] Cooldown expired — campaigns resumed, starting probe send");
+
+      // Activity: campaigns resumed for probe
+      for (const c of resumed) {
+        await logActivity(userId, "campaign_resumed",
+          `Campaign "${c.name}" resumed for SMTP probe on ${mailboxEmail}.`,
+          { campaignId: c.id, campaignName: c.name, mailboxId });
+      }
 
       // ── Restart processors — their first send IS the probe ─────────────────
       for (const { id: campaignId } of resumed) {
@@ -306,8 +383,8 @@ export async function runQuotaRecovery(
       }
 
       // ── Monitor for probe result (up to 2 minutes) ─────────────────────────
-      let elapsed       = 0;
-      let probeCleared  = false;
+      let elapsed      = 0;
+      let probeCleared = false;
       while (elapsed < PROBE_WINDOW_MS) {
         await sleep(PROBE_CHECK_MS);
         elapsed += PROBE_CHECK_MS;

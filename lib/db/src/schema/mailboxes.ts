@@ -30,6 +30,9 @@ export const mailboxesTable = pgTable("mailboxes", {
   quotaCooldownUntil: timestamp("quota_cooldown_until"), // next probe attempt time
   quotaSmtpResponse: text("quota_smtp_response"),    // original SMTP error message
   quotaProbeCount:   integer("quota_probe_count").default(0), // consecutive failed probes
+  // ── Per-mailbox quota recovery settings ─────────────────────────────────────
+  cooldownMinutes:    integer("cooldown_minutes").notNull().default(60),  // initial cooldown on quota detection
+  probeRetryMinutes:  integer("probe_retry_minutes").notNull().default(5), // extra wait on each failed probe
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

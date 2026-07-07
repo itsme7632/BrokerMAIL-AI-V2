@@ -69,16 +69,17 @@ function getStatusInfo(c: EnrichedCampaign) {
   if (isCooling) return { label: "Cooling Down", cls: "bg-orange-50 text-orange-700 ring-orange-200", dot: "solid" as const };
   // SMTP provider quota — special paused state
   if (c.status === "paused" && c.pauseReason === "SMTP_QUOTA_REACHED") {
-    return { label: "Quota Pause", cls: "bg-red-50 text-red-700 ring-red-200", dot: "solid" as const };
+    return { label: "Paused (SMTP Cooling Down)", cls: "bg-red-50 text-red-700 ring-red-200", dot: "solid" as const };
   }
   switch (c.status) {
-    case "pending":   return { label: "Pending",    cls: "bg-slate-50    text-slate-600   ring-slate-200",   dot: undefined };
-    case "sending":   return { label: "Sending",    cls: "bg-blue-50     text-blue-700    ring-blue-200",    dot: "pulse" as const };
-    case "paused":    return { label: "Paused",     cls: "bg-amber-50    text-amber-700   ring-amber-200",   dot: "solid" as const };
-    case "completed": return { label: "Completed",  cls: "bg-emerald-50  text-emerald-700 ring-emerald-200", dot: undefined };
-    case "cancelled": return { label: "Cancelled",  cls: "bg-red-50      text-red-700     ring-red-200",     dot: undefined };
-    case "failed":    return { label: "Failed",     cls: "bg-rose-100    text-rose-800    ring-rose-300",    dot: undefined };
-    default:          return { label: c.status,     cls: "bg-slate-50    text-slate-600   ring-slate-200",   dot: undefined };
+    case "pending":      return { label: "Pending",      cls: "bg-slate-50    text-slate-600   ring-slate-200",   dot: undefined };
+    case "sending":      return { label: "Running",      cls: "bg-blue-50     text-blue-700    ring-blue-200",    dot: "pulse" as const };
+    case "testing_smtp": return { label: "Testing SMTP", cls: "bg-violet-50   text-violet-700  ring-violet-200",  dot: "pulse" as const };
+    case "paused":       return { label: "Paused",       cls: "bg-amber-50    text-amber-700   ring-amber-200",   dot: "solid" as const };
+    case "completed":    return { label: "Completed",    cls: "bg-emerald-50  text-emerald-700 ring-emerald-200", dot: undefined };
+    case "cancelled":    return { label: "Cancelled",    cls: "bg-red-50      text-red-700     ring-red-200",     dot: undefined };
+    case "failed":       return { label: "Failed",       cls: "bg-rose-100    text-rose-800    ring-rose-300",    dot: undefined };
+    default:             return { label: c.status,       cls: "bg-slate-50    text-slate-600   ring-slate-200",   dot: undefined };
   }
 }
 

@@ -194,25 +194,27 @@ export async function processCampaignJobQueue(
       const maxPerHour   = box.maxPerHour ?? 100;
 
       if (sentThisHour >= maxPerHour) {
-        const now = Date.now();
-        const [campCd] = await db
-          .select({ cooldownUntil: campaignsTable.cooldownUntil })
-          .from(campaignsTable)
-          .where(eq(campaignsTable.id, campaignId));
-        const existingCooldown = campCd?.cooldownUntil;
-        if (!existingCooldown || existingCooldown.getTime() <= now) {
-          const cooldownUntil = new Date(now + 3_600_000);
-          await db.update(campaignsTable).set({ cooldownUntil, updatedAt: new Date() })
-            .where(eq(campaignsTable.id, campaignId));
-          logger.info({ jobId, campaignId, sentThisHour, maxPerHour, cooldownUntil, serverTimeUtc: new Date(now).toISOString(), remainingSecs: 3600 },
-            "[QUEUE] Hourly quota reached — new cooldown set for 60 min");
-        } else {
-          const remainingSecs = Math.ceil((existingCooldown.getTime() - now) / 1000);
-          logger.info({ jobId, campaignId, sentThisHour, maxPerHour, cooldownUntil: existingCooldown, serverTimeUtc: new Date(now).toISOString(), remainingSecs },
-            "[QUEUE] Hourly quota still exceeded — cooldown already active, not resetting");
+        // Check if the mailbox is already in quota_reached state (recovery loop running)
+        const [boxQuota] = await db
+          .select({ quotaStatus: mailboxesTable.quotaStatus })
+          .from(mailboxesTable)
+          .where(eq(mailboxesTable.id, box.id));
+
+        if (boxQuota?.quotaStatus === "quota_reached") {
+          // Recovery loop is already handling this — stop the processor and let it take over
+          logger.info({ jobId, campaignId, sentThisHour, maxPerHour },
+            "[QUEUE] Hourly limit exceeded — recovery loop already active, stopping processor");
+          break;
         }
-        await sleep(60_000);
-        continue;
+
+        // First detection of preemptive hourly limit — treat as quota reached
+        const reason = `Hourly send limit reached: ${sentThisHour}/${maxPerHour} emails sent in the last 60 minutes`;
+        logger.warn({ jobId, campaignId, sentThisHour, maxPerHour },
+          "[QUEUE] Preemptive quota pause — hourly limit reached, pausing mailbox and campaigns");
+        await handleMailboxQuotaReached(box.id, user.id, reason);
+        runQuotaRecovery(box.id, user.id, startCampaignProcessor).catch(err2 =>
+          logger.error({ err: err2 }, "[SMTP-QUOTA] Recovery loop error (preemptive hourly limit)"));
+        break;
       }
 
       // ── Grab next pending OR ready-deferred item ───────────────────────

@@ -203,6 +203,8 @@ interface MailboxForm {
   batchSize: number;
   delaySeconds: number;
   maxPerHour: number;
+  cooldownMinutes: number;
+  probeRetryMinutes: number;
 }
 
 const EMPTY_FORM: MailboxForm = {
@@ -212,6 +214,8 @@ const EMPTY_FORM: MailboxForm = {
   batchSize: 10,
   delaySeconds: 15,
   maxPerHour: 100,
+  cooldownMinutes: 60,
+  probeRetryMinutes: 5,
 };
 
 const PRESETS = [
@@ -362,9 +366,11 @@ export default function MailboxSettings() {
             imapPass: "",
             fromName: data.fromName ?? "",
             replyTo:  data.replyTo  ?? "",
-            batchSize:    data.batchSize    ?? 10,
-            delaySeconds: data.delaySeconds ?? 15,
-            maxPerHour:   data.maxPerHour   ?? 100,
+            batchSize:         data.batchSize         ?? 10,
+            delaySeconds:      data.delaySeconds      ?? 15,
+            maxPerHour:        data.maxPerHour        ?? 100,
+            cooldownMinutes:   data.cooldownMinutes   ?? 60,
+            probeRetryMinutes: data.probeRetryMinutes ?? 5,
           });
         }
       }
@@ -432,9 +438,11 @@ export default function MailboxSettings() {
           imapUser: form.imapUser || undefined, imapPass: form.imapPass || undefined,
           fromName: form.fromName || undefined,
           replyTo:  form.replyTo  || undefined,
-          batchSize:    form.batchSize,
-          delaySeconds: form.delaySeconds,
-          maxPerHour:   form.maxPerHour,
+          batchSize:         form.batchSize,
+          delaySeconds:      form.delaySeconds,
+          maxPerHour:        form.maxPerHour,
+          cooldownMinutes:   form.cooldownMinutes,
+          probeRetryMinutes: form.probeRetryMinutes,
         }),
       });
       const data = await res.json();
