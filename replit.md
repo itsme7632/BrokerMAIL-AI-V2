@@ -14,6 +14,10 @@ A production-ready AI SaaS for vehicle shipping brokers — upload CSV/XLSX lead
 - Required env: `DATABASE_URL`, `SESSION_SECRET`, `OPENAI_API_KEY`
 - Optional (for Gmail/Google OAuth): `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REDIRECT_URI`
 
+## First-time setup (after import or clone)
+1. Run `pnpm --filter db push` — creates all database tables (must be done before starting the API server for the first time)
+2. Start the API server — it will seed default plans and an admin account on first boot
+
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
