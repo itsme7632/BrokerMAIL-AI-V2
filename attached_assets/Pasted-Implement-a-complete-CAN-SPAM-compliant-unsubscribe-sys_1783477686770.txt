@@ -1,0 +1,236 @@
+Implement a complete CAN-SPAM compliant unsubscribe system for BrokerMAIL AI.
+
+This must be a GLOBAL feature and not depend on individual email templates. The unsubscribe footer should be injected automatically into every marketing email, regardless of which template or design the user selects. Users should never have to remember to add it manually.
+
+========================================
+1. GLOBAL EMAIL FOOTER
+========================================
+
+Append the following footer automatically to ALL marketing emails immediately before </body> during email generation.
+
+------------------------------------------------
+
+You received this email because you requested a vehicle shipping quote or interacted with our auto transport services.
+
+If you no longer wish to receive these emails, you can unsubscribe at any time.
+
+{{UNSUBSCRIBE_LINK}}
+
+------------------------------------------------
+
+The "unsubscribe" text should be a styled clickable hyperlink.
+
+Example:
+
+https://getbrokermail.com/unsubscribe?token={{secure_token}}
+
+Do NOT expose the recipient email in the URL.
+
+Do NOT require template designers to add this manually.
+
+This footer must automatically appear on:
+
+• Default templates
+• AI generated templates
+• Saved templates
+• HTML templates
+• Future templates
+• Any custom template uploaded by users
+
+No exceptions.
+
+========================================
+2. DO NOT ADD TO TRANSACTIONAL EMAILS
+========================================
+
+The unsubscribe footer must NOT appear on:
+
+• Email Verification
+• Password Reset
+• Welcome Email
+• Login Alerts
+• Subscription / Billing Emails
+• Payment Receipts
+• Security Notifications
+
+Only marketing emails should contain the unsubscribe footer.
+
+========================================
+3. SECURE UNSUBSCRIBE TOKEN
+========================================
+
+Generate a secure signed token.
+
+The token should contain:
+
+- User ID (broker)
+- Lead ID
+- Campaign ID (if applicable)
+- Recipient Email
+- Timestamp
+- Signature
+
+Do not expose raw email addresses or IDs.
+
+The token must be validated before processing.
+
+========================================
+4. UNSUBSCRIBE PAGE
+========================================
+
+Create:
+
+GET /unsubscribe?token=...
+
+When opened:
+
+Immediately unsubscribe the recipient.
+
+Display a success page:
+
+---------------------------------
+
+You have successfully unsubscribed.
+
+You will no longer receive marketing emails from this BrokerMAIL AI account.
+
+---------------------------------
+
+Below that, ask (optional):
+
+Why are you unsubscribing?
+
+○ Already shipped my vehicle
+○ No longer interested
+○ Too many emails
+○ Spam
+○ Other
+
+Selecting a reason updates the suppression record but should NOT be required.
+
+========================================
+5. SUPPRESSION LIST
+========================================
+
+Automatically insert the recipient into suppression_list.
+
+Store:
+
+broker_id
+lead_id
+campaign_id
+email
+reason
+source
+created_at
+
+Reason defaults to:
+
+unsubscribe
+
+Source defaults to:
+
+unsubscribe_link
+
+If the user selects another reason, update it.
+
+========================================
+6. BLOCK FUTURE EMAILS
+========================================
+
+Before ANY marketing email is queued or sent:
+
+Check suppression_list.
+
+If the recipient exists:
+
+Do NOT send the email.
+
+Mark campaign status:
+
+Suppressed
+
+Reason:
+
+Recipient unsubscribed
+
+========================================
+7. ADMIN & USER UI
+========================================
+
+Create a Suppression List page.
+
+Features:
+
+• Search
+• Filter
+• Sort
+• View suppression reason
+• View suppression source
+• View campaign
+• View date
+• Remove suppression
+• Export CSV
+
+========================================
+8. EMAIL ANALYTICS
+========================================
+
+Campaign analytics should include:
+
+Delivered
+Opened
+Clicked
+Replies
+Bounced
+Suppressed
+Unsubscribed
+
+========================================
+9. DATABASE
+========================================
+
+Expand suppression_list if needed.
+
+Support reasons:
+
+unsubscribe
+hard_bounce
+soft_bounce
+spam_complaint
+manual_block
+invalid_email
+role_account
+
+Support sources:
+
+unsubscribe_link
+bounce_processor
+gmail_feedback_loop
+admin
+api
+
+========================================
+10. AUTOMATIC FOOTER INJECTION
+========================================
+
+This is critical.
+
+The unsubscribe footer must NOT be stored inside templates.
+
+Instead, BrokerMAIL AI should automatically inject the footer into the final HTML immediately before sending.
+
+This guarantees that every marketing email always contains the unsubscribe section regardless of which template, theme, or AI-generated design is used.
+
+If a template already contains an unsubscribe link, do not inject a duplicate.
+
+========================================
+11. QUALITY REQUIREMENTS
+========================================
+
+• Fully responsive.
+• Dark mode compatible.
+• Matches BrokerMAIL AI branding.
+• Works with Outlook, Gmail, Apple Mail and Yahoo.
+• Existing templates must continue working without modification.
+• Backwards compatible with all current campaigns.
