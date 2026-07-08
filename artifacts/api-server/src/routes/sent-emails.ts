@@ -9,6 +9,7 @@ import { requireAuth } from "../lib/auth";
 import {
   buildHtmlEmail, replaceVarsText, formatPrice, type EmailStyle, type BrandingSettings,
 } from "../lib/email-html";
+import { buildUnsubscribeUrl } from "../lib/unsubscribe-token";
 import { sendEmail } from "../lib/smtp";
 import { randomUUID } from "crypto";
 import type { User } from "@workspace/db";
@@ -654,6 +655,7 @@ router.post("/sent-emails/:id/retry", requireAuth, async (req, res): Promise<voi
     ctaButtons,
     trackingId: retryTracking.clickTrackingEnabled ? trackingId : undefined,
     publicBase: retryTracking.clickTrackingEnabled ? publicBase : undefined,
+    unsubscribeUrl: buildUnsubscribeUrl(publicBase, user.id, item.leadId ?? null, item.campaignId ?? null, item.email),
   });
 
   const pixelTag   = retryTracking.openTrackingEnabled
@@ -802,6 +804,7 @@ router.post("/sent-emails/:id/edit-resend", requireAuth, async (req, res): Promi
     ctaButtons,
     trackingId: resendTracking.clickTrackingEnabled ? trackingId : undefined,
     publicBase: resendTracking.clickTrackingEnabled ? publicBase : undefined,
+    unsubscribeUrl: buildUnsubscribeUrl(publicBase, user.id, item.leadId ?? null, item.campaignId ?? null, recipientEmail),
   });
 
   const pixelTag  = resendTracking.openTrackingEnabled

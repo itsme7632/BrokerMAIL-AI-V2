@@ -17,6 +17,7 @@ import { generatePersonalizedEmail, AiConfigError } from "../lib/ai";
 import { createGmailDraft } from "../lib/gmail";
 import { validateEmailFast } from "../lib/email-validator";
 import { buildHtmlEmail, replaceVarsText, formatPrice, extractLogoAttachment, type BrandingSettings } from "../lib/email-html";
+import { buildUnsubscribeUrl } from "../lib/unsubscribe-token";
 import type { User } from "@workspace/db";
 import { randomUUID } from "crypto";
 import { sendEmail } from "../lib/smtp";
@@ -323,6 +324,7 @@ export async function processCampaignJobQueue(
         ctaButtons,
         trackingId: trackingSettings.clickTrackingEnabled ? trackingId : undefined,
         publicBase: trackingSettings.clickTrackingEnabled ? publicBase : undefined,
+        unsubscribeUrl: buildUnsubscribeUrl(publicBase, user.id, item.leadId ?? null, campaignId, item.email),
       });
 
       const pixelTag    = trackingSettings.openTrackingEnabled
@@ -848,6 +850,7 @@ export async function processCampaignFully(
         ctaButtons:          ctaButtonsFull,
         trackingId: trackingSettings.clickTrackingEnabled ? trackingId : undefined,
         publicBase: trackingSettings.clickTrackingEnabled ? publicBase : undefined,
+        unsubscribeUrl: buildUnsubscribeUrl(publicBase, user.id, item.leadId ?? null, campaignId, item.email),
       });
 
       const pixelTag    = trackingSettings.openTrackingEnabled
@@ -1761,6 +1764,7 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
           ctaButtons: gmailCtaButtons,
           trackingId: gmailTracking.clickTrackingEnabled ? trackingId : undefined,
           publicBase: gmailTracking.clickTrackingEnabled ? gmailPublicBase : undefined,
+          unsubscribeUrl: buildUnsubscribeUrl(gmailPublicBase, user.id, lead.id, campaignId, lead.email ?? ""),
         });
         const gmailPixelTag  = gmailTracking.openTrackingEnabled
           ? `<img src="${gmailPublicBase}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none!important;width:1px!important;height:1px!important;border:0;" />`
@@ -2589,6 +2593,7 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
         ctaButtons: gDraftCtaButtons,
         trackingId: gDraftTracking.clickTrackingEnabled ? trackingId : undefined,
         publicBase: gDraftTracking.clickTrackingEnabled ? gDraftPublicBase : undefined,
+        unsubscribeUrl: buildUnsubscribeUrl(gDraftPublicBase, user.id, lead.id, campaign.id, lead.email ?? ""),
       });
       const gDraftPixelTag  = gDraftTracking.openTrackingEnabled
         ? `<img src="${gDraftPublicBase}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none!important;width:1px!important;height:1px!important;border:0;" />`
@@ -2809,6 +2814,7 @@ router.post("/campaigns/:id/leads/:leadId/retry", requireAuth, async (req, res):
       style: gStyle as any, useSignatureBuilder: gUseSig, ctaButtons: gCtaButtons,
       trackingId: gTracking.clickTrackingEnabled ? gTrackingId : undefined,
       publicBase: gTracking.clickTrackingEnabled ? gPublicBase : undefined,
+      unsubscribeUrl: buildUnsubscribeUrl(gPublicBase, user.id, leadId, campaignId, lead.email ?? ""),
     });
     const gPixelTag    = gTracking.openTrackingEnabled
       ? `<img src="${gPublicBase}/api/track/open/${gTrackingId}" width="1" height="1" alt="" style="display:none!important;width:1px!important;height:1px!important;border:0;" />`
@@ -2890,6 +2896,7 @@ router.post("/campaigns/:id/leads/:leadId/retry", requireAuth, async (req, res):
     ctaButtons,
     trackingId: retryTracking.clickTrackingEnabled ? trackingId : undefined,
     publicBase: retryTracking.clickTrackingEnabled ? publicBase : undefined,
+    unsubscribeUrl: buildUnsubscribeUrl(publicBase, user.id, queueItem.leadId ?? null, campaignId, queueItem.email),
   });
 
   const pixelTag    = retryTracking.openTrackingEnabled

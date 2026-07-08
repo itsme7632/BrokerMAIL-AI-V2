@@ -21,11 +21,14 @@ router.get("/suppressions", requireAuth, async (req, res): Promise<void> => {
   const user   = req.user!;
   const page   = Math.max(1, parseInt(req.query.page  as string, 10) || 1);
   const limit  = Math.min(200, parseInt(req.query.limit as string, 10) || 50);
-  const q      = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const q      = typeof req.query.q      === "string" ? req.query.q.trim()      : "";
+  const reason = typeof req.query.reason === "string" ? req.query.reason.trim() : "";
 
-  const baseWhere = q
-    ? and(eq(suppressionListTable.userId, user.id), ilike(suppressionListTable.email, `%${q}%`))
-    : eq(suppressionListTable.userId, user.id);
+  const conditions = [eq(suppressionListTable.userId, user.id)];
+  if (q)      conditions.push(ilike(suppressionListTable.email,  `%${q}%`));
+  if (reason) conditions.push(eq(suppressionListTable.reason, reason));
+
+  const baseWhere = and(...conditions);
 
   const [totalRow] = await db
     .select({ count: count() })
@@ -94,7 +97,7 @@ router.post("/suppressions/add", requireAuth, async (req, res): Promise<void> =>
   }
 
   try {
-    await db.insert(suppressionListTable).values({ userId: user.id, email, reason }).onConflictDoNothing();
+    await db.insert(suppressionListTable).values({ userId: user.id, email, reason, source: "admin" }).onConflictDoNothing();
     res.status(201).json({ message: "Added to suppression list", email, reason });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to add email to suppression list" });

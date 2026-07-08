@@ -33,9 +33,10 @@ export function invalidateMaintenanceCache(): void {
 const BYPASS_PATHS = [
   "/api/auth/",
   "/api/admin/",
-  "/api/track/",     // open-tracking pixel + click redirect — must never be blocked
-  "/api/tracking/",  // legacy alias kept for safety
+  "/api/track/",      // open-tracking pixel + click redirect — must never be blocked
+  "/api/tracking/",   // legacy alias kept for safety
   "/api/health",
+  "/api/unsubscribe", // CAN-SPAM compliance: opt-out must work even during maintenance
 ];
 
 export async function maintenanceMiddleware(

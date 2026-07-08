@@ -18,6 +18,9 @@ export const suppressionListTable = pgTable("suppression_list", {
   reason:     text("reason").notNull(),
   bounceCode: text("bounce_code"),
   campaignId: integer("campaign_id"),
+  leadId:     integer("lead_id"),
+  /** How the suppression was created: unsubscribe_link | bounce_processor | gmail_feedback_loop | admin | api */
+  source:     text("source"),
   createdAt:  timestamp("created_at").notNull().defaultNow(),
 }, (t) => ({
   userEmailUniq: uniqueIndex("suppression_user_email_uniq").on(t.userId, t.email),

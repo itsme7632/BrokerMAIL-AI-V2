@@ -46,6 +46,7 @@ import DesignTemplateLibrary from "@/pages/DesignTemplateLibrary";
 import SupportTickets from "@/pages/SupportTickets";
 import SupportTicketDetail from "@/pages/SupportTicketDetail";
 import SuppressionList from "@/pages/SuppressionList";
+import Unsubscribe from "@/pages/Unsubscribe";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -79,6 +80,7 @@ function Router() {
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/auth/callback" component={AuthCallback} />
       <Route path="/verify-email" component={VerifyEmail} />
+      <Route path="/unsubscribe" component={Unsubscribe} />
 
       {/* Admin auth */}
       <Route path="/admin/login" component={AdminLogin} />

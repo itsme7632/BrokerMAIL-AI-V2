@@ -45,6 +45,8 @@ export interface EmailBuildOptions {
   ctaButtons?:          CtaButton[];
   trackingId?:          string;
   publicBase?:          string;
+  /** CAN-SPAM unsubscribe URL. When provided the footer is injected automatically. */
+  unsubscribeUrl?:      string;
 }
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
@@ -275,6 +277,26 @@ ${items.join("\n")}
 
 // ─── Master builder ───────────────────────────────────────────────────────────
 
+/**
+ * Build the CAN-SPAM compliant unsubscribe footer HTML.
+ * Uses table-based layout with inline styles for maximum email-client compatibility
+ * (Outlook, Gmail, Apple Mail, Yahoo).
+ */
+export function buildUnsubscribeFooterHtml(unsubscribeUrl: string): string {
+  return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color:#f8fafc;">
+<tr><td align="center" style="padding:0 16px 24px;">
+<!--[if (gte mso 9)|(IE)]><table width="600" align="center" cellspacing="0" cellpadding="0" border="0"><tr><td><![endif]-->
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="width:600px;max-width:600px;">
+<tr><td style="padding:16px 40px 8px;border-top:1px solid #e2e8f0;text-align:center;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#94a3b8;line-height:1.7;">
+<p style="margin:0 0 5px 0;">You received this email because you requested a vehicle shipping quote or interacted with our auto transport services.</p>
+<p style="margin:0;">If you no longer wish to receive these emails, <a href="${unsubscribeUrl}" target="_blank" style="color:#6366f1;text-decoration:underline;">click here to unsubscribe</a> at any time.</p>
+</td></tr>
+</table>
+<!--[if (gte mso 9)|(IE)]></td></tr></table><![endif]-->
+</td></tr>
+</table>`;
+}
+
 export function buildHtmlEmail(
   body: string,
   row: Record<string, string>,
@@ -284,18 +306,35 @@ export function buildHtmlEmail(
   const style  = options.style ?? "clean";
   const useSig = options.useSignatureBuilder ?? false;
 
+  let html: string;
   switch (style) {
-    case "luxury":    return luxuryTemplate(body, row, branding, useSig, options);
-    case "modern":    return modernTemplate(body, row, branding, useSig, options);
-    case "minimal":   return minimalTemplate(body, row, branding, useSig, options);
-    case "corporate": return corporateTemplate(body, row, branding, useSig, options);
-    case "urgent":    return urgentTemplate(body, row, branding, useSig, options);
-    case "dispatch":  return dispatchTemplate(body, row, branding, useSig, options);
-    case "friendly":  return friendlyTemplate(body, row, branding, useSig, options);
-    case "mobile":    return mobileTemplate(body, row, branding, useSig, options);
-    case "dark":      return darkTemplate(body, row, branding, useSig, options);
-    default:          return cleanTemplate(body, row, branding, useSig, options);
+    case "luxury":    html = luxuryTemplate(body, row, branding, useSig, options); break;
+    case "modern":    html = modernTemplate(body, row, branding, useSig, options); break;
+    case "minimal":   html = minimalTemplate(body, row, branding, useSig, options); break;
+    case "corporate": html = corporateTemplate(body, row, branding, useSig, options); break;
+    case "urgent":    html = urgentTemplate(body, row, branding, useSig, options); break;
+    case "dispatch":  html = dispatchTemplate(body, row, branding, useSig, options); break;
+    case "friendly":  html = friendlyTemplate(body, row, branding, useSig, options); break;
+    case "mobile":    html = mobileTemplate(body, row, branding, useSig, options); break;
+    case "dark":      html = darkTemplate(body, row, branding, useSig, options); break;
+    default:          html = cleanTemplate(body, row, branding, useSig, options); break;
   }
+
+  // ── CAN-SPAM: Inject unsubscribe footer ───────────────────────────────────
+  // Injected here (not inside templates) so every marketing email gets it
+  // automatically — including AI-generated, custom HTML, and future templates.
+  // We use a unique marker comment so detection is precise and cannot be
+  // triggered by incidental text (e.g. a URL that happens to contain
+  // "/unsubscribe" in the body copy).
+  const UNSUB_MARKER = "<!--brokermail-unsubscribe-footer-->";
+  if (options.unsubscribeUrl && !html.includes(UNSUB_MARKER)) {
+    const footer = UNSUB_MARKER + buildUnsubscribeFooterHtml(options.unsubscribeUrl);
+    html = html.includes("</body>")
+      ? html.replace(/<\/body>/i, `${footer}</body>`)
+      : html + footer;
+  }
+
+  return html;
 }
 
 // ─── Style: Clean ─────────────────────────────────────────────────────────────

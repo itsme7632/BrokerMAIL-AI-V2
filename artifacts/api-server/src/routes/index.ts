@@ -20,6 +20,7 @@ import notificationsRouter from "./notifications";
 import suppressionsRouter from "./suppressions";
 import composerRouter from "./composer";
 import supportRouter from "./support";
+import unsubscribeRouter from "./unsubscribe";
 
 const router: IRouter = Router();
 
@@ -44,5 +45,6 @@ router.use(notificationsRouter);
 router.use(suppressionsRouter);
 router.use(composerRouter);
 router.use(supportRouter);
+router.use(unsubscribeRouter);
 
 export default router;

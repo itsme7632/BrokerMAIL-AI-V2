@@ -14,6 +14,8 @@ type SuppressionEntry = {
   reason: string;
   bounceCode?: string | null;
   campaignId?: number | null;
+  leadId?: number | null;
+  source?: string | null;
   createdAt: string;
 };
 
@@ -65,6 +67,7 @@ export default function SuppressionList() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
+  const [reasonFilter, setReasonFilter] = useState("");
 
   // Remove state
   const [removing, setRemoving] = useState<Set<string>>(new Set());
@@ -79,11 +82,12 @@ export default function SuppressionList() {
 
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  async function load(p: number, q: string) {
+  async function load(p: number, q: string, rf: string) {
     setLoading(true);
     try {
       const qs = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
       if (q) qs.set("q", q);
+      if (rf) qs.set("reason", rf);
       const res = await fetch(`/api/suppressions?${qs}`, { headers: getAuthHeaders() });
       if (res.ok) setPageData(await res.json());
     } finally {
@@ -91,7 +95,7 @@ export default function SuppressionList() {
     }
   }
 
-  useEffect(() => { load(page, search); }, [page, search]);
+  useEffect(() => { load(page, search, reasonFilter); }, [page, search, reasonFilter]);
 
   function handleSearchChange(v: string) {
     setSearchInput(v);
@@ -100,6 +104,11 @@ export default function SuppressionList() {
       setSearch(v);
       setPage(1);
     }, 350);
+  }
+
+  function handleReasonFilter(v: string) {
+    setReasonFilter(v);
+    setPage(1);
   }
 
   async function handleRemove(email: string) {
@@ -150,15 +159,18 @@ export default function SuppressionList() {
 
   function handleExport() {
     if (!pageData?.data.length) return;
-    // Fetch all then download (re-use current search filter)
     const doExport = async () => {
-      const res = await fetch(`/api/suppressions?page=1&limit=10000`, { headers: getAuthHeaders() });
+      const qs = new URLSearchParams({ page: "1", limit: "10000" });
+      if (search) qs.set("q", search);
+      if (reasonFilter) qs.set("reason", reasonFilter);
+      const res = await fetch(`/api/suppressions?${qs}`, { headers: getAuthHeaders() });
       if (!res.ok) return;
       const all: PageData = await res.json();
       const rows = [
-        ["Email", "Reason", "Bounce Code", "Campaign ID", "Added At"],
+        ["Email", "Reason", "Source", "Bounce Code", "Campaign ID", "Lead ID", "Added At"],
         ...all.data.map(r => [
-          r.email, r.reason, r.bounceCode ?? "", r.campaignId ?? "", new Date(r.createdAt).toISOString(),
+          r.email, r.reason, r.source ?? "", r.bounceCode ?? "",
+          r.campaignId ?? "", r.leadId ?? "", new Date(r.createdAt).toISOString(),
         ]),
       ];
       const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
@@ -274,23 +286,39 @@ export default function SuppressionList() {
         </div>
       )}
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-        <Input
-          className="pl-9 rounded-xl"
-          placeholder="Search by email address…"
-          value={searchInput}
-          onChange={e => handleSearchChange(e.target.value)}
-        />
-        {searchInput && (
-          <button
-            onClick={() => { handleSearchChange(""); setSearchInput(""); }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
+      {/* Search + Reason Filter */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+          <Input
+            className="pl-9 rounded-xl"
+            placeholder="Search by email address…"
+            value={searchInput}
+            onChange={e => handleSearchChange(e.target.value)}
+          />
+          {searchInput && (
+            <button
+              onClick={() => { handleSearchChange(""); setSearchInput(""); }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        <select
+          value={reasonFilter}
+          onChange={e => handleReasonFilter(e.target.value)}
+          className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-300 min-w-[160px]"
+        >
+          <option value="">All reasons</option>
+          <option value="unsubscribe">Unsubscribe</option>
+          <option value="hard_bounce">Hard bounce</option>
+          <option value="soft_bounce">Soft bounce</option>
+          <option value="spam_complaint">Spam complaint</option>
+          <option value="manual_block">Manual block</option>
+          <option value="invalid_email">Invalid email</option>
+          <option value="manual">Manual</option>
+        </select>
       </div>
 
       {/* Table */}
@@ -303,6 +331,7 @@ export default function SuppressionList() {
                   <span className="flex items-center gap-1"><AtSign className="h-3.5 w-3.5" /> Email</span>
                 </TableHead>
                 <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Reason</TableHead>
+                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide hidden md:table-cell">Source</TableHead>
                 <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide hidden sm:table-cell">Bounce Code</TableHead>
                 <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide hidden lg:table-cell">
                   <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> Added</span>
@@ -314,14 +343,14 @@ export default function SuppressionList() {
               {loading ? (
                 Array(5).fill(0).map((_, i) => (
                   <TableRow key={i}>
-                    {[1, 2, 3, 4, 5].map(j => (
+                    {[1, 2, 3, 4, 5, 6].map(j => (
                       <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                     ))}
                   </TableRow>
                 ))
               ) : entries.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center h-40 text-slate-400">
+                  <TableCell colSpan={6} className="text-center h-40 text-slate-400">
                     <div className="flex flex-col items-center gap-3">
                       <ShieldAlert className="h-8 w-8 text-slate-200" />
                       {search
@@ -348,6 +377,15 @@ export default function SuppressionList() {
                     </TableCell>
                     <TableCell>
                       <ReasonBadge reason={entry.reason} />
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      {entry.source ? (
+                        <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-mono">
+                          {entry.source.replace(/_/g, " ")}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300 text-xs">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="hidden sm:table-cell">
                       {entry.bounceCode ? (
