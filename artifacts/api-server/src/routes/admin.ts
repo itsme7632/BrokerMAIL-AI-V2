@@ -11,6 +11,10 @@ import { requireAdmin } from "../lib/auth";
 import { logger } from "../lib/logger";
 import multer from "multer";
 import JSZip from "jszip";
+import crypto from "crypto";
+import nodemailer from "nodemailer";
+import { decrypt } from "../lib/crypto";
+import { buildTransportOptions } from "../lib/smtp";
 
 const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -251,6 +255,76 @@ router.get("/admin/mailboxes", requireAdmin, async (_req, res): Promise<void> =>
     .orderBy(desc(mailboxesTable.createdAt));
 
   res.json(mailboxes.map(m => ({ ...m, createdAt: m.createdAt?.toISOString() ?? null })));
+});
+
+// ─── TEMPORARY diagnostic: verify SMTP auth via the exact sendEmail() path ────
+// Admin-only, read-only, never sends an email. Uses the same decrypt() and
+// buildTransportOptions() helpers sendEmail() uses, and calls transporter.verify()
+// instead of transporter.sendMail(). Delete this route once the investigation
+// it supports is closed out.
+router.get("/admin/debug/smtp", requireAdmin, async (_req, res): Promise<void> => {
+  // Same mailbox lookup pattern used by the campaign processor (the primary
+  // sender path): first active mailbox for a user, by isActive flag — NOT a
+  // specific mailbox_id. See comparison notes below for how this differs from
+  // composer.ts's explicit-id lookup.
+  const [mailbox] = await db.select().from(mailboxesTable)
+    .where(eq(mailboxesTable.isActive, true));
+
+  if (!mailbox) {
+    res.status(404).json({ error: "No active mailbox found." });
+    return;
+  }
+
+  const encryptionKeyFingerprint = crypto
+    .createHash("sha256")
+    .update(process.env.ENCRYPTION_KEY ?? "brokermail-ai-smtp-enc-key-v1!!32")
+    .digest("hex");
+
+  // Exact same call as sendEmail(): decrypt(mailbox.smtpPassEncrypted)
+  const decryptedPass = decrypt(mailbox.smtpPassEncrypted);
+  const decryptedPassFingerprint = crypto.createHash("sha256").update(decryptedPass).digest("hex");
+
+  const meta = {
+    mailboxId:               mailbox.id,
+    userId:                  mailbox.userId,
+    smtpHost:                mailbox.smtpHost,
+    smtpPort:                mailbox.smtpPort,
+    smtpUser:                mailbox.smtpUser,
+    smtpSecure:              mailbox.smtpSecure,
+    encryptedPasswordLength: mailbox.smtpPassEncrypted?.length ?? 0,
+    decryptedPasswordLength: decryptedPass.length,
+    decryptedPasswordSha256: decryptedPassFingerprint,
+    encryptionKeySha256:     encryptionKeyFingerprint,
+    encryptionKeyEnvSet:     !!process.env.ENCRYPTION_KEY,
+  };
+
+  // Exact same transporter construction as sendEmail(): buildTransportOptions(mailbox, decryptedPass)
+  const transport = nodemailer.createTransport(
+    buildTransportOptions(mailbox, decryptedPass) as any,
+  );
+
+  try {
+    await transport.verify();
+    res.json({ ok: true, verify: "success", ...meta });
+  } catch (err: any) {
+    // Intentionally NOT calling friendlySmtpError() — return the raw
+    // nodemailer error untouched, per diagnostic requirements.
+    res.status(502).json({
+      ok: false,
+      verify: "failed",
+      ...meta,
+      error: {
+        message:      err?.message,
+        code:         err?.code,
+        responseCode: err?.responseCode,
+        response:     err?.response,
+        command:      err?.command,
+        stack:        err?.stack,
+      },
+    });
+  } finally {
+    transport.close();
+  }
 });
 
 // ─── Analytics ────────────────────────────────────────────────────────────────

@@ -14,7 +14,7 @@ export interface SmtpCredentials {
 
 // ─── Transporter config ───────────────────────────────────────────────────────
 
-function buildTransportOptions(creds: SmtpCredentials, rawPass?: string) {
+export function buildTransportOptions(creds: SmtpCredentials, rawPass?: string) {
   const pass  = rawPass ?? decrypt(creds.smtpPassEncrypted);
   const isSSL = creds.smtpSecure === "ssl";
   const isTLS = creds.smtpSecure === "tls";
