@@ -6,7 +6,7 @@ import {
   LayoutDashboard, FileText, UploadCloud, Mail, Settings, ShieldAlert,
   Menu, X, Server, CreditCard, SendHorizonal, Megaphone, LayoutGrid,
   LogOut, Palette, HelpCircle, ChevronDown, Moon, Sun, PenLine, TicketCheck,
-  Zap,
+  Zap, Sparkles, Map, MessageSquare, Bug, Lightbulb,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -17,6 +17,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { NotificationBell } from "@/components/NotificationBell";
+import { HeaderBanner } from "@/components/product-hub/HeaderBanner";
+import { VersionPopup } from "@/components/product-hub/VersionPopup";
+import { SuggestFeatureButton } from "@/components/product-hub/SuggestFeatureButton";
 
 // ─── Nav groups ───────────────────────────────────────────────────────────────
 
@@ -48,12 +51,21 @@ const NAV_GROUPS = [
       { href: "/support",           icon: TicketCheck,  label: "Support",          exact: false },
     ],
   },
+  {
+    label: "PRODUCT HUB",
+    items: [
+      { href: "/whats-new",            icon: Sparkles,      label: "What's New",    exact: true  },
+      { href: "/roadmap",              icon: Map,           label: "Roadmap",       exact: true  },
+      { href: "/product-hub/feedback", icon: MessageSquare, label: "Feedback",      exact: true  },
+      { href: "/report-bug",           icon: Bug,           label: "Report a Bug",  exact: true  },
+    ],
+  },
 ];
 
 // ─── Nav item ─────────────────────────────────────────────────────────────────
 
-function NavItem({ href, icon: Icon, label, exact }: {
-  href: string; icon: React.ElementType; label: string; exact?: boolean;
+function NavItem({ href, icon: Icon, label, exact, badge }: {
+  href: string; icon: React.ElementType; label: string; exact?: boolean; badge?: number;
 }) {
   const [location] = useLocation();
   const isActive = exact ? location === href : location.startsWith(href);
@@ -72,7 +84,12 @@ function NavItem({ href, icon: Icon, label, exact }: {
           : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700/60 dark:hover:text-slate-100"
       )}>
         <Icon className={cn("h-4 w-4 flex-shrink-0 transition-colors", isActive ? "text-blue-600 dark:text-blue-400" : "text-slate-400 dark:text-slate-500")} />
-        {label}
+        <span className="flex-1 truncate">{label}</span>
+        {badge && badge > 0 ? (
+          <span className="flex-shrink-0 h-4 min-w-4 px-1 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+            {badge > 99 ? "99+" : badge}
+          </span>
+        ) : null}
       </span>
     </Link>
   );
@@ -243,6 +260,17 @@ function SidebarPlanCard() {
 
 function Sidebar({ onClose }: { onClose?: () => void }) {
   const { user } = useAuth();
+  const [whatsNewUnread, setWhatsNewUnread] = useState(0);
+
+  useEffect(() => {
+    const t = localStorage.getItem("auth_token") ?? "";
+    if (!t) return;
+    fetch("/api/product-hub/releases/unread-count", { headers: { Authorization: `Bearer ${t}` } })
+      .then(r => r.ok ? r.json() : { count: 0 })
+      .then(d => setWhatsNewUnread(d.count ?? 0))
+      .catch(() => {});
+  }, []);
+
   if (!user) return null;
 
   return (
@@ -273,7 +301,11 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
             </p>
             <div className="px-3 space-y-0.5">
               {group.items.map(item => (
-                <NavItem key={item.href} {...item} />
+                <NavItem
+                  key={item.href}
+                  {...item}
+                  badge={item.href === "/whats-new" ? (whatsNewUnread || undefined) : undefined}
+                />
               ))}
             </div>
           </div>
@@ -379,12 +411,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Main content column */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopHeader onMobileMenuClick={() => setMobileOpen(true)} />
+        <HeaderBanner />
         <main className="flex-1 overflow-auto">
           <div className="max-w-6xl mx-auto w-full px-6 py-8">
             {children}
           </div>
         </main>
       </div>
+
+      {/* Global product-hub overlays (rendered once at root level) */}
+      <VersionPopup />
+      <SuggestFeatureButton />
     </div>
   );
 }

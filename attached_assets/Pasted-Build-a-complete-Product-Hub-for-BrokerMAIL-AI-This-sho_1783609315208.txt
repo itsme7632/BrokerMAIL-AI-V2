@@ -1,0 +1,459 @@
+Build a complete Product Hub for BrokerMAIL AI.
+
+This should become the central communication hub between BrokerMAIL AI and its users.
+
+Everything must be fully dynamic and managed from the Admin Panel.
+
+DO NOT hardcode anything.
+
+Follow the existing project architecture.
+
+========================================================
+PRODUCT HUB
+========================================================
+
+Add a new sidebar section:
+
+✨ Product Hub
+
+Pages:
+
+• What's New
+• Roadmap
+• Feedback
+• Report Bug
+
+========================================================
+1. WHAT'S NEW
+========================================================
+
+Create a premium changelog page.
+
+Every release should contain:
+
+• Version Number
+• Release Date
+• Category
+• Title
+• Description
+• Optional Image
+• Optional Video
+• Optional Documentation Link
+
+Categories:
+
+🚀 New Features
+⚡ Improvements
+🐞 Bug Fixes
+🔒 Security Updates
+
+Newest release first.
+
+Users can mark updates as read.
+
+Unread releases display a badge.
+
+Example:
+
+✨ What's New (3)
+
+========================================================
+2. ROADMAP
+========================================================
+
+Create a public roadmap.
+
+Statuses:
+
+🟢 In Development
+🟡 Planned
+🔵 Researching
+⚪ Future
+
+Each roadmap item includes:
+
+Title
+Description
+Progress %
+Estimated Release
+Category
+
+Users can vote.
+
+Prevent duplicate votes.
+
+Show total votes.
+
+Example:
+
+AI Inbox ❤️ 182 Votes
+
+Campaign Scheduler ❤️ 141 Votes
+
+WhatsApp Integration ❤️ 96 Votes
+
+========================================================
+3. FEEDBACK
+========================================================
+
+Create a Feedback Portal.
+
+Users can submit:
+
+• Feature Request
+• Improvement
+• General Feedback
+
+Fields:
+
+Title
+Description
+Category
+Priority
+
+Automatically attach:
+
+User ID
+Current Page
+Browser
+Operating System
+Platform Version
+Timestamp
+
+Admin can:
+
+Reply
+Close
+Mark Planned
+Mark Completed
+
+========================================================
+4. REPORT BUG
+========================================================
+
+Create a dedicated bug report page.
+
+Fields:
+
+Title
+
+Description
+
+Steps to Reproduce
+
+Expected Result
+
+Actual Result
+
+Severity
+
+Critical
+High
+Medium
+Low
+
+Allow:
+
+Screenshot Upload
+
+Video Upload
+
+Automatically capture:
+
+User ID
+
+Current URL
+
+Browser
+
+OS
+
+Screen Resolution
+
+Platform Version
+
+Timestamp
+
+Admin can:
+
+Assign
+
+Reply
+
+Mark Fixed
+
+Mark Duplicate
+
+Close
+
+========================================================
+5. GLOBAL "SUGGEST A FEATURE"
+========================================================
+
+This is a global feature.
+
+Every page inside BrokerMAIL AI should have a floating button in the bottom-right corner.
+
+💡 Suggest a Feature
+
+When clicked:
+
+Open a beautiful modal.
+
+Fields:
+
+Feature Title
+
+Description
+
+Category
+
+Business Impact
+
+Optional Screenshot
+
+Automatically include:
+
+Current Page
+
+User ID
+
+Browser
+
+OS
+
+Timestamp
+
+Do NOT force users to visit Product Hub.
+
+Users should be able to submit ideas instantly while working.
+
+========================================================
+6. NOTIFICATION CENTER
+========================================================
+
+Create a notification bell.
+
+Notifications include:
+
+New Version
+
+Announcements
+
+Roadmap Updates
+
+Feedback Replies
+
+Bug Report Replies
+
+Unread Count
+
+========================================================
+7. VERSION POPUP
+========================================================
+
+After every update:
+
+When users login:
+
+Show a popup once.
+
+Example:
+
+🎉 Welcome to BrokerMAIL AI v1.4
+
+What's New
+
+✓ Email Verification
+
+✓ Password Reset
+
+✓ SMTP Recovery
+
+✓ AI Morning Brief (Coming Soon)
+
+Buttons:
+
+View Details
+
+Dismiss
+
+Store last viewed version per user.
+
+Never show the same version twice.
+
+========================================================
+8. HEADER BANNER
+========================================================
+
+Create a top announcement banner.
+
+Admin controls:
+
+Message
+
+Background Color
+
+Priority
+
+Start Date
+
+End Date
+
+Dismissible
+
+Optional Link
+
+Examples:
+
+🚀 Version 1.4 Released
+
+⚠ Scheduled Maintenance
+
+🎉 Holiday Promotion
+
+========================================================
+9. DASHBOARD PRODUCT CARD
+========================================================
+
+Create a dashboard widget.
+
+✨ Product Updates
+
+Display:
+
+Latest Version
+
+Latest Announcement
+
+Top Requested Feature
+
+Upcoming Feature
+
+View All button
+
+========================================================
+10. ADMIN PANEL
+========================================================
+
+Create a complete Product Hub management area.
+
+Admin manages:
+
+What's New
+
+Roadmap
+
+Announcements
+
+Feedback
+
+Bug Reports
+
+Feature Requests
+
+Votes
+
+Popup Releases
+
+Header Banner
+
+Everything editable without code.
+
+========================================================
+11. SEARCH
+========================================================
+
+Allow searching across:
+
+Releases
+
+Roadmap
+
+Feedback
+
+Bug Reports
+
+Feature Requests
+
+========================================================
+12. DATABASE
+========================================================
+
+Create proper database tables.
+
+product_releases
+
+roadmap_items
+
+feature_votes
+
+feedback
+
+feature_requests
+
+bug_reports
+
+announcements
+
+user_release_reads
+
+notifications
+
+Do NOT use JSON files.
+
+========================================================
+13. FUTURE AI SUPPORT
+========================================================
+
+Design the database so future AI can:
+
+Summarize all feedback
+
+Group duplicate bug reports
+
+Merge duplicate feature requests
+
+Rank requested features
+
+Generate release notes automatically
+
+Recommend roadmap priorities
+
+========================================================
+14. UI
+========================================================
+
+Use BrokerMAIL AI's existing design system.
+
+Light Theme
+
+Modern SaaS Design
+
+Responsive
+
+Professional Cards
+
+Subtle Animations
+
+Fast
+
+========================================================
+15. IMPORTANT
+========================================================
+
+No hardcoded data.
+
+Everything dynamic.
+
+Everything editable from Admin Panel.
+
+Maintain backward compatibility.
+
+Run database migration.
+
+Run typecheck.
+
+Run production build.
+
+Fix all errors before finishing.

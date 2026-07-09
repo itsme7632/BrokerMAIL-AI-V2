@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { ProductUpdatesCard } from "@/components/product-hub/ProductUpdatesCard";
 import { useGetDashboardStats, useGetDashboardActivity, useGetGmailStatus, useGetDrafts, type ActivityItem } from "@workspace/api-client-react";
 import { useAuth } from "@/context/AuthContext";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -1357,6 +1358,9 @@ export default function Dashboard() {
               );
             })()}
           </div>
+
+          {/* Product Updates */}
+          <ProductUpdatesCard />
 
         </div>
         {/* end right column */}

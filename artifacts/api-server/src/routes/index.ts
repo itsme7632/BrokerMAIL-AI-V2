@@ -21,6 +21,7 @@ import suppressionsRouter from "./suppressions";
 import composerRouter from "./composer";
 import supportRouter from "./support";
 import unsubscribeRouter from "./unsubscribe";
+import productHubRouter from "./product-hub";
 
 const router: IRouter = Router();
 
@@ -46,5 +47,6 @@ router.use(suppressionsRouter);
 router.use(composerRouter);
 router.use(supportRouter);
 router.use(unsubscribeRouter);
+router.use(productHubRouter);
 
 export default router;

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { AdminSettings } from "./AdminSettings";
+import { AdminProductHub } from "./AdminProductHub";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +11,7 @@ import {
   ChevronRight, Search, Filter, Activity, TrendingUp, MailCheck,
   UserCheck, Settings, Eye, MoreVertical, Crown, Ban, Edit2,
   CreditCard, ArrowUpCircle, CheckCheck, X as XIcon, TicketCheck,
-  MessageSquare, Tag, Clock, Send, ChevronDown as ChevronDownIcon,
+  MessageSquare, Tag, Clock, Send, ChevronDown as ChevronDownIcon, Sparkles,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -83,7 +84,7 @@ interface AdminSub {
   stripeCustomerId: string | null; stripeSubscriptionId: string | null;
 }
 
-type Tab = "overview" | "users" | "mailboxes" | "analytics" | "logs" | "settings" | "billing" | "support";
+type Tab = "overview" | "users" | "mailboxes" | "analytics" | "logs" | "settings" | "billing" | "support" | "product_hub";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -309,6 +310,7 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "settings",   label: "Settings",   icon: Settings },
   { id: "billing",    label: "Billing",    icon: CreditCard },
   { id: "support",    label: "Support",    icon: TicketCheck },
+  { id: "product_hub", label: "Product Hub", icon: Sparkles },
 ];
 
 export default function Admin() {
@@ -1511,6 +1513,12 @@ export default function Admin() {
           </div>
         </div>
       )}
+
+          {tab === "product_hub" && (
+            <div className="space-y-6">
+              <AdminProductHub />
+            </div>
+          )}
 
       {/* User edit modal */}
       {editUser && (

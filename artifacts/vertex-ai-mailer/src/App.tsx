@@ -47,6 +47,10 @@ import SupportTickets from "@/pages/SupportTickets";
 import SupportTicketDetail from "@/pages/SupportTicketDetail";
 import SuppressionList from "@/pages/SuppressionList";
 import Unsubscribe from "@/pages/Unsubscribe";
+import WhatsNew from "@/pages/WhatsNew";
+import Roadmap from "@/pages/Roadmap";
+import Feedback from "@/pages/Feedback";
+import ReportBug from "@/pages/ReportBug";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -205,6 +209,30 @@ function Router() {
       <Route path="/suppressions">
         <ProtectedRoute>
           <AppLayout><SuppressionList /></AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/whats-new">
+        <ProtectedRoute>
+          <AppLayout><WhatsNew /></AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/roadmap">
+        <ProtectedRoute>
+          <AppLayout><Roadmap /></AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/product-hub/feedback">
+        <ProtectedRoute>
+          <AppLayout><Feedback /></AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/report-bug">
+        <ProtectedRoute>
+          <AppLayout><ReportBug /></AppLayout>
         </ProtectedRoute>
       </Route>
 
