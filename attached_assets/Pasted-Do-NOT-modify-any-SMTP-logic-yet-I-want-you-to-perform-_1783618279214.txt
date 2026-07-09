@@ -1,0 +1,110 @@
+Do NOT modify any SMTP logic yet.
+
+I want you to perform a forensic audit of the SMTP error handling.
+
+Background:
+
+• SMTP campaigns work correctly in the Replit development environment.
+• The exact same mailbox works.
+• In production, campaign emails enter Deferred and the UI always shows:
+
+Invalid login: 535 Incorrect authentication data
+
+I suspect this message may be hardcoded or reused for multiple SMTP failures.
+
+Please investigate the entire SMTP error pipeline.
+
+Specifically:
+
+1. Trace every error returned by Nodemailer from transporter.verify() and transporter.sendMail().
+
+2. Follow the error through every catch block until it reaches:
+   - email_queue
+   - campaign status
+   - retry scheduler
+   - campaign details page
+   - SMTP diagnostics panel
+
+3. Determine whether every failure is being converted into:
+
+   Invalid login: 535 Incorrect authentication data
+
+or whether the original SMTP error is preserved.
+
+4. Search the project for:
+
+535
+EAUTH
+Invalid login
+Incorrect authentication
+Authentication failed
+
+and identify every place these strings appear.
+
+5. Determine whether any catch block does something like:
+
+throw new Error("Invalid login")
+
+or
+
+error = "Invalid login"
+
+instead of preserving the original error.
+
+6. If the original SMTP error is being lost anywhere,
+show exactly where.
+
+7. I do NOT want generic messages.
+
+Instead I want the actual SMTP error preserved and displayed.
+
+Examples:
+
+Connection timeout
+
+TLS handshake failed
+
+Socket hang up
+
+ECONNRESET
+
+ENOTFOUND
+
+421 Service not available
+
+451 Temporary failure
+
+550 Mailbox unavailable
+
+552 Message too large
+
+554 Policy rejection
+
+535 Authentication failed
+
+Rate limit exceeded
+
+Provider temporarily unavailable
+
+Network timeout
+
+SSL certificate error
+
+or whatever Nodemailer actually returns.
+
+8. Recommend the safest implementation so the UI always shows:
+
+• SMTP stage
+• SMTP response code
+• SMTP enhanced status code (if available)
+• Raw Nodemailer error.code
+• Raw Nodemailer error.responseCode
+• Raw Nodemailer error.command
+• Raw Nodemailer error.response
+• Raw error.message
+
+without exposing passwords or secrets.
+
+Do not implement changes yet.
+
+First tell me whether the current system is masking the real SMTP error.
