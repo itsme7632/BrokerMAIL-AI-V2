@@ -98,6 +98,7 @@ async function seedAdmin(): Promise<void> {
         name: "Admin",
         passwordHash,
         role: "admin",
+        emailVerified: true,
       });
       logger.info({ email: ADMIN_EMAIL }, "Default admin account seeded");
     }
