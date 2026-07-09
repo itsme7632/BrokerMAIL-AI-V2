@@ -13,6 +13,7 @@ A production-ready AI SaaS for vehicle shipping brokers — upload CSV/XLSX lead
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL`, `SESSION_SECRET`, `OPENAI_API_KEY`
 - Optional (for Gmail/Google OAuth): `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REDIRECT_URI`
+- Status: DATABASE_URL and SESSION_SECRET are set; OPENAI_API_KEY is not set yet (user declined on initial setup) — AI email generation will fail until it's added.
 
 ## First-time setup (after import or clone)
 1. Run `pnpm --filter db push` — creates all database tables (must be done before starting the API server for the first time)
