@@ -1,0 +1,342 @@
+I have configured a real SMTP mailbox in this development environment.
+
+You now have access to:
+
+- source code
+- database
+- mailbox settings
+- SMTP credentials
+- queue worker
+- logs
+
+I want a COMPLETE end-to-end investigation.
+
+DO NOT assume the SMTP credentials are wrong simply because Nodemailer returns EAUTH.
+
+Your job is to identify the REAL root cause.
+
+=========================================================
+PART 1 — SMTP AUTHENTICATION INVESTIGATION
+=========================================================
+
+Current error:
+
+EAUTH
+535 Incorrect authentication data
+
+Investigate every possible cause.
+
+Verify:
+
+• SMTP host
+• port
+• encryption
+• secure flag
+• STARTTLS vs SSL
+• auth username
+• auth password
+• decoded credentials
+• mailbox settings loaded from database
+• mailbox selected by worker
+• mailbox selected by scheduler
+
+Determine:
+
+Is the worker using the newest mailbox settings or cached settings?
+
+Print exactly what mailbox configuration is being used during send (mask passwords).
+
+Verify that the values loaded into Nodemailer match exactly what is stored in the database.
+
+=========================================================
+PART 2 — LIVE SMTP TEST
+=========================================================
+
+Perform an actual SMTP connection test.
+
+Test:
+
+EHLO
+AUTH
+MAIL FROM
+RCPT TO
+DATA
+
+Determine exactly where the failure occurs.
+
+If authentication fails:
+
+Explain WHY.
+
+Not just "credentials invalid."
+
+I want the server response and the exact cause.
+
+=========================================================
+PART 3 — QUEUE SYSTEM
+=========================================================
+
+Trace the complete pipeline.
+
+Campaign
+
+↓
+
+Lead
+
+↓
+
+email_queue
+
+↓
+
+worker pickup
+
+↓
+
+quota check
+
+↓
+
+cooldown
+
+↓
+
+SMTP send
+
+↓
+
+update database
+
+Show every stage.
+
+=========================================================
+PART 4 — RETRY SYSTEM
+=========================================================
+
+Current screen shows
+
+Retry in 29 minutes
+
+Determine:
+
+Who schedules retries?
+
+Where is retryAt calculated?
+
+How is retry delay determined?
+
+Why exactly 30 minutes?
+
+Can retries get stuck forever?
+
+=========================================================
+PART 5 — QUOTA RECOVERY SYSTEM
+=========================================================
+
+We recently implemented quota recovery.
+
+I want a complete audit.
+
+Verify:
+
+Hourly limit
+
+Remaining quota
+
+Quota reset
+
+Cooldown
+
+Campaign pause
+
+Campaign resume
+
+Automatic recovery
+
+Worker wake-up
+
+Automatic queue continuation
+
+Specifically verify these scenarios:
+
+Scenario A
+
+Hourly limit = 50
+
+Campaign = 60 emails
+
+Expected:
+
+50 send
+
+campaign pauses
+
+quota recovers
+
+remaining 10 automatically resume
+
+No manual intervention
+
+Scenario B
+
+Campaign paused overnight
+
+User logs out
+
+Quota resets
+
+Worker resumes automatically
+
+Scenario C
+
+Server restarts
+
+Campaign was paused
+
+Worker starts again
+
+Campaign resumes
+
+Scenario D
+
+Multiple campaigns waiting
+
+Verify fair scheduling.
+
+=========================================================
+PART 6 — TIMER
+=========================================================
+
+Investigate every timer.
+
+Estimated Completion
+
+Retry timer
+
+Cooldown timer
+
+Quota timer
+
+Worker polling interval
+
+Determine:
+
+Which timers are informational only?
+
+Which timers actually control sending?
+
+Show every timer source.
+
+=========================================================
+PART 7 — WORKER
+=========================================================
+
+Verify:
+
+Worker heartbeat
+
+Polling interval
+
+Cron jobs
+
+Background jobs
+
+Scheduler
+
+Queue processor
+
+Ensure nothing is sleeping unexpectedly.
+
+=========================================================
+PART 8 — DATABASE
+=========================================================
+
+Inspect
+
+campaigns
+
+campaign_leads
+
+email_queue
+
+smtp_tracking
+
+mailboxes
+
+quota tables
+
+Show:
+
+queued
+
+processing
+
+retry
+
+failed
+
+deferred
+
+scheduled_at
+
+retry_at
+
+next_attempt
+
+processing_started_at
+
+=========================================================
+PART 9 — REGRESSION CHECK
+=========================================================
+
+SMTP worked previously.
+
+Compare current behavior with the last known working implementation.
+
+Identify exactly which commit or change introduced this regression.
+
+=========================================================
+PART 10 — FIX
+=========================================================
+
+Do NOT implement speculative fixes.
+
+First provide:
+
+• root cause
+• evidence
+• affected files
+• why it happened
+• why it worked before
+• why it fails now
+
+Only after identifying the real cause should you implement the fix.
+
+=========================================================
+PART 11 — VALIDATION
+=========================================================
+
+After fixing:
+
+Run a real campaign of at least 60 emails.
+
+Verify:
+
+✓ first 50 send
+
+✓ quota reached
+
+✓ campaign pauses
+
+✓ quota recovery waits
+
+✓ worker wakes automatically
+
+✓ remaining emails resume automatically
+
+✓ campaign completes without manual action
+
+Provide logs proving each stage worked correctly.
+
+I want this fully validated before considering the issue resolved.
