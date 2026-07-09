@@ -17,17 +17,34 @@
  * (mailboxes.user_id is unique, so "the active mailbox for a user" and
  * "an active mailbox" are equivalent per user).
  *
- * Usage (run ON THE PRODUCTION SERVER, in the app directory):
+ * Usage (run ON THE PRODUCTION SERVER, from artifacts/api-server so its
+ * installed dependencies — pg, nodemailer — resolve):
+ *   cd artifacts/api-server
  *   node scripts/debug-smtp-prod.mjs [mailboxId]
  *
  * Optional arg: a specific mailbox id to target instead of "first active".
  *
+ * Relies on process.env being already populated (DATABASE_URL, ENCRYPTION_KEY)
+ * the same way the running app/PM2 process gets them — no dotenv dependency,
+ * matching this package's own runtime (it doesn't use dotenv either).
+ *
+ * Under this pnpm monorepo, "pg" is only hoisted into lib/db/node_modules as
+ * a transitive dependency of @workspace/db — it is not a direct dependency
+ * of api-server, so a plain `import "pg"` fails here with
+ * ERR_MODULE_NOT_FOUND even though this script lives alongside api-server's
+ * installed dependencies. `@workspace/db`'s own entrypoint is TypeScript
+ * source, which plain `node` also cannot load directly (ERR_UNKNOWN_FILE_
+ * EXTENSION) without this package's build step. To avoid installing any new
+ * package or creating a build step, this script imports the already-
+ * installed "pg" package directly from lib/db/node_modules by relative path
+ * — no new dependency, no new project, just pointing at what's already on
+ * disk.
+ *
  * Delete this file after use — it is a temporary diagnostic only.
  */
-import "dotenv/config"; // reads production .env in the current directory
 import crypto from "node:crypto";
-import pg from "pg";
 import nodemailer from "nodemailer";
+import pg from "../../../lib/db/node_modules/pg/lib/index.js";
 
 // ─── Same key derivation as lib/crypto.ts getKey() ──────────────────────────
 function getKey() {
