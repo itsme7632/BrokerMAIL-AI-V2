@@ -221,8 +221,15 @@ CREATE TABLE IF NOT EXISTS suppression_list (
     reason      text    NOT NULL,
     bounce_code text,
     campaign_id integer,
+    lead_id     integer,
+    source      text,
     created_at  timestamp NOT NULL DEFAULT now()
 );
+-- NOTE: CREATE TABLE IF NOT EXISTS does not retroactively add columns to an
+-- already-existing table. If suppression_list was created before lead_id/source
+-- existed here, run migrations/0001_suppression_list_add_lead_id_source.sql.
+ALTER TABLE suppression_list ADD COLUMN IF NOT EXISTS lead_id integer;
+ALTER TABLE suppression_list ADD COLUMN IF NOT EXISTS source  text;
 
 -- ── processed_bounces  (mailbox_id is intentionally not FK'd) ─────────────────
 CREATE TABLE IF NOT EXISTS processed_bounces (
