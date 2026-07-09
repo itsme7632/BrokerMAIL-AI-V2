@@ -259,8 +259,11 @@ function RoadmapPanel() {
               <Label className="text-xs font-semibold">Status</Label>
               <select value={form.status} onChange={e => setForm((f: any) => ({...f, status: e.target.value}))} className="w-full h-8 rounded-xl border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
                 <option value="in_development">🟢 In Development</option>
+                <option value="in_progress">🟢 In Progress</option>
+                <option value="beta">🟣 Beta</option>
                 <option value="planned">🟡 Planned</option>
                 <option value="researching">🔵 Researching</option>
+                <option value="released">✅ Released</option>
                 <option value="future">⚪ Future</option>
               </select>
             </div>

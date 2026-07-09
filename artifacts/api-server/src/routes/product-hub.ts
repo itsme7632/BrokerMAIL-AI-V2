@@ -107,37 +107,44 @@ router.get("/product-hub/announcements/active", async (req, res): Promise<void> 
 // USER ROUTES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// GET /api/product-hub/releases?page=1&limit=20&q=
+// GET /api/product-hub/releases?page=1&limit=20&q=&category=
 router.get("/product-hub/releases", requireAuth, async (req, res): Promise<void> => {
   try {
-    const page  = Math.max(1, parseInt(req.query.page  as string) || 1);
-    const limit = Math.min(50, parseInt(req.query.limit as string) || 20);
-    const q     = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    const page     = Math.max(1, parseInt(req.query.page  as string) || 1);
+    const limit    = Math.min(50, parseInt(req.query.limit as string) || 20);
+    const q        = typeof req.query.q        === "string" ? req.query.q.trim()        : "";
+    const category = typeof req.query.category === "string" ? req.query.category.trim() : "";
 
     const userId = req.user!.id;
 
     const rows = await db.select().from(productReleasesTable)
       .where(eq(productReleasesTable.isPublished, true))
       .orderBy(desc(productReleasesTable.releaseDate))
-      .limit(limit).offset((page - 1) * limit);
+      .limit(500); // fetch broadly; filter in memory
 
     // Which ones has this user read?
     const readRows = await db.select({ releaseId: userReleaseReadsTable.releaseId })
       .from(userReleaseReadsTable).where(eq(userReleaseReadsTable.userId, userId));
     const readSet = new Set(readRows.map(r => r.releaseId));
 
-    const filtered = q ? rows.filter(r =>
-      r.title.toLowerCase().includes(q.toLowerCase()) ||
-      r.description.toLowerCase().includes(q.toLowerCase()) ||
-      r.version.toLowerCase().includes(q.toLowerCase())
-    ) : rows;
+    let filtered = rows;
+    if (q) {
+      const lq = q.toLowerCase();
+      filtered = filtered.filter(r =>
+        r.title.toLowerCase().includes(lq) ||
+        r.description.toLowerCase().includes(lq) ||
+        r.version.toLowerCase().includes(lq)
+      );
+    }
+    if (category) {
+      filtered = filtered.filter(r => r.category === category);
+    }
 
-    const data = filtered.map(r => ({ ...r, isRead: readSet.has(r.id) }));
+    const paginated = filtered.slice((page - 1) * limit, page * limit);
+    const data = paginated.map(r => ({ ...r, isRead: readSet.has(r.id) }));
 
-    // Unread count across all published releases
-    const allPublished = await db.select({ id: productReleasesTable.id })
-      .from(productReleasesTable).where(eq(productReleasesTable.isPublished, true));
-    const unreadCount = allPublished.filter(r => !readSet.has(r.id)).length;
+    // Unread count across all published releases (regardless of filter)
+    const unreadCount = rows.filter(r => !readSet.has(r.id)).length;
 
     res.json({ data, unreadCount, page, limit });
   } catch (err) {
@@ -312,15 +319,22 @@ router.post("/product-hub/bug-reports", requireAuth, async (req, res): Promise<v
   }
 });
 
-// GET /api/product-hub/notifications
+// GET /api/product-hub/notifications?limit=50&type=
 router.get("/product-hub/notifications", requireAuth, async (req, res): Promise<void> => {
   try {
+    const limit    = Math.min(100, parseInt(req.query.limit as string) || 50);
+    const typeFilter = typeof req.query.type === "string" ? req.query.type.trim() : "";
+
     const rows = await db.select().from(notificationsTable)
       .where(eq(notificationsTable.userId, req.user!.id))
       .orderBy(desc(notificationsTable.createdAt))
-      .limit(50);
+      .limit(500);
+
+    const filtered = typeFilter ? rows.filter(n => n.type === typeFilter) : rows;
+    const data = filtered.slice(0, limit);
     const unreadCount = rows.filter(n => !n.isRead).length;
-    res.json({ notifications: rows, unreadCount });
+
+    res.json({ data, unreadCount, total: filtered.length });
   } catch (err) {
     logger.error({ err }, "[PRODUCT-HUB] Failed to fetch notifications");
     res.status(500).json({ error: "Failed to fetch notifications" });
@@ -347,6 +361,29 @@ router.post("/product-hub/notifications/:id/read", requireAuth, async (req, res)
     res.json({ success: true });
   } catch {
     res.json({ success: false });
+  }
+});
+
+// DELETE /api/product-hub/notifications/:id
+router.delete("/product-hub/notifications/:id", requireAuth, async (req, res): Promise<void> => {
+  try {
+    await db.delete(notificationsTable)
+      .where(and(eq(notificationsTable.id, parseInt(req.params.id)), eq(notificationsTable.userId, req.user!.id)));
+    res.json({ success: true });
+  } catch (err) {
+    logger.error({ err }, "[PRODUCT-HUB] Failed to delete notification");
+    res.status(500).json({ error: "Failed to delete notification" });
+  }
+});
+
+// DELETE /api/product-hub/notifications — clear all for user
+router.delete("/product-hub/notifications", requireAuth, async (req, res): Promise<void> => {
+  try {
+    await db.delete(notificationsTable).where(eq(notificationsTable.userId, req.user!.id));
+    res.json({ success: true });
+  } catch (err) {
+    logger.error({ err }, "[PRODUCT-HUB] Failed to clear notifications");
+    res.status(500).json({ error: "Failed to clear notifications" });
   }
 });
 

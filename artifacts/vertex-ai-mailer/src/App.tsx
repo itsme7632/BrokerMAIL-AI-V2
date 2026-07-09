@@ -51,6 +51,7 @@ import WhatsNew from "@/pages/WhatsNew";
 import Roadmap from "@/pages/Roadmap";
 import Feedback from "@/pages/Feedback";
 import ReportBug from "@/pages/ReportBug";
+import Notifications from "@/pages/Notifications";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -233,6 +234,12 @@ function Router() {
       <Route path="/report-bug">
         <ProtectedRoute>
           <AppLayout><ReportBug /></AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/notifications">
+        <ProtectedRoute>
+          <AppLayout><Notifications /></AppLayout>
         </ProtectedRoute>
       </Route>
 

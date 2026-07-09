@@ -10,11 +10,11 @@ function getAuthHeaders(): Record<string, string> {
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
-const CATEGORIES: Record<string, { label: string; icon: React.ElementType; color: string; bg: string }> = {
-  new_feature: { label: "New Feature",     icon: Sparkles,   color: "text-indigo-700", bg: "bg-indigo-50 border-indigo-200"  },
-  improvement: { label: "Improvement",     icon: Zap,        color: "text-amber-700",  bg: "bg-amber-50 border-amber-200"   },
-  bug_fix:     { label: "Bug Fix",         icon: Bug,        color: "text-red-700",    bg: "bg-red-50 border-red-200"       },
-  security:    { label: "Security Update", icon: ShieldCheck, color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200" },
+const CATEGORIES: Record<string, { label: string; icon: React.ElementType; color: string; bg: string; activeClass: string }> = {
+  new_feature: { label: "New Feature",     icon: Sparkles,    color: "text-indigo-700", bg: "bg-indigo-50 border-indigo-200",   activeClass: "bg-indigo-600 text-white border-indigo-600"  },
+  improvement: { label: "Improvement",     icon: Zap,         color: "text-amber-700",  bg: "bg-amber-50 border-amber-200",    activeClass: "bg-amber-500 text-white border-amber-500"    },
+  bug_fix:     { label: "Bug Fix",         icon: Bug,         color: "text-red-700",    bg: "bg-red-50 border-red-200",        activeClass: "bg-red-600 text-white border-red-600"        },
+  security:    { label: "Security Update", icon: ShieldCheck, color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200", activeClass: "bg-emerald-600 text-white border-emerald-600" },
 };
 
 interface Release {
@@ -41,7 +41,6 @@ function ReleaseCard({ release, onRead }: { release: Release; onRead: (id: numbe
       "bg-white rounded-2xl border shadow-sm transition-all duration-200 overflow-hidden",
       !release.isRead ? "border-blue-200 shadow-blue-50" : "border-slate-200"
     )}>
-      {/* Header */}
       <div className="p-5 sm:p-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
@@ -86,7 +85,6 @@ function ReleaseCard({ release, onRead }: { release: Release; onRead: (id: numbe
           </ul>
         )}
 
-        {/* Actions */}
         <div className="mt-4 flex items-center gap-2 flex-wrap">
           {release.docUrl && (
             <a href={release.docUrl} target="_blank" rel="noopener noreferrer">
@@ -113,7 +111,6 @@ function ReleaseCard({ release, onRead }: { release: Release; onRead: (id: numbe
         </div>
       </div>
 
-      {/* Optional image */}
       {release.imageUrl && (
         <img src={release.imageUrl} alt={release.title} className="w-full object-cover max-h-64 border-t border-slate-100" />
       )}
@@ -122,18 +119,20 @@ function ReleaseCard({ release, onRead }: { release: Release; onRead: (id: numbe
 }
 
 export default function WhatsNew() {
-  const [releases, setReleases]   = useState<Release[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [unread, setUnread]       = useState(0);
-  const [search, setSearch]       = useState("");
-  const [searchInput, setSearchInput] = useState("");
+  const [releases, setReleases]         = useState<Release[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [unread, setUnread]             = useState(0);
+  const [searchInput, setSearchInput]   = useState("");
+  const [search, setSearch]             = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("");
   const debounceRef = useState<ReturnType<typeof setTimeout> | null>(null);
 
-  async function load(q = "") {
+  async function load(q = "", cat = "") {
     setLoading(true);
     try {
       const qs = new URLSearchParams({ limit: "50" });
-      if (q) qs.set("q", q);
+      if (q)   qs.set("q", q);
+      if (cat) qs.set("category", cat);
       const res = await fetch(`/api/product-hub/releases?${qs}`, { headers: getAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
@@ -150,7 +149,13 @@ export default function WhatsNew() {
   function handleSearch(v: string) {
     setSearchInput(v);
     if (debounceRef[0]) clearTimeout(debounceRef[0]);
-    (debounceRef as any)[0] = setTimeout(() => { setSearch(v); load(v); }, 350);
+    (debounceRef as any)[0] = setTimeout(() => { setSearch(v); load(v, categoryFilter); }, 350);
+  }
+
+  function handleCategory(cat: string) {
+    const next = cat === categoryFilter ? "" : cat;
+    setCategoryFilter(next);
+    load(search, next);
   }
 
   async function handleRead(id: number) {
@@ -184,7 +189,7 @@ export default function WhatsNew() {
               <Check className="h-3.5 w-3.5" /> Mark all read
             </Button>
           )}
-          <Button size="sm" variant="outline" className="rounded-xl gap-1.5 text-xs" onClick={() => load(search)} disabled={loading}>
+          <Button size="sm" variant="outline" className="rounded-xl gap-1.5 text-xs" onClick={() => load(search, categoryFilter)} disabled={loading}>
             <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
           </Button>
         </div>
@@ -206,6 +211,27 @@ export default function WhatsNew() {
         )}
       </div>
 
+      {/* Category filters */}
+      <div className="flex flex-wrap gap-2">
+        {Object.entries(CATEGORIES).map(([key, cfg]) => {
+          const Icon = cfg.icon;
+          const active = categoryFilter === key;
+          return (
+            <button
+              key={key}
+              onClick={() => handleCategory(key)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all duration-150",
+                active ? cfg.activeClass : cn("bg-white", cfg.bg, cfg.color, "hover:opacity-80")
+              )}
+            >
+              <Icon className="h-3 w-3" />{cfg.label}
+              {active && <X className="h-2.5 w-2.5 ml-0.5 opacity-80" />}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Releases */}
       {loading ? (
         <div className="space-y-4">
@@ -214,7 +240,19 @@ export default function WhatsNew() {
       ) : releases.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-20 text-slate-400">
           <Sparkles className="h-10 w-10 text-slate-200" />
-          <p className="text-sm">{search ? `No releases matching "${search}"` : "No releases yet."}</p>
+          <p className="text-sm">
+            {search || categoryFilter
+              ? `No releases matching your filters.`
+              : "No releases yet."}
+          </p>
+          {(search || categoryFilter) && (
+            <button
+              onClick={() => { setSearchInput(""); setSearch(""); setCategoryFilter(""); load(); }}
+              className="text-xs text-blue-600 hover:underline"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-4">

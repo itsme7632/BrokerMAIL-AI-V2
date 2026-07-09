@@ -6,7 +6,7 @@ import {
   LayoutDashboard, FileText, UploadCloud, Mail, Settings, ShieldAlert,
   Menu, X, Server, CreditCard, SendHorizonal, Megaphone, LayoutGrid,
   LogOut, Palette, HelpCircle, ChevronDown, Moon, Sun, PenLine, TicketCheck,
-  Zap, Sparkles, Map, MessageSquare, Bug, Lightbulb,
+  Zap, Sparkles, Map, MessageSquare, Bug, Lightbulb, Bell,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -58,6 +58,7 @@ const NAV_GROUPS = [
       { href: "/roadmap",              icon: Map,           label: "Roadmap",       exact: true  },
       { href: "/product-hub/feedback", icon: MessageSquare, label: "Feedback",      exact: true  },
       { href: "/report-bug",           icon: Bug,           label: "Report a Bug",  exact: true  },
+      { href: "/notifications",        icon: Bell,          label: "Notifications", exact: true  },
     ],
   },
 ];
@@ -267,7 +268,7 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
     if (!t) return;
     fetch("/api/product-hub/releases/unread-count", { headers: { Authorization: `Bearer ${t}` } })
       .then(r => r.ok ? r.json() : { count: 0 })
-      .then(d => setWhatsNewUnread(d.count ?? 0))
+      .then(d => setWhatsNewUnread(d.unreadCount ?? 0))
       .catch(() => {});
   }, []);
 

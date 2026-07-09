@@ -18,8 +18,11 @@ interface RoadmapItem {
 
 const STATUSES: { key: string; label: string; emoji: string; color: string; bg: string; dot: string }[] = [
   { key: "in_development", label: "In Development", emoji: "🟢", color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200", dot: "bg-emerald-500" },
+  { key: "in_progress",    label: "In Progress",    emoji: "🟢", color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200", dot: "bg-emerald-500" },
+  { key: "beta",           label: "Beta",           emoji: "🟣", color: "text-violet-700",  bg: "bg-violet-50 border-violet-200",  dot: "bg-violet-500" },
   { key: "planned",        label: "Planned",        emoji: "🟡", color: "text-amber-700",   bg: "bg-amber-50 border-amber-200",   dot: "bg-amber-400"  },
   { key: "researching",    label: "Researching",    emoji: "🔵", color: "text-blue-700",    bg: "bg-blue-50 border-blue-200",    dot: "bg-blue-500"   },
+  { key: "released",       label: "Released",       emoji: "✅", color: "text-teal-700",    bg: "bg-teal-50 border-teal-200",    dot: "bg-teal-500"   },
   { key: "future",         label: "Future",         emoji: "⚪", color: "text-slate-600",   bg: "bg-slate-50 border-slate-200",  dot: "bg-slate-400"  },
 ];
 
