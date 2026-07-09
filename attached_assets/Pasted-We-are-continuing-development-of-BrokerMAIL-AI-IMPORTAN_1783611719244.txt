@@ -1,0 +1,129 @@
+We are continuing development of BrokerMAIL AI.
+
+IMPORTANT:
+Do not redesign or simplify existing features.
+First inspect the current codebase completely before making changes.
+
+The previous AI already completed most of the Product Hub foundation.
+
+Already implemented:
+• Product Hub database tables
+• API routes
+• Product Hub pages
+• Header banner
+• Dashboard widgets
+• Notification components
+• Sidebar wiring
+• Schema migrations
+• Admin integration
+• Frontend routing
+
+Before writing any code:
+
+1. Review every Product Hub related file.
+2. Check for unfinished TODOs.
+3. Check every route is registered.
+4. Verify database migrations.
+5. Verify frontend pages compile.
+6. Verify sidebar navigation.
+7. Verify admin pages.
+8. Verify notification bell.
+9. Verify popup system.
+
+Then finish anything incomplete.
+
+After verification implement the remaining production features:
+
+------------------------
+PRODUCT HUB
+------------------------
+
+1. What's New page
+- Timeline style
+- Version history
+- Search
+- Filter by version
+- Rich text
+- Images
+- Videos
+- Pinned announcements
+
+2. Roadmap
+Statuses:
+- Planned
+- In Progress
+- Beta
+- Released
+
+Allow users to vote on roadmap items.
+
+3. Feedback
+Users can:
+- Report bugs
+- Suggest features
+- Attach screenshots
+- Attach files
+- Choose severity
+- Choose category
+
+Admin can:
+- Reply
+- Change status
+- Merge duplicates
+- Mark resolved
+
+4. Notification Center
+Show:
+- New releases
+- Feature announcements
+- Replies from support
+- Feedback updates
+- Maintenance notices
+
+Unread badge
+Mark all read
+Delete notifications
+
+5. Dashboard
+Add a Product Hub widget:
+- Latest release
+- Upcoming feature
+- Recent announcements
+- Open feedback tickets
+
+6. Header Banner
+Admin configurable.
+Dismissible.
+Schedule start/end dates.
+
+7. Version Popup
+Show once per release.
+Remember dismissal.
+Highlight major features.
+
+8. Admin Panel
+Create a full Product Hub admin section.
+
+Admin can manage:
+- Changelog
+- Releases
+- Roadmap
+- Feedback
+- Notifications
+- Banner
+- Popup
+
+Everything must be fully editable.
+
+9. Review every component for consistency.
+
+Do not remove existing functionality.
+
+Maintain BrokerMAIL AI styling and architecture.
+
+When complete:
+- Run migrations.
+- Fix all TypeScript errors introduced by your work.
+- Restart the app.
+- Verify everything works.
+- Summarize what was completed and what still needs manual testing.
