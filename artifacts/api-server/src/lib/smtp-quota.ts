@@ -125,24 +125,53 @@ export async function handleMailboxQuotaReached(
   // and read per-mailbox cooldown settings.
   const [existing] = await db
     .select({
-      quotaStatus:       mailboxesTable.quotaStatus,
-      quotaProbeCount:   mailboxesTable.quotaProbeCount,
-      cooldownMinutes:   mailboxesTable.cooldownMinutes,
-      probeRetryMinutes: mailboxesTable.probeRetryMinutes,
-      smtpUser:          mailboxesTable.smtpUser,
+      quotaStatus:        mailboxesTable.quotaStatus,
+      quotaProbeCount:    mailboxesTable.quotaProbeCount,
+      quotaCooldownUntil: mailboxesTable.quotaCooldownUntil,
+      cooldownMinutes:    mailboxesTable.cooldownMinutes,
+      probeRetryMinutes:  mailboxesTable.probeRetryMinutes,
+      smtpUser:           mailboxesTable.smtpUser,
     })
     .from(mailboxesTable)
     .where(eq(mailboxesTable.id, mailboxId));
 
-  const isFirstDetection  = existing?.quotaStatus !== "quota_reached";
+  const isFirstDetection = existing?.quotaStatus !== "quota_reached";
+  const now              = new Date();
+
+  // ── Guard against concurrent duplicate detections ─────────────────────────
+  // When quota is hit, several in-flight sends can fail with the same quota
+  // error within milliseconds of each other (before the first one's cooldown
+  // has even started, let alone elapsed). Without this guard, the 2nd/3rd
+  // failure would read quotaStatus === "quota_reached" (set by the 1st) and
+  // be misclassified as a "probe failure", overwriting the just-set
+  // InitialCooldownMinutes (e.g. 60 min) with ProbeRetryMinutes (e.g. 5 min).
+  // InitialCooldownMinutes must NEVER be replaced by ProbeRetryMinutes.
+  // A detection only counts as a genuine probe failure once the existing
+  // cooldown has actually elapsed (i.e. we are past quotaCooldownUntil) —
+  // that only happens after runQuotaRecovery() has resumed a campaign to
+  // send the probe and that probe failed.
+  const existingCooldownUntil = existing?.quotaCooldownUntil ?? null;
+  const isDuplicateDuringCooldown =
+    !isFirstDetection &&
+    existingCooldownUntil !== null &&
+    now.getTime() < existingCooldownUntil.getTime();
+
+  if (isDuplicateDuringCooldown) {
+    logger.debug({
+      mailboxId,
+      cooldownUntil: existingCooldownUntil?.toISOString(),
+    }, "[SMTP-QUOTA] Duplicate quota detection during active cooldown — ignoring (cooldown left untouched)");
+    return;
+  }
+
+  const isProbeFailure    = !isFirstDetection; // guard above already excluded duplicates
   const probeCount        = isFirstDetection ? 0 : ((existing?.quotaProbeCount ?? 0) + 1);
   const cooldownMinutes   = existing?.cooldownMinutes  ?? DEFAULT_COOLDOWN_MINUTES;
   const probeRetryMinutes = existing?.probeRetryMinutes ?? DEFAULT_PROBE_RETRY_MINUTES;
-  const cooldownMs        = isFirstDetection
-    ? cooldownMinutes * 60_000
-    : probeRetryMinutes * 60_000;
+  const cooldownMs        = isProbeFailure
+    ? probeRetryMinutes * 60_000
+    : cooldownMinutes * 60_000;
   const mailboxEmail      = existing?.smtpUser ?? `mailbox #${mailboxId}`;
-  const now               = new Date();
   const cooldownUntil     = new Date(Date.now() + cooldownMs);
 
   if (isFirstDetection) {

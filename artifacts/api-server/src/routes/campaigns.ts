@@ -1387,7 +1387,12 @@ router.get("/campaigns/:id/progress", requireAuth, async (req, res): Promise<voi
   const sending   = counts.sending ?? 0;
   const queued    = counts.queued ?? 0;
   const failed    = counts.failed ?? 0;
-  const remaining = counts.new ?? 0;
+  // Remaining = everything not yet finished (sent/failed), i.e.
+  // Queued + Pending ("new") + Waiting ("sending"). This must never read 0
+  // while leads are still outstanding — e.g. while a campaign is paused for
+  // SMTP quota cooldown, its leads sit in "queued"/"new"/"sending" and must
+  // still count as remaining, not as 0.
+  const remaining = queued + (counts.new ?? 0) + sending;
 
   // Hourly rate info (for SMTP mode)
   let sentThisHour = 0, hourlyLimit = 100, remainingQuota = 100;
