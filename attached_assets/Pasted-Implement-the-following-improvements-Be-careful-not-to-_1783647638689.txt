@@ -1,0 +1,246 @@
+Implement the following improvements. Be careful not to modify unrelated functionality.
+
+====================================================
+PART 1 — Deferred SMTP Quota Detection
+====================================================
+
+Do NOT modify SMTP authentication, SMTP sending, Nodemailer transport, or campaign logic.
+
+Background:
+
+Our production mail server (cPanel/Exim) accepts emails successfully (250 Queued) and only later sends a Mail Delivery System email such as:
+
+"Domain vertexcarship.com has exceeded the max emails per hour (57/50) allowed. Message will be reattempted later."
+
+The audit confirmed:
+
+• sendMail() succeeds.
+• Bounce Scanner later receives the quota notification.
+• bounce-scanner.ts never calls smtp-quota.ts.
+• isQuotaReachedError() is never used by the bounce scanner.
+• Therefore quota recovery never starts.
+
+Required implementation:
+
+1. Reuse the existing quota system.
+
+Do NOT duplicate logic.
+
+Reuse:
+
+- isQuotaReachedError()
+- handleMailboxQuotaReached()
+
+There must be a single source of truth.
+
+----------------------------------------------------
+
+2. Extend the bounce scanner.
+
+When processing Mail Delivery System / Mailer-Daemon emails:
+
+• extract the bounce reason
+• pass the reason through isQuotaReachedError()
+
+If it returns true:
+
+• call handleMailboxQuotaReached()
+
+using the correct mailbox.
+
+----------------------------------------------------
+
+3. Do NOT suppress recipients.
+
+Quota notifications are NOT recipient bounces.
+
+Do NOT:
+
+• add recipient to suppression list
+• mark recipient invalid
+• classify as permanent bounce
+
+Only the mailbox should enter cooldown.
+
+----------------------------------------------------
+
+4. Deduplicate.
+
+Continue using processed_bounces.
+
+The same quota email must never trigger cooldown twice.
+
+----------------------------------------------------
+
+5. Preserve existing cooldown.
+
+Continue using the existing implementation for:
+
+• quota_status
+• quota_cooldown_until
+• quota_probe_count
+• recovery scheduler
+• automatic resume
+
+Do not implement a second cooldown system.
+
+----------------------------------------------------
+
+6. Logging
+
+Add structured logs.
+
+Example:
+
+[SMTP QUOTA]
+Source: BOUNCE_SCANNER
+Mailbox: miller@vertexcarship.com
+Reason: Domain exceeded max emails per hour
+Cooldown: 60 minutes
+
+Also log when recovery succeeds.
+
+----------------------------------------------------
+
+7. Safety
+
+Only trigger quota mode when isQuotaReachedError() matches.
+
+Do NOT trigger cooldown for:
+
+• mailbox full
+• greylisting
+• DNS failures
+• temporary connection issues
+• recipient unavailable
+
+====================================================
+PART 2 — Suppression List UI Improvements
+====================================================
+
+The Suppression List page needs a professional redesign.
+
+Current problems:
+
+• Email column wraps every few characters.
+• Long email addresses break into multiple lines.
+• Reason column is misaligned.
+• Bounce code column alignment is inconsistent.
+• Source column spacing is inconsistent.
+• Action column is cramped.
+• Overall table spacing looks unprofessional.
+• Mobile responsiveness is poor.
+
+Please redesign ONLY the Suppression List page.
+
+Requirements:
+
+1.
+
+Email column
+
+• Never wrap email addresses.
+• Keep each email on a single line.
+• Truncate with ellipsis (...) if necessary.
+• Full email should appear on hover (desktop) and tap (mobile).
+
+2.
+
+Reason column
+
+• Increase width.
+• Wrap text naturally.
+• Keep badges aligned.
+• Long SMTP responses should be readable.
+
+3.
+
+Source column
+
+• Center align.
+• Display badges such as:
+
+Bounce
+
+Manual
+
+Unsubscribe
+
+API
+
+Import
+
+with consistent styling.
+
+4.
+
+Bounce Code
+
+• Fixed width.
+• Center aligned.
+• Display as a badge.
+
+Examples:
+
+550
+
+552
+
+554
+
+etc.
+
+5.
+
+Actions
+
+• Keep Remove button vertically centered.
+• Prevent icons from shifting.
+
+6.
+
+Responsive Design
+
+On mobile:
+
+• Horizontal scrolling if needed.
+• No broken email wrapping.
+• Proper spacing.
+• Touch-friendly layout.
+
+7.
+
+Table polish
+
+Improve:
+
+• padding
+• row height
+• typography
+• spacing
+• header alignment
+• column widths
+• hover state
+• empty state
+
+The page should feel premium and consistent with the rest of BrokerMAIL AI.
+
+====================================================
+IMPORTANT
+====================================================
+
+Do NOT modify any unrelated pages.
+
+Do NOT modify SMTP sending.
+
+Do NOT modify authentication.
+
+Do NOT change campaign logic.
+
+After implementation provide:
+
+1. Files modified.
+
+2. Call trace showing deferred quota notifications now flow into the existing quota recovery pipeline.
+
+3. Summary of UI improvements made to the Suppression List page.

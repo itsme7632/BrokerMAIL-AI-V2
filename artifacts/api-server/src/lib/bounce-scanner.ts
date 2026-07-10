@@ -30,6 +30,7 @@ import { isPermanentBounce, extractBounceCode } from "./email-validator";
 import { decrypt } from "./crypto";
 import { logger } from "./logger";
 import { getTrackingSettings } from "./tracking-settings";
+import { isQuotaReachedError, handleMailboxQuotaReached, runQuotaRecovery } from "./smtp-quota";
 
 // ---------------------------------------------------------------------------
 // DSN / bounce message parsing helpers
@@ -117,6 +118,59 @@ function extractMessageId(source: string): string | null {
   return m[1].trim();
 }
 
+/**
+ * Extract the message body (everything after the header/body blank-line
+ * separator), truncated to a safe length. Some provider notices — notably
+ * cPanel/Exim's "Domain X has exceeded the max emails per hour" deferral —
+ * are plain-text bodies with no RFC 3464 structure (no Diagnostic-Code,
+ * no Status, no Final-Recipient), so the quota phrase only ever appears in
+ * the free-text body, not in any header we already parse elsewhere.
+ */
+function extractMessageBody(source: string): string {
+  const idx = source.search(/\r?\n\r?\n/);
+  if (idx === -1) return source.slice(0, 5000);
+  return source.slice(idx).slice(0, 5000);
+}
+
+/**
+ * Safety gate for quota detection when scanning full DSN bodies.
+ *
+ * isQuotaReachedError() is deliberately broad (it also matches generic
+ * phrases like "too many", "try again later", "temporarily unavailable",
+ * and bare 421/452 codes) because in its original context — a synchronous
+ * error thrown directly from our own sendMail() call — that text can ONLY
+ * describe what our own SMTP provider just told us about our own send.
+ *
+ * A DSN/bounce body is a different context: it can legitimately contain
+ * those same generic phrases for reasons that are NOT domain-wide quota
+ * exhaustion — e.g. "mailbox temporarily unavailable" (recipient mailbox
+ * full), greylisting deferrals, or transient DNS/connection retries on the
+ * remote end. Those must stay in the normal bounce/suppression flow, per
+ * the explicit safety requirement to never trigger cooldown for mailbox
+ * full, greylisting, DNS failures, temporary connection issues, or
+ * recipient unavailability.
+ *
+ * So for the bounce-scanner path we still require isQuotaReachedError() to
+ * agree (single source of truth, no duplicated matching logic) BUT only act
+ * on it when the message also contains one of the small set of phrases that
+ * are unambiguous, provider-side "your account/domain sending volume is
+ * over its limit" language — never generic recipient/mailbox phrasing.
+ */
+function hasUnambiguousQuotaSignal(text: string): boolean {
+  const s = text.toLowerCase();
+  return (
+    s.includes("exceeded the max emails per hour") ||
+    s.includes("max emails per hour") ||
+    s.includes("exceeded the max emails") ||
+    s.includes("hourly limit") ||
+    s.includes("daily limit") ||
+    s.includes("sending limit") ||
+    s.includes("quota exceeded") ||
+    // "51/50 allowed" — numeric limit exhausted (the cPanel/Exim signature)
+    /\d+\/\d+\s*(?:allowed|per hour|per day)/.test(s)
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Per-mailbox scanner
 // ---------------------------------------------------------------------------
@@ -131,6 +185,7 @@ async function _scanMailbox(
     imapPassEncrypted: string;
   },
   overridePlainPass?: string,
+  startCampaignProcessorFn?: (campaignId: number) => Promise<void>,
 ): Promise<number> {
   let pass: string;
   if (overridePlainPass !== undefined) {
@@ -270,6 +325,73 @@ async function _scanMailbox(
             { mailboxId: mailbox.id, seq: msg.seq, subject: debugSubject },
             "[BOUNCE-SCAN-DEBUG] Message-ID missing — cannot deduplicate; processing anyway",
           );
+        }
+
+        // ── Deferred SMTP quota detection ────────────────────────────────────
+        // Some providers (e.g. Exim/cPanel) accept a message (250 Queued) and
+        // only later mail back a "Mail Delivery System" notice reporting that
+        // the *domain* has exceeded its hourly send quota, e.g.:
+        //   "Domain vertexcarship.com has exceeded the max emails per hour
+        //    (57/50) allowed. Message will be reattempted later."
+        // This is NOT a recipient bounce — it must route into the existing
+        // SMTP quota recovery pipeline (smtp-quota.ts) via the same
+        // isQuotaReachedError()/handleMailboxQuotaReached() used by the send
+        // path, never into recipient suppression or email_queue "bounced".
+        const quotaCheckText = `${debugSubject} ${extractMessageBody(source)}`;
+        if (isQuotaReachedError(quotaCheckText) && hasUnambiguousQuotaSignal(quotaCheckText)) {
+          const quotaReason = extractBounceReason(source);
+
+          logger.warn(
+            {
+              mailboxId: mailbox.id,
+              seq:       msg.seq,
+              messageId: messageId ?? "(missing)",
+              source:    "BOUNCE_SCANNER",
+              mailbox:   mailbox.imapUser,
+              reason:    quotaReason,
+            },
+            `[SMTP QUOTA] Source: BOUNCE_SCANNER | Mailbox: ${mailbox.imapUser} | Reason: ${quotaReason}`,
+          );
+
+          if (mailbox.id > 0) {
+            await handleMailboxQuotaReached(mailbox.id, mailbox.userId, quotaReason);
+
+            if (startCampaignProcessorFn) {
+              runQuotaRecovery(mailbox.id, mailbox.userId, startCampaignProcessorFn).catch(err =>
+                logger.error(
+                  { err, mailboxId: mailbox.id },
+                  "[SMTP QUOTA] Recovery loop failed to start from bounce scanner",
+                ),
+              );
+            } else {
+              logger.warn(
+                { mailboxId: mailbox.id },
+                "[SMTP QUOTA] No campaign-processor function available to bounce scanner — quota recorded but recovery loop not started",
+              );
+            }
+          } else {
+            // Admin dedicated bounce mailbox (mailbox.id === -1) is not itself
+            // the sending mailbox, so there is no specific mailbox to pause.
+            logger.warn(
+              { messageId: messageId ?? "(missing)" },
+              "[SMTP QUOTA] Quota notice detected on the admin bounce mailbox (no owning mailbox) — cannot map to a mailbox; skipped",
+            );
+          }
+
+          // Dedup only — never suppress the recipient, never mark anything
+          // "bounced". A quota deferral says nothing about the recipient.
+          if (messageId) {
+            try {
+              await db.insert(processedBouncesTable).values({
+                mailboxId: mailbox.id,
+                messageId,
+                recipient: "QUOTA_NOTICE",
+              }).onConflictDoNothing();
+            } catch {
+              // non-fatal
+            }
+          }
+          continue;
         }
 
         const recipient = extractBounceRecipient(source);
@@ -655,8 +777,17 @@ async function _scanMailbox(
  * Scan all IMAP-configured mailboxes for bounce messages and update
  * email_queue accordingly. Returns the total number of bounces detected.
  * Never throws.
+ *
+ * @param startCampaignProcessorFn  Passed through to runQuotaRecovery() when a
+ *                                  deferred SMTP quota notice is detected, so
+ *                                  the probe/recovery loop can restart campaign
+ *                                  processors. Avoids a circular import between
+ *                                  this module and campaigns.ts (same pattern
+ *                                  already used by resumeMailboxQuotaRecovery).
  */
-export async function runBounceScanner(): Promise<void> {
+export async function runBounceScanner(
+  startCampaignProcessorFn?: (campaignId: number) => Promise<void>,
+): Promise<void> {
   try {
     const mailboxes = await db
       .select({
@@ -693,6 +824,8 @@ export async function runBounceScanner(): Promise<void> {
             imapUser: string;
             imapPassEncrypted: string;
           },
+          undefined,
+          startCampaignProcessorFn,
         );
         if (count > 0) {
           logger.info(

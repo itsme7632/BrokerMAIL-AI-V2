@@ -50,6 +50,56 @@ function ReasonBadge({ reason }: { reason: string }) {
   );
 }
 
+const SOURCE_STYLES: Record<string, string> = {
+  bounce:      "bg-red-50 text-red-700 border-red-200",
+  manual:      "bg-slate-50 text-slate-600 border-slate-200",
+  unsubscribe: "bg-amber-50 text-amber-700 border-amber-200",
+  api:         "bg-blue-50 text-blue-700 border-blue-200",
+  import:      "bg-violet-50 text-violet-700 border-violet-200",
+};
+
+function SourceBadge({ source }: { source: string }) {
+  const key = source.toLowerCase();
+  const style = SOURCE_STYLES[key] ?? "bg-slate-50 text-slate-600 border-slate-200";
+  return (
+    <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[11px] font-medium border capitalize whitespace-nowrap ${style}`}>
+      {source.replace(/_/g, " ")}
+    </span>
+  );
+}
+
+/**
+ * Truncated single-line email cell. Shows the full address in a floating
+ * tooltip on hover (desktop) and on tap (mobile, via onClick toggle) — never
+ * wraps or breaks the address across lines.
+ */
+function EmailCell({ email }: { email: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative inline-block max-w-full">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onBlur={() => setOpen(false)}
+        className="flex items-center gap-1.5 max-w-full text-left"
+        title={email}
+      >
+        <AtSign className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+        <span className="font-mono text-sm text-slate-800 dark:text-slate-200 truncate">
+          {email}
+        </span>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-20 px-2.5 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-mono shadow-lg whitespace-nowrap">
+          {email}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
@@ -324,19 +374,27 @@ export default function SuppressionList() {
       {/* Table */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <Table>
+          <Table className="min-w-[860px] table-fixed">
+            <colgroup>
+              <col className="w-[26%]" />
+              <col className="w-[30%]" />
+              <col className="w-[12%]" />
+              <col className="w-[10%]" />
+              <col className="w-[12%]" />
+              <col className="w-[10%]" />
+            </colgroup>
             <TableHeader>
-              <TableRow className="bg-slate-50/70">
-                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">
+              <TableRow className="bg-slate-50/70 dark:bg-slate-800/60">
+                <TableHead className="h-11 font-semibold text-slate-600 text-xs uppercase tracking-wide">
                   <span className="flex items-center gap-1"><AtSign className="h-3.5 w-3.5" /> Email</span>
                 </TableHead>
-                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide">Reason</TableHead>
-                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide hidden md:table-cell">Source</TableHead>
-                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide hidden sm:table-cell">Bounce Code</TableHead>
-                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide hidden lg:table-cell">
+                <TableHead className="h-11 font-semibold text-slate-600 text-xs uppercase tracking-wide">Reason</TableHead>
+                <TableHead className="h-11 font-semibold text-slate-600 text-xs uppercase tracking-wide text-center hidden md:table-cell">Source</TableHead>
+                <TableHead className="h-11 font-semibold text-slate-600 text-xs uppercase tracking-wide text-center hidden sm:table-cell">Bounce Code</TableHead>
+                <TableHead className="h-11 font-semibold text-slate-600 text-xs uppercase tracking-wide hidden lg:table-cell">
                   <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> Added</span>
                 </TableHead>
-                <TableHead className="font-semibold text-slate-600 text-xs uppercase tracking-wide text-right">Action</TableHead>
+                <TableHead className="h-11 font-semibold text-slate-600 text-xs uppercase tracking-wide text-center">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -344,13 +402,13 @@ export default function SuppressionList() {
                 Array(5).fill(0).map((_, i) => (
                   <TableRow key={i}>
                     {[1, 2, 3, 4, 5, 6].map(j => (
-                      <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
+                      <TableCell key={j} className="py-3.5"><Skeleton className="h-4 w-full" /></TableCell>
                     ))}
                   </TableRow>
                 ))
               ) : entries.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center h-40 text-slate-400">
+                  <TableCell colSpan={6} className="text-center h-48 text-slate-400">
                     <div className="flex flex-col items-center gap-3">
                       <ShieldAlert className="h-8 w-8 text-slate-200" />
                       {search
@@ -368,52 +426,58 @@ export default function SuppressionList() {
                 </TableRow>
               ) : (
                 entries.map(entry => (
-                  <TableRow key={entry.id} className="hover:bg-slate-50/60">
-                    <TableCell>
-                      <div className="flex items-center gap-1.5">
-                        <AtSign className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
-                        <span className="font-mono text-sm text-slate-800 break-all">{entry.email}</span>
+                  <TableRow key={entry.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                    <TableCell className="py-3.5 overflow-hidden">
+                      <EmailCell email={entry.email} />
+                    </TableCell>
+                    <TableCell className="py-3.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <ReasonBadge reason={entry.reason} />
+                        {entry.reason.length > 20 && (
+                          <span className="text-xs text-slate-500 leading-snug break-words">
+                            {entry.reason.replace(/_/g, " ")}
+                          </span>
+                        )}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <ReasonBadge reason={entry.reason} />
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
+                    <TableCell className="py-3.5 text-center hidden md:table-cell">
                       {entry.source ? (
-                        <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-mono">
-                          {entry.source.replace(/_/g, " ")}
-                        </span>
+                        <SourceBadge source={entry.source} />
                       ) : (
                         <span className="text-slate-300 text-xs">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="hidden sm:table-cell">
+                    <TableCell className="py-3.5 text-center hidden sm:table-cell">
                       {entry.bounceCode ? (
-                        <span className="font-mono text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                        <span className="inline-flex items-center justify-center min-w-[2.75rem] font-mono text-xs font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
                           {entry.bounceCode}
                         </span>
                       ) : (
                         <span className="text-slate-300 text-xs">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="hidden lg:table-cell">
+                    <TableCell className="py-3.5 hidden lg:table-cell">
                       <div className="text-sm text-slate-700">
                         {new Date(entry.createdAt).toLocaleDateString()}
                       </div>
                       <div className="text-xs text-slate-400">{timeAgo(entry.createdAt)}</div>
                     </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={removing.has(entry.email)}
-                        onClick={() => handleRemove(entry.email)}
-                        className="text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg gap-1 text-xs h-7 px-2"
-                        title="Remove from suppression list — this email will no longer be blocked"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        {removing.has(entry.email) ? "Removing…" : "Remove"}
-                      </Button>
+                    <TableCell className="py-3.5 text-center">
+                      <div className="flex items-center justify-center h-7">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={removing.has(entry.email)}
+                          onClick={() => handleRemove(entry.email)}
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg gap-1 text-xs h-7 px-2 whitespace-nowrap"
+                          title="Remove from suppression list — this email will no longer be blocked"
+                        >
+                          {removing.has(entry.email)
+                            ? <RefreshCw className="h-3.5 w-3.5 flex-shrink-0 animate-spin" />
+                            : <Trash2 className="h-3.5 w-3.5 flex-shrink-0" />}
+                          <span className="hidden sm:inline">{removing.has(entry.email) ? "Removing…" : "Remove"}</span>
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))

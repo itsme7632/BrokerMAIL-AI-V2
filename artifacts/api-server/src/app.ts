@@ -274,10 +274,10 @@ async function runWatchdog(): Promise<void> {
 // Also runs bounce scanner and Gmail draft sync on each cycle
 setTimeout(() => {
   runWatchdog().catch(() => {});
-  runBounceScanner().catch(() => {});
+  runBounceScanner(startCampaignProcessor).catch(() => {});
   setInterval(() => {
     runWatchdog().catch(() => {});
-    runBounceScanner().catch(() => {});
+    runBounceScanner(startCampaignProcessor).catch(() => {});
   }, 60_000);
 }, 10_000);
 
