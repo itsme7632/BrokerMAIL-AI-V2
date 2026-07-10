@@ -173,7 +173,7 @@ export default function SuppressionList() {
       setRemoveMsg({ email, ok });
       if (ok) {
         setTimeout(() => setRemoveMsg(null), 4000);
-        load(page, search);
+        load(page, search, reasonFilter);
       }
     } finally {
       setRemoving(prev => { const s = new Set(prev); s.delete(email); return s; });
@@ -197,7 +197,7 @@ export default function SuppressionList() {
         setAddEmail("");
         setAddReason("manual");
         setShowAdd(false);
-        load(1, search);
+        load(1, search, reasonFilter);
         setPage(1);
       } else {
         setAddMsg(json.error ?? "Failed to add email.");

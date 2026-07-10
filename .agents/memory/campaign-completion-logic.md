@@ -47,3 +47,7 @@ The full intended sequence: `new → queued → sending → sent/failed`
 ## Success Banner Guard
 
 Frontend must check `progress.sent > 0 || progress.failed > 0` before showing the done banner — otherwise "All 0 emails sent successfully!" can appear when campaign is marked completed with 0 actual sends.
+
+## Remaining Count Double-Count Trap
+
+The `/progress` API's `remaining` field already equals `queued + new + sending` (i.e. total - sent - failed). Frontend stat cards must display `progress.remaining` as-is — adding `progress.queued` on top of it double-counts queued leads and inflates the "Remaining" number.

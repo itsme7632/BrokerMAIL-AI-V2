@@ -30,7 +30,7 @@ export default function AdminLogin() {
     setIsSubmitting(true);
     try {
       const loggedInUser = await login({ email, password });
-      if (loggedInUser.role !== "admin") {
+      if (loggedInUser.user.role !== "admin") {
         await logout();
         setError("This login portal is for admin accounts only.");
         setIsSubmitting(false);

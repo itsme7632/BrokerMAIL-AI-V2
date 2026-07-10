@@ -46,7 +46,8 @@ const bugUpload = multer({
   limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB
   fileFilter: (_req, file, cb) => {
     const ok = /^(image\/(png|jpeg|gif|webp)|video\/(mp4|webm|quicktime))$/.test(file.mimetype);
-    cb(ok ? null : new Error("Unsupported file type"), ok);
+    if (ok) cb(null, true);
+    else cb(new Error("Unsupported file type"));
   },
 });
 
@@ -171,7 +172,7 @@ router.get("/product-hub/releases/unread-count", requireAuth, async (req, res): 
 
 // POST /api/product-hub/releases/:id/read
 router.post("/product-hub/releases/:id/read", requireAuth, async (req, res): Promise<void> => {
-  const id     = parseInt(req.params.id);
+  const id     = parseInt(req.params.id as string);
   const userId = req.user!.id;
   try {
     await db.insert(userReleaseReadsTable).values({ userId, releaseId: id }).onConflictDoNothing();
@@ -213,7 +214,7 @@ router.get("/product-hub/roadmap", requireAuth, async (req, res): Promise<void> 
 
 // POST /api/product-hub/roadmap/:id/vote  (toggle)
 router.post("/product-hub/roadmap/:id/vote", requireAuth, async (req, res): Promise<void> => {
-  const itemId = parseInt(req.params.id);
+  const itemId = parseInt(req.params.id as string);
   const userId = req.user!.id;
   try {
     const existing = await db.select().from(featureVotesTable)
@@ -357,7 +358,7 @@ router.post("/product-hub/notifications/read-all", requireAuth, async (req, res)
 router.post("/product-hub/notifications/:id/read", requireAuth, async (req, res): Promise<void> => {
   try {
     await db.update(notificationsTable).set({ isRead: true })
-      .where(and(eq(notificationsTable.id, parseInt(req.params.id)), eq(notificationsTable.userId, req.user!.id)));
+      .where(and(eq(notificationsTable.id, parseInt(req.params.id as string)), eq(notificationsTable.userId, req.user!.id)));
     res.json({ success: true });
   } catch {
     res.json({ success: false });
@@ -368,7 +369,7 @@ router.post("/product-hub/notifications/:id/read", requireAuth, async (req, res)
 router.delete("/product-hub/notifications/:id", requireAuth, async (req, res): Promise<void> => {
   try {
     await db.delete(notificationsTable)
-      .where(and(eq(notificationsTable.id, parseInt(req.params.id)), eq(notificationsTable.userId, req.user!.id)));
+      .where(and(eq(notificationsTable.id, parseInt(req.params.id as string)), eq(notificationsTable.userId, req.user!.id)));
     res.json({ success: true });
   } catch (err) {
     logger.error({ err }, "[PRODUCT-HUB] Failed to delete notification");
@@ -478,7 +479,7 @@ router.post("/product-hub/admin/releases", requireAuth, requireAdmin, async (req
 });
 
 router.put("/product-hub/admin/releases/:id", requireAuth, requireAdmin, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   const { version, releaseDate, category, title, description, imageUrl, videoUrl, docUrl, highlights, isMajor, isPublished } = req.body;
   try {
     const [before] = await db.select().from(productReleasesTable).where(eq(productReleasesTable.id, id));
@@ -500,7 +501,7 @@ router.put("/product-hub/admin/releases/:id", requireAuth, requireAdmin, async (
 
 router.delete("/product-hub/admin/releases/:id", requireAuth, requireAdmin, async (req, res): Promise<void> => {
   try {
-    await db.delete(productReleasesTable).where(eq(productReleasesTable.id, parseInt(req.params.id)));
+    await db.delete(productReleasesTable).where(eq(productReleasesTable.id, parseInt(req.params.id as string)));
     res.json({ success: true });
   } catch { res.status(500).json({ error: "Failed" }); }
 });
@@ -531,7 +532,7 @@ router.post("/product-hub/admin/roadmap", requireAuth, requireAdmin, async (req,
 });
 
 router.put("/product-hub/admin/roadmap/:id", requireAuth, requireAdmin, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   const { title, description, status, category, progress, estimatedRelease, sortOrder, isPublished } = req.body;
   try {
     const [before] = await db.select().from(roadmapItemsTable).where(eq(roadmapItemsTable.id, id));
@@ -557,7 +558,7 @@ router.put("/product-hub/admin/roadmap/:id", requireAuth, requireAdmin, async (r
 
 router.delete("/product-hub/admin/roadmap/:id", requireAuth, requireAdmin, async (req, res): Promise<void> => {
   try {
-    await db.delete(roadmapItemsTable).where(eq(roadmapItemsTable.id, parseInt(req.params.id)));
+    await db.delete(roadmapItemsTable).where(eq(roadmapItemsTable.id, parseInt(req.params.id as string)));
     res.json({ success: true });
   } catch { res.status(500).json({ error: "Failed" }); }
 });
@@ -592,7 +593,7 @@ router.post("/product-hub/admin/announcements", requireAuth, requireAdmin, async
 });
 
 router.put("/product-hub/admin/announcements/:id", requireAuth, requireAdmin, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   const { message, backgroundColor, priority, startDate, endDate, isDismissible, link, linkLabel, isActive } = req.body;
   try {
     const [row] = await db.update(announcementsTable).set({
@@ -607,7 +608,7 @@ router.put("/product-hub/admin/announcements/:id", requireAuth, requireAdmin, as
 
 router.delete("/product-hub/admin/announcements/:id", requireAuth, requireAdmin, async (req, res): Promise<void> => {
   try {
-    await db.delete(announcementsTable).where(eq(announcementsTable.id, parseInt(req.params.id)));
+    await db.delete(announcementsTable).where(eq(announcementsTable.id, parseInt(req.params.id as string)));
     res.json({ success: true });
   } catch { res.status(500).json({ error: "Failed" }); }
 });
@@ -629,7 +630,7 @@ router.get("/product-hub/admin/feedback", requireAuth, requireAdmin, async (req,
 });
 
 router.put("/product-hub/admin/feedback/:id", requireAuth, requireAdmin, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   const { status, adminReply } = req.body;
   try {
     const [before] = await db.select().from(feedbackTable).where(eq(feedbackTable.id, id));
@@ -659,7 +660,7 @@ router.get("/product-hub/admin/feature-requests", requireAuth, requireAdmin, asy
 });
 
 router.put("/product-hub/admin/feature-requests/:id", requireAuth, requireAdmin, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   const { status, adminReply } = req.body;
   try {
     const [before] = await db.select().from(featureRequestsTable).where(eq(featureRequestsTable.id, id));
@@ -690,7 +691,7 @@ router.get("/product-hub/admin/bug-reports", requireAuth, requireAdmin, async (r
 });
 
 router.put("/product-hub/admin/bug-reports/:id", requireAuth, requireAdmin, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id as string);
   const { status, adminReply, assignedTo } = req.body;
   try {
     const [before] = await db.select().from(bugReportsTable).where(eq(bugReportsTable.id, id));

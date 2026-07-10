@@ -732,7 +732,7 @@ export default function CampaignDetail() {
         />
         <StatCard
           label="Remaining"
-          value={(progress?.remaining ?? 0) + (progress?.queued ?? 0)}
+          value={progress?.remaining ?? 0}
           sub={(progress?.queued ?? 0) > 0 ? `${progress?.queued} queued` : undefined}
           color="bg-blue-50 border-blue-100 text-blue-800"
           icon={<Clock className="h-4 w-4" />}
