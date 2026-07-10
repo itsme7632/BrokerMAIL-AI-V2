@@ -1,0 +1,268 @@
+The redesign is heading in the right direction, but the layout still feels unbalanced and wastes a lot of screen space.
+
+Please refine the layout without changing any backend logic.
+
+==================================================
+LAYOUT IMPROVEMENTS
+==================================================
+
+The current right sidebar is too wide and mostly empty.
+
+Reduce the width of the right sidebar by around 30–40%.
+
+Give that space back to the main content.
+
+Suggested layout:
+
+Desktop
+---------
+Main Content: 72-75%
+Sidebar: 25-28%
+
+NOT 60/40.
+
+==================================================
+MAIN CONTENT
+==================================================
+
+Increase the width of all settings cards.
+
+SMTP
+IMAP
+Sending Settings
+Quota Recovery
+
+should feel roomy.
+
+Don't make users feel like they're filling out forms inside narrow boxes.
+
+==================================================
+SMTP + IMAP
+==================================================
+
+Instead of stacking everything vertically,
+
+use a responsive two-column form.
+
+Example:
+
+SMTP Host        SMTP Port
+
+Username         Password
+
+Encryption       Test Connection
+
+Then Save button aligned right.
+
+Do the same for IMAP.
+
+==================================================
+SENDING SETTINGS
+==================================================
+
+Current design wastes vertical space.
+
+Instead use a compact grid.
+
+Example
+
+Delay
+Batch Size
+
+Emails/Hour
+Custom Limit
+
+Buttons should align consistently.
+
+==================================================
+QUOTA RECOVERY
+==================================================
+
+Current inputs are too stretched.
+
+Make this section look like a settings panel.
+
+Use:
+
+Initial Cooldown
+
+Probe Interval
+
+Maximum Probe Attempts
+
+Auto Resume
+
+Notifications
+
+all in a neat responsive grid.
+
+==================================================
+RIGHT SIDEBAR
+==================================================
+
+The sidebar currently has huge empty cards.
+
+Instead make smaller widgets.
+
+Example:
+
+────────────────────
+SMTP Status
+● Connected
+────────────────────
+
+Hourly Usage
+
+23 / 60
+
+Progress bar
+
+────────────────────
+
+Cooldown
+
+None
+
+────────────────────
+
+Retry Queue
+
+7 Emails
+
+────────────────────
+
+Next Probe
+
+--
+
+────────────────────
+
+Last Error
+
+None
+
+These should be compact widgets rather than large empty containers.
+
+==================================================
+RECENT EVENTS
+==================================================
+
+Reduce its height.
+
+Show only the latest 5 events.
+
+Add "View History" button.
+
+==================================================
+CARD HEIGHTS
+==================================================
+
+Avoid giant cards with lots of empty space.
+
+Cards should size naturally to their content.
+
+==================================================
+VISUAL HIERARCHY
+==================================================
+
+Mailbox Overview
+should be a premium hero card.
+
+SMTP
+IMAP
+Sending
+Recovery
+
+should all have equal visual weight.
+
+==================================================
+BETTER USE OF SPACE
+==================================================
+
+Increase horizontal spacing.
+
+Reduce unnecessary vertical spacing.
+
+Reduce padding where appropriate.
+
+The page should feel information-dense but never crowded.
+
+==================================================
+BUTTONS
+==================================================
+
+All Save buttons should align consistently.
+
+Primary button:
+Blue
+
+Test Connection:
+Secondary
+
+Danger:
+Red
+
+==================================================
+SIDEBAR STICKY
+==================================================
+
+Keep the Live SMTP Status sidebar sticky while scrolling.
+
+This allows users to always see:
+
+Current status
+
+Quota usage
+
+Cooldown
+
+Retry queue
+
+without scrolling back up.
+
+==================================================
+RESPONSIVE
+==================================================
+
+Desktop:
+2-column dashboard
+
+Tablet:
+Sidebar moves below
+
+Mobile:
+Everything stacks naturally
+
+No horizontal scrolling.
+
+==================================================
+THEME
+==================================================
+
+Continue supporting BOTH Light Mode and Dark Mode.
+
+No hardcoded dark backgrounds.
+
+Use theme variables everywhere.
+
+==================================================
+IMPORTANT
+==================================================
+
+Do NOT change:
+
+SMTP logic
+
+IMAP logic
+
+Quota recovery
+
+API
+
+Database
+
+Authentication
+
+Backend
+
+This is purely a UI/UX refinement to make the page feel like a premium SaaS dashboard similar to Stripe, Vercel, Resend, or Linear.

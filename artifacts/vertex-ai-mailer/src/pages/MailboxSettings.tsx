@@ -272,7 +272,7 @@ function LiveStatusWidget({ visible, form }: { visible: boolean; form: MailboxFo
       <Card>
         <SectionHeader icon={Activity} title="Live SMTP Status" />
         <CardContent className="pt-0">
-          <p className="text-sm text-muted-foreground text-center py-6">Connect a mailbox to see live sending status.</p>
+          <p className="text-xs text-muted-foreground text-center py-4">Connect a mailbox to see live sending status.</p>
         </CardContent>
       </Card>
     );
@@ -282,6 +282,15 @@ function LiveStatusWidget({ visible, form }: { visible: boolean; form: MailboxFo
   const barColor = pct >= 90 ? "bg-destructive" : pct >= 70 ? "bg-amber-500" : "bg-emerald-500";
   const isCooling = quota?.quotaStatus === "quota_reached";
   const currentStatus = isCooling ? "cooling_down" : quota ? "connected" : "disconnected";
+
+  function Row({ label, value, valueClassName }: { label: string; value: React.ReactNode; valueClassName?: string }) {
+    return (
+      <div className="flex items-center justify-between py-2 border-b border-border last:border-0">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className={`text-xs font-semibold text-foreground ${valueClassName ?? ""}`}>{value}</span>
+      </div>
+    );
+  }
 
   return (
     <Card>
@@ -294,91 +303,44 @@ function LiveStatusWidget({ visible, form }: { visible: boolean; form: MailboxFo
           </button>
         }
       />
-      <CardContent className="pt-0 space-y-4">
+      <CardContent className="pt-0 space-y-3">
         {!quota ? (
           <p className="text-xs text-muted-foreground text-center py-2">Loading…</p>
         ) : (
           <>
             <StatusBadge status={currentStatus} />
 
-            {isCooling && (
-              <div className="rounded-xl border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 p-4 space-y-2">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
-                  <p className="text-sm font-semibold text-red-800 dark:text-red-300">Cooling Down — SMTP quota reached</p>
-                </div>
-                <p className="text-xs text-red-700 dark:text-red-400 leading-relaxed">
-                  Campaigns are paused. A probe email will be sent automatically after the cooldown to check if sending can resume.
+            {isCooling && quota.quotaSmtpResponse && (
+              <div className="rounded-lg border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 p-2.5">
+                <p className="text-xs text-red-600 dark:text-red-400 font-mono break-all line-clamp-2">
+                  {quota.quotaSmtpResponse.slice(0, 140)}
                 </p>
-                {quota.quotaSmtpResponse && (
-                  <p className="text-xs text-red-600 dark:text-red-400 font-mono bg-red-100 dark:bg-red-900/40 rounded px-2 py-1 break-all">
-                    {quota.quotaSmtpResponse.slice(0, 200)}
-                  </p>
-                )}
-                <div className="flex flex-wrap gap-4 pt-1">
-                  <div>
-                    <p className="text-xs text-red-500 dark:text-red-400">Cooldown remaining</p>
-                    <p className="text-sm text-red-800 dark:text-red-300"><QuotaCooldown until={quota.quotaCooldownUntil} /></p>
-                  </div>
-                  {quota.quotaCooldownUntil && (
-                    <div>
-                      <p className="text-xs text-red-500 dark:text-red-400">Next probe attempt</p>
-                      <p className="text-xs font-medium text-red-800 dark:text-red-300">
-                        {new Date(quota.quotaCooldownUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      </p>
-                    </div>
-                  )}
-                  {quota.quotaProbeCount > 0 && (
-                    <div>
-                      <p className="text-xs text-red-500 dark:text-red-400">Failed probes</p>
-                      <p className="text-xs font-medium text-red-800 dark:text-red-300">{quota.quotaProbeCount}</p>
-                    </div>
-                  )}
-                </div>
               </div>
             )}
 
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-medium text-foreground">{quota.usedThisHour} / {quota.hourlyLimit} sent this hour</span>
-                <span className={`font-semibold ${pct >= 90 ? "text-destructive" : pct >= 70 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>{pct}%</span>
+                <span className="font-medium text-foreground">Hourly Usage</span>
+                <span className="font-mono font-semibold text-foreground">{quota.usedThisHour} / {quota.hourlyLimit}</span>
               </div>
-              <div className="h-2 bg-muted rounded-full overflow-hidden">
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                 <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${Math.min(pct, 100)}%` }} />
               </div>
-              <p className="text-xs text-muted-foreground">{quota.remainingQuota} slots remaining</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { icon: Gauge,      label: "Hourly limit",   value: String(quota.hourlyLimit) },
-                { icon: Clock,      label: "Used this hour", value: String(quota.usedThisHour) },
-                { icon: TimerReset, label: "Deferred",       value: String(quota.deferredCount), highlight: quota.deferredCount > 0 },
-                { icon: RefreshCw,  label: "Retry queue",    value: String(quota.retryQueueCount), highlight: quota.retryQueueCount > 0 },
-              ].map(({ icon: Icon, label, value, highlight }) => (
-                <div key={label} className={`flex items-center gap-2 p-3 rounded-xl border ${
-                  highlight ? "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50" : "bg-muted/40 border-border"
-                }`}>
-                  <Icon className={`h-3.5 w-3.5 flex-shrink-0 ${highlight ? "text-amber-500" : "text-muted-foreground"}`} />
-                  <div>
-                    <p className={`text-sm font-bold leading-none ${highlight ? "text-amber-800 dark:text-amber-300" : "text-foreground"}`}>{value}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="rounded-xl border border-border bg-muted/40 p-3">
-                <p className="text-muted-foreground">Sending pace</p>
-                <p className="font-semibold text-foreground mt-0.5">{form.delaySeconds}s delay · {form.batchSize}/batch</p>
-              </div>
-              <div className="rounded-xl border border-border bg-muted/40 p-3">
-                <p className="text-muted-foreground">Last SMTP response</p>
-                <p className="font-semibold text-foreground mt-0.5 truncate">
-                  {quota.quotaSmtpResponse ? quota.quotaSmtpResponse.slice(0, 40) : "None recorded"}
-                </p>
-              </div>
+            <div>
+              <Row label="Cooldown" value={isCooling ? <QuotaCooldown until={quota.quotaCooldownUntil} /> : "None"} valueClassName={isCooling ? "text-amber-600 dark:text-amber-400" : ""} />
+              <Row label="Retry Queue" value={`${quota.retryQueueCount} email${quota.retryQueueCount === 1 ? "" : "s"}`} valueClassName={quota.retryQueueCount > 0 ? "text-amber-600 dark:text-amber-400" : ""} />
+              <Row label="Deferred" value={String(quota.deferredCount)} valueClassName={quota.deferredCount > 0 ? "text-amber-600 dark:text-amber-400" : ""} />
+              <Row
+                label="Next Probe"
+                value={quota.quotaCooldownUntil && isCooling ? new Date(quota.quotaCooldownUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
+              />
+              <Row label="Sending Pace" value={`${form.delaySeconds}s · ${form.batchSize}/batch`} />
+              <Row
+                label="Last Error"
+                value={<span className="truncate max-w-[140px] inline-block align-bottom">{quota.quotaSmtpResponse ? quota.quotaSmtpResponse.slice(0, 24) + "…" : "None"}</span>}
+              />
             </div>
           </>
         )}
@@ -410,26 +372,27 @@ function RecentEvents({ visible, isConnected, quotaReachedAt, quotaCooldownUntil
   }
 
   const sorted = events.sort((a, b) => (b.time ? new Date(b.time).getTime() : 0) - (a.time ? new Date(a.time).getTime() : 0));
+  const shown = sorted.slice(0, 5);
 
   return (
     <Card>
       <SectionHeader icon={BarChart3} title="Recent SMTP Events" description="Newest first" />
       <CardContent className="pt-0">
-        {!visible || sorted.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-6">No recent events.</p>
+        {!visible || shown.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-4">No recent events.</p>
         ) : (
-          <ul className="space-y-3">
-            {sorted.map((e, i) => (
-              <li key={i} className="flex items-start gap-3">
-                <div className={`h-6 w-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+          <ul className="space-y-2.5">
+            {shown.map((e, i) => (
+              <li key={i} className="flex items-start gap-2.5">
+                <div className={`h-5 w-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
                   e.tone === "ok" ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
                   : e.tone === "warn" ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"
                   : "bg-accent text-accent-foreground"
                 }`}>
-                  <e.icon className="h-3.5 w-3.5" />
+                  <e.icon className="h-3 w-3" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm text-foreground">{e.text}</p>
+                  <p className="text-xs text-foreground leading-snug">{e.text}</p>
                   {e.time && (
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {new Date(e.time).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
@@ -441,6 +404,13 @@ function RecentEvents({ visible, isConnected, quotaReachedAt, quotaCooldownUntil
           </ul>
         )}
       </CardContent>
+      {visible && sorted.length > 0 && (
+        <CardFooter className="pt-0">
+          <Button variant="ghost" size="sm" className="rounded-xl text-xs w-full text-muted-foreground hover:text-foreground" disabled>
+            View History
+          </Button>
+        </CardFooter>
+      )}
     </Card>
   );
 }
@@ -683,9 +653,9 @@ export default function MailboxSettings() {
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-[1fr_380px] gap-6 items-start">
+      <div className="grid lg:grid-cols-[73%_25%] lg:justify-between gap-x-6 gap-y-6 items-start">
         {/* ─── LEFT COLUMN — Configuration ─────────────────────────────────── */}
-        <div className="space-y-6 min-w-0">
+        <div className="space-y-5 min-w-0">
 
           {/* Section 1 — Mailbox Configuration */}
           <Card>
@@ -737,19 +707,23 @@ export default function MailboxSettings() {
           {/* Section 2 — SMTP Settings */}
           <Card>
             <SectionHeader icon={Server} title="SMTP Settings" description="Used for sending outbound email" />
-            <CardContent className="pt-0 grid sm:grid-cols-2 gap-4">
-              <div className="sm:col-span-2">
-                <Field label="SMTP Host" icon={Server} value={form.smtpHost}
-                  onChange={v => set("smtpHost", v)} placeholder="smtp.hostinger.com"
-                  hint={
-                    form.smtpHost && !form.smtpHost.startsWith("mail.") && !form.smtpHost.includes("smtp.") && !form.smtpHost.includes("office365") && !form.smtpHost.includes("gmail")
-                      ? "⚠ cPanel/Hostinger tip: use mail.yourdomain.com, not yourdomain.com"
-                      : undefined
-                  }
-                />
-              </div>
-              <Field label="Port" icon={Wifi} value={form.smtpPort}
+            <CardContent className="pt-0 grid sm:grid-cols-2 gap-x-5 gap-y-4">
+              <Field label="SMTP Host" icon={Server} value={form.smtpHost}
+                onChange={v => set("smtpHost", v)} placeholder="smtp.hostinger.com"
+                hint={
+                  form.smtpHost && !form.smtpHost.startsWith("mail.") && !form.smtpHost.includes("smtp.") && !form.smtpHost.includes("office365") && !form.smtpHost.includes("gmail")
+                    ? "⚠ cPanel/Hostinger tip: use mail.yourdomain.com, not yourdomain.com"
+                    : undefined
+                }
+              />
+              <Field label="SMTP Port" icon={Wifi} value={form.smtpPort}
                 onChange={v => set("smtpPort", v)} placeholder="587" />
+              <Field label="Username / Email" icon={User} value={form.smtpUser}
+                onChange={v => set("smtpUser", v)} placeholder="sales@yourcompany.com" />
+              <Field label="Password" icon={Lock} value={form.smtpPass} revealable
+                onChange={v => set("smtpPass", v)}
+                placeholder={isConnected ? "Leave blank to keep current" : "SMTP password"}
+                hint={isConnected ? "Only fill to change the saved password" : undefined} />
               <div className="space-y-1.5">
                 <label className="text-sm font-medium flex items-center gap-1.5 text-foreground">
                   <Wifi className="h-3.5 w-3.5 text-muted-foreground" /> Encryption
@@ -768,25 +742,24 @@ export default function MailboxSettings() {
                 </div>
                 <p className="text-xs text-muted-foreground">SSL=465, TLS=587, None=25</p>
               </div>
-              <Field label="Username / Email" icon={User} value={form.smtpUser}
-                onChange={v => set("smtpUser", v)} placeholder="sales@yourcompany.com" />
-              <Field label="Password" icon={Lock} value={form.smtpPass} revealable
-                onChange={v => set("smtpPass", v)}
-                placeholder={isConnected ? "Leave blank to keep current" : "SMTP password"}
-                hint={isConnected ? "Only fill to change the saved password" : undefined} />
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium flex items-center gap-1.5 text-foreground opacity-0 select-none">Test</label>
+                <Button type="button" variant="outline" size="sm"
+                  onClick={handleTestSmtp}
+                  disabled={smtpTest === "testing" || !form.smtpHost || !form.smtpUser || !form.smtpPass}
+                  className="rounded-xl gap-1.5 w-full"
+                >
+                  {smtpTest === "testing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FlaskConical className="h-3.5 w-3.5" />}
+                  Test Connection
+                </Button>
+                <div className="flex items-center gap-2">
+                  <TestBadge state={smtpTest} />
+                  {smtpErr && <span className="text-xs text-destructive truncate">{smtpErr}</span>}
+                </div>
+              </div>
             </CardContent>
-            <CardFooter className="flex flex-wrap items-center gap-3">
-              <Button type="button" variant="outline" size="sm"
-                onClick={handleTestSmtp}
-                disabled={smtpTest === "testing" || !form.smtpHost || !form.smtpUser || !form.smtpPass}
-                className="rounded-xl gap-1.5"
-              >
-                {smtpTest === "testing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FlaskConical className="h-3.5 w-3.5" />}
-                Test SMTP Connection
-              </Button>
-              <TestBadge state={smtpTest} />
-              {smtpErr && <span className="text-xs text-destructive truncate">{smtpErr}</span>}
-              <Button onClick={() => saveSection("smtp", "SMTP settings saved.")} disabled={savingSection === "smtp" || !form.smtpHost || !form.smtpUser} size="sm" className="rounded-xl gap-2 ml-auto">
+            <CardFooter className="justify-end">
+              <Button onClick={() => saveSection("smtp", "SMTP settings saved.")} disabled={savingSection === "smtp" || !form.smtpHost || !form.smtpUser} size="sm" className="rounded-xl gap-2">
                 {savingSection === "smtp" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Save SMTP
               </Button>
@@ -805,12 +778,10 @@ export default function MailboxSettings() {
             </button>
             {showImap && (
               <>
-                <CardContent className="pt-0 grid sm:grid-cols-2 gap-4">
-                  <div className="sm:col-span-2">
-                    <Field label="IMAP Host" icon={Server} value={form.imapHost}
-                      onChange={v => set("imapHost", v)} placeholder="imap.hostinger.com" />
-                  </div>
-                  <Field label="Port" icon={Wifi} value={form.imapPort}
+                <CardContent className="pt-0 grid sm:grid-cols-2 gap-x-5 gap-y-4">
+                  <Field label="IMAP Host" icon={Server} value={form.imapHost}
+                    onChange={v => set("imapHost", v)} placeholder="imap.hostinger.com" />
+                  <Field label="IMAP Port" icon={Wifi} value={form.imapPort}
                     onChange={v => set("imapPort", v)} placeholder="993" />
                   <Field label="Username" icon={User} value={form.imapUser}
                     onChange={v => set("imapUser", v)} placeholder="sales@yourcompany.com" />
@@ -841,66 +812,65 @@ export default function MailboxSettings() {
           {/* Section 4 — Sending Settings */}
           <Card>
             <SectionHeader icon={Zap} title="Sending Settings" description="Batch size, delay, and hourly rate limits" />
-            <CardContent className="pt-0 space-y-6">
-              <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50">
-                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <CardContent className="pt-0 space-y-4">
+              <div className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
-                  <span className="font-semibold">Lower send speeds improve deliverability and reduce spam/rate-limit issues.</span>{" "}
-                  A 15-second delay with batches of 10 is the recommended default for most mailboxes.
+                  <span className="font-semibold">Lower send speeds improve deliverability.</span> 15s delay with batches of 10 is the recommended default.
                 </p>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  <label className="text-sm font-semibold text-foreground">Delay between emails</label>
-                  <span className="ml-auto text-xs text-accent-foreground font-semibold bg-accent px-2 py-0.5 rounded-full">{form.delaySeconds}s</span>
-                </div>
-                <ChipRow
-                  options={DELAY_OPTIONS}
-                  value={DELAY_OPTIONS.find(o => o.value === form.delaySeconds)?.value ?? (isCustomDelay ? -1 as any : 15)}
-                  onChange={v => { set("delaySeconds", v); setCustomDelay(""); }}
-                />
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground flex-shrink-0">Custom (seconds):</span>
+              <div className="grid sm:grid-cols-2 gap-x-5 gap-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                    <label className="text-xs font-semibold text-foreground">Delay Between Emails</label>
+                    <span className="ml-auto text-xs text-accent-foreground font-semibold bg-accent px-2 py-0.5 rounded-full">{form.delaySeconds}s</span>
+                  </div>
+                  <ChipRow
+                    options={DELAY_OPTIONS}
+                    value={DELAY_OPTIONS.find(o => o.value === form.delaySeconds)?.value ?? (isCustomDelay ? -1 as any : 15)}
+                    onChange={v => { set("delaySeconds", v); setCustomDelay(""); }}
+                  />
                   <Input type="number" min={1} max={3600} value={customDelay}
                     onChange={e => { setCustomDelay(e.target.value); const v = parseInt(e.target.value); if (!isNaN(v) && v > 0) set("delaySeconds", v); }}
-                    placeholder={String(form.delaySeconds)} className="h-8 rounded-lg text-xs w-28 font-mono" />
+                    placeholder={`Custom seconds (currently ${form.delaySeconds})`} className="h-8 rounded-lg text-xs font-mono" />
                 </div>
-              </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-muted-foreground" />
-                  <label className="text-sm font-semibold text-foreground">Emails per batch</label>
-                  <span className="ml-auto text-xs text-accent-foreground font-semibold bg-accent px-2 py-0.5 rounded-full">{form.batchSize} emails</span>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-3.5 w-3.5 text-muted-foreground" />
+                    <label className="text-xs font-semibold text-foreground">Batch Size</label>
+                    <span className="ml-auto text-xs text-accent-foreground font-semibold bg-accent px-2 py-0.5 rounded-full">{form.batchSize}</span>
+                  </div>
+                  <ChipRow options={BATCH_OPTIONS} value={form.batchSize} onChange={v => set("batchSize", v)} />
+                  <p className="text-xs text-muted-foreground">Emails queued per campaign batch.</p>
                 </div>
-                <ChipRow options={BATCH_OPTIONS} value={form.batchSize} onChange={v => set("batchSize", v)} />
-                <p className="text-xs text-muted-foreground">
-                  When you launch a campaign, only this many emails will be queued at once. You can send more batches after.
-                </p>
-              </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Gauge className="h-4 w-4 text-muted-foreground" />
-                  <label className="text-sm font-semibold text-foreground">Max emails per hour</label>
-                  <span className="ml-auto text-xs text-accent-foreground font-semibold bg-accent px-2 py-0.5 rounded-full">{form.maxPerHour}/hr</span>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Gauge className="h-3.5 w-3.5 text-muted-foreground" />
+                    <label className="text-xs font-semibold text-foreground">Emails / Hour</label>
+                    <span className="ml-auto text-xs text-accent-foreground font-semibold bg-accent px-2 py-0.5 rounded-full">{form.maxPerHour}/hr</span>
+                  </div>
+                  <ChipRow
+                    options={HOURLY_OPTIONS}
+                    value={HOURLY_OPTIONS.find(o => o.value === form.maxPerHour)?.value ?? (isCustomHourly ? -1 as any : 100)}
+                    onChange={v => { set("maxPerHour", v); setCustomHourly(""); }}
+                  />
+                  <p className="text-xs text-muted-foreground">Sending pauses automatically once reached.</p>
                 </div>
-                <ChipRow
-                  options={HOURLY_OPTIONS}
-                  value={HOURLY_OPTIONS.find(o => o.value === form.maxPerHour)?.value ?? (isCustomHourly ? -1 as any : 100)}
-                  onChange={v => { set("maxPerHour", v); setCustomHourly(""); }}
-                />
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground flex-shrink-0">Custom (per hour):</span>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Gauge className="h-3.5 w-3.5 text-muted-foreground" />
+                    <label className="text-xs font-semibold text-foreground">Custom Limit</label>
+                  </div>
                   <Input type="number" min={1} max={10000} value={customHourly}
                     onChange={e => { setCustomHourly(e.target.value); const v = parseInt(e.target.value); if (!isNaN(v) && v > 0) set("maxPerHour", v); }}
-                    placeholder={String(form.maxPerHour)} className="h-8 rounded-lg text-xs w-28 font-mono" />
+                    placeholder={`Custom per hour (currently ${form.maxPerHour})`} className="h-8 rounded-lg text-xs font-mono" />
+                  <p className="text-xs text-muted-foreground">Overrides the preset above.</p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  If you hit this limit, sending pauses automatically and resumes when the hour window resets.
-                </p>
               </div>
             </CardContent>
             <CardFooter className="justify-end">
@@ -916,41 +886,45 @@ export default function MailboxSettings() {
             <SectionHeader icon={TimerReset} title="Quota Recovery Settings" description="How BrokerMAIL AI reacts to provider rate limits" />
             <CardContent className="pt-0 space-y-4">
               <p className="text-xs text-muted-foreground">
-                When a quota error is detected, BrokerMAIL AI automatically pauses sending, waits, probes, and resumes — no manual action required.
+                When a quota error is detected, sending pauses, waits, probes, and resumes automatically — no manual action required.
               </p>
-              <div className="grid sm:grid-cols-2 gap-4">
+              <div className="grid sm:grid-cols-2 gap-x-5 gap-y-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                    <Clock className="h-3.5 w-3.5 text-muted-foreground" /> Initial cooldown (minutes)
+                    <Clock className="h-3.5 w-3.5 text-muted-foreground" /> Initial Cooldown (min)
                   </label>
                   <Input type="number" min={1} max={1440} value={form.cooldownMinutes}
                     onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v) && v > 0) set("cooldownMinutes", v); }}
                     className="h-9 rounded-xl font-mono text-sm" />
-                  <p className="text-xs text-muted-foreground">How long to wait after detecting a quota error before probing. Default: 60 min.</p>
+                  <p className="text-xs text-muted-foreground">Wait time before the first probe. Default: 60.</p>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                    <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" /> Probe retry interval (minutes)
+                    <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" /> Probe Interval (min)
                   </label>
                   <Input type="number" min={1} max={120} value={form.probeRetryMinutes}
                     onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v) && v > 0) set("probeRetryMinutes", v); }}
                     className="h-9 rounded-xl font-mono text-sm" />
-                  <p className="text-xs text-muted-foreground">Extra wait added after each failed probe email. Default: 5 min.</p>
+                  <p className="text-xs text-muted-foreground">Extra wait after each failed probe. Default: 5.</p>
                 </div>
-              </div>
-              <div className="flex flex-wrap gap-3 p-4 rounded-xl bg-muted/40 border border-border">
-                {[
-                  { icon: Clock, text: `${form.delaySeconds}s between emails` },
-                  { icon: Zap,   text: `${form.batchSize} per batch` },
-                  { icon: Gauge, text: `${form.maxPerHour}/hr max` },
-                  { icon: TimerReset, text: `${form.cooldownMinutes}min cooldown` },
-                  { icon: RefreshCw,  text: `${form.probeRetryMinutes}min probe retry` },
-                ].map(({ icon: Icon, text }) => (
-                  <div key={text} className="flex items-center gap-1.5">
-                    <Icon className="h-3.5 w-3.5 text-accent-foreground" />
-                    <span className="text-xs font-medium text-foreground">{text}</span>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <Shield className="h-3.5 w-3.5 text-muted-foreground" /> Auto Resume
+                  </label>
+                  <div className="h-9 flex items-center px-3 rounded-xl border border-border bg-muted/40 text-xs font-medium text-foreground">
+                    Always on
                   </div>
-                ))}
+                  <p className="text-xs text-muted-foreground">Resumes automatically after a successful probe.</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <Activity className="h-3.5 w-3.5 text-muted-foreground" /> Notifications
+                  </label>
+                  <div className="h-9 flex items-center px-3 rounded-xl border border-border bg-muted/40 text-xs font-medium text-foreground">
+                    Shown in Live SMTP Status
+                  </div>
+                  <p className="text-xs text-muted-foreground">Cooldowns and probes appear in the sidebar.</p>
+                </div>
               </div>
             </CardContent>
             <CardFooter className="justify-end">
@@ -990,7 +964,7 @@ export default function MailboxSettings() {
         </div>
 
         {/* ─── RIGHT COLUMN — Live Status ───────────────────────────────────── */}
-        <div className="space-y-6 min-w-0">
+        <div className="space-y-5 min-w-0 lg:sticky lg:top-6 lg:self-start">
           <LiveStatusWidget visible={isConnected} form={form} />
           <RecentEvents
             visible={isConnected}
