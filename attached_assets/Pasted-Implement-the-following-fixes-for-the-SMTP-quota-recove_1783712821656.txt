@@ -1,0 +1,270 @@
+Implement the following fixes for the SMTP quota recovery system.
+
+IMPORTANT:
+- Do NOT redesign the quota recovery architecture.
+- Do NOT remove the existing recovery loop.
+- Do NOT modify SMTP sending logic.
+- Do NOT change campaign processing unless required for the cleanup below.
+- Preserve existing behavior for active campaigns.
+- Build must pass with zero TypeScript errors.
+
+--------------------------------------------------
+FIX A — Clear mailbox quota state when the LAST campaign ends
+--------------------------------------------------
+
+Current issue:
+
+If a campaign finishes or is cancelled while the mailbox is in quota recovery, the mailbox may remain permanently stuck showing:
+
+- Cooling Down
+- Retrying
+- Last Error
+- Probe Count
+- Cooldown Timer
+
+even though there are no active campaigns.
+
+Reason:
+
+mailboxes.quota_* fields are only cleared by:
+
+1. a future successful send
+2. the in-memory recovery loop
+
+Neither is guaranteed after the last campaign ends.
+
+Implement:
+
+Whenever a campaign transitions to:
+
+- completed
+- cancelled
+- failed
+
+check whether there are ANY remaining active or paused campaigns for the same mailbox/user.
+
+If NONE remain:
+
+Immediately clear ALL mailbox quota state:
+
+quota_status
+quota_reached_at
+quota_cooldown_until
+quota_smtp_response
+quota_probe_count
+
+The mailbox should instantly become READY.
+
+Do NOT wait for another probe.
+Do NOT wait for another send.
+Do NOT rely on the recovery loop.
+
+--------------------------------------------------
+FIX B — Clean up stale deferred queue
+--------------------------------------------------
+
+Current issue:
+
+The Mailbox page still shows:
+
+Retry Queue: X
+Deferred: X
+
+even after the campaign finished hours ago.
+
+Reason:
+
+email_queue rows remain with:
+
+status='deferred'
+
+forever.
+
+The API simply counts every deferred row.
+
+Implement:
+
+Whenever the LAST campaign finishes or is cancelled:
+
+Find every deferred email_queue row belonging to that campaign.
+
+Those rows must no longer remain in retry state.
+
+Update them to the appropriate terminal state.
+
+Also clear:
+
+deferred_count
+retry_after
+last_error
+
+where appropriate.
+
+The Mailbox page should immediately show:
+
+Retry Queue = 0
+Deferred = 0
+
+if no retryable work actually exists.
+
+Do NOT delete historical email records.
+
+Preserve reporting/history.
+
+--------------------------------------------------
+FIX C — Mailbox status must reflect REAL state
+--------------------------------------------------
+
+Currently the Mailbox page trusts stale database values.
+
+Instead, after implementing A and B, ensure the mailbox status represents reality.
+
+Expected behavior:
+
+IF
+
+no active campaigns
+
+AND
+
+no paused campaigns
+
+AND
+
+no deferred retry queue
+
+THEN
+
+Mailbox Status:
+
+READY
+
+NOT
+
+Cooling Down
+
+Retrying
+
+Paused
+
+The sidebar widgets must also reflect this.
+
+The following widgets must immediately update:
+
+Live SMTP Status
+
+Mailbox Health
+
+Retry Queue
+
+Deferred Items
+
+Connection Status
+
+Last Error
+
+--------------------------------------------------
+Validation
+--------------------------------------------------
+
+Please verify all of the following scenarios.
+
+Scenario 1
+
+Campaign hits SMTP quota.
+
+Expected:
+
+Campaign pauses.
+
+Cooldown starts.
+
+Recovery loop begins.
+
+PASS
+
+----------------------------
+
+Scenario 2
+
+Campaign resumes successfully.
+
+Expected:
+
+Quota fields cleared.
+
+Retry queue empty.
+
+Mailbox READY.
+
+PASS
+
+----------------------------
+
+Scenario 3
+
+Campaign is cancelled during cooldown.
+
+Expected:
+
+Mailbox quota immediately cleared.
+
+Retry queue cleared.
+
+No Cooling Down badge.
+
+PASS
+
+----------------------------
+
+Scenario 4
+
+Campaign finishes while some deferred rows remain.
+
+Expected:
+
+Deferred rows cleaned.
+
+Retry Queue becomes 0.
+
+Mailbox READY.
+
+PASS
+
+----------------------------
+
+Scenario 5
+
+Multiple campaigns running simultaneously.
+
+Campaign A finishes.
+
+Campaign B still active.
+
+Expected:
+
+Do NOT clear mailbox quota state.
+
+Only clear after the LAST campaign finishes.
+
+PASS
+
+--------------------------------------------------
+Deliverables
+--------------------------------------------------
+
+After implementation provide:
+
+1. Files modified.
+
+2. Exact cleanup flow.
+
+3. Database fields affected.
+
+4. Confirmation that:
+
+- quota recovery still works
+- SMTP sending unchanged
+- bounce scanner unchanged
+- build passes
+- no regressions introduced.

@@ -30,6 +30,7 @@ import {
   handleMailboxQuotaReached,
   clearMailboxQuotaIfNeeded,
   runQuotaRecovery,
+  finalizeMailboxIfNoActiveCampaigns,
 } from "../lib/smtp-quota";
 
 const router: IRouter = Router();
@@ -530,6 +531,8 @@ export async function processCampaignJobQueue(
         logger.info({ jobId, campaignId }, "[QUEUE] All leads terminal — marking campaign completed");
         await db.update(campaignsTable).set({ status: "completed", updatedAt: new Date() })
           .where(eq(campaignsTable.id, campaignId));
+        await finalizeMailboxIfNoActiveCampaigns(user.id, campaignId).catch((err) =>
+          logger.error({ err, campaignId }, "[QUEUE] finalizeMailboxIfNoActiveCampaigns failed (non-fatal)"));
       } else {
         logger.info({ jobId, campaignId, total, termCount }, "[QUEUE] 10. Campaign pause logic triggered — not all leads terminal");
         await db.update(campaignsTable).set({ status: "paused", updatedAt: new Date() })
@@ -1071,6 +1074,8 @@ export async function processCampaignFully(
         logger.info({ campaignId }, "[CAMPAIGN] All leads terminal — marking campaign completed");
         await db.update(campaignsTable).set({ status: "completed", updatedAt: new Date() })
           .where(eq(campaignsTable.id, campaignId));
+        await finalizeMailboxIfNoActiveCampaigns(user.id, campaignId).catch((err) =>
+          logger.error({ err, campaignId }, "[CAMPAIGN] finalizeMailboxIfNoActiveCampaigns failed (non-fatal)"));
       } else {
         logger.info({ campaignId, total, termCount }, "[CAMPAIGN] 10. Campaign pause logic triggered — not all leads terminal");
         await db.update(campaignsTable).set({ status: "paused", updatedAt: new Date() })
@@ -1867,6 +1872,8 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
             .set({ status: "completed", updatedAt: new Date() })
             .where(eq(campaignsTable.id, campaignId));
           logger.info({ campaignId }, "[GMAIL_BATCH] Campaign status set to completed ✓");
+          await finalizeMailboxIfNoActiveCampaigns(user.id, campaignId).catch((err) =>
+            logger.error({ err, campaignId }, "[GMAIL_BATCH] finalizeMailboxIfNoActiveCampaigns failed (non-fatal)"));
         } else {
           logger.info({ campaignId, termCount, total, remaining: total - termCount },
             "[GMAIL_BATCH] Not all leads terminal yet — campaign stays in current status");
@@ -2157,6 +2164,9 @@ router.post("/campaigns/:id/cancel", requireAuth, async (req, res): Promise<void
       .where(eq(campaignsTable.id, campaignId));
 
     activeJobs.delete(`campaign:${campaignId}`);
+
+    await finalizeMailboxIfNoActiveCampaigns(user.id, campaignId).catch((err) =>
+      logger.error({ err, campaignId }, "[CANCEL] finalizeMailboxIfNoActiveCampaigns failed (non-fatal)"));
 
     res.json({ success: true, status: "cancelled" });
   } catch (err: any) {
@@ -2684,6 +2694,8 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
           .set({ status: "completed", updatedAt: new Date() })
           .where(eq(campaignsTable.id, campaign.id));
         logger.info({ userId: user.id, campaignId: campaign.id }, "[GENERATE_DRAFTS] Campaign status set to completed ✓");
+        await finalizeMailboxIfNoActiveCampaigns(user.id, campaign.id).catch((err) =>
+          logger.error({ err, campaignId: campaign.id }, "[GENERATE_DRAFTS] finalizeMailboxIfNoActiveCampaigns failed (non-fatal)"));
       } else {
         logger.info({ userId: user.id, campaignId: campaign.id, termCount, total, remaining: total - termCount },
           "[GENERATE_DRAFTS] Not all leads terminal yet — campaign stays in current status");

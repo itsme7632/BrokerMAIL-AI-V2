@@ -17,10 +17,16 @@
  */
 
 import {
-  db, mailboxesTable, campaignsTable, activityTable,
+  db, mailboxesTable, campaignsTable, activityTable, emailQueueTable,
 } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { logger } from "./logger";
+
+// Campaign statuses that mean "still in play" — as long as any campaign for
+// the user is in one of these, the mailbox is NOT considered fully idle.
+const ACTIVE_OR_PAUSED_CAMPAIGN_STATUSES = [
+  "pending", "sending", "paused", "queued", "cooling_down",
+];
 
 // ─── One recovery loop per mailbox (keyed by mailboxId) ──────────────────────
 const activeRecovery = new Map<number, boolean>();
@@ -315,6 +321,94 @@ export async function clearMailboxQuotaIfNeeded(
   await logActivity(userId, "mailbox_resumed",
     `Mailbox ${mailboxEmail} is healthy — quota cleared, sending can resume.`,
     { mailboxId, mailboxEmail });
+}
+
+// ─── finalizeMailboxIfNoActiveCampaigns ───────────────────────────────────────
+
+/**
+ * Called synchronously whenever a campaign transitions to a terminal state
+ * (completed / cancelled / failed).
+ *
+ * If NO other campaigns for this user are still active or paused, the
+ * mailbox is fully idle — immediately clear all quota_* fields (do not wait
+ * for another probe/send/recovery-loop tick), and clean up any deferred
+ * email_queue rows left behind by the finishing campaign so the Mailbox
+ * page's "Retry Queue"/"Deferred" counters reflect reality right away.
+ *
+ * Historical rows are never deleted — deferred rows are moved to a terminal
+ * "failed" status (they will never be retried, since the campaign that owned
+ * them is done) while `lastError` is preserved for reporting/diagnostics.
+ */
+export async function finalizeMailboxIfNoActiveCampaigns(
+  userId: number,
+  campaignId: number,
+): Promise<void> {
+  const [remainingRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(campaignsTable)
+    .where(and(
+      eq(campaignsTable.userId, userId),
+      inArray(campaignsTable.status, ACTIVE_OR_PAUSED_CAMPAIGN_STATUSES),
+    ));
+
+  const remainingCount = remainingRow?.count ?? 0;
+
+  if (remainingCount > 0) {
+    logger.debug(
+      { userId, campaignId, remainingCount },
+      "[SMTP-QUOTA] Other active/paused campaigns remain — leaving mailbox quota state untouched",
+    );
+    return;
+  }
+
+  // ── No active/paused campaigns left for this user — mailbox is idle ─────
+  const [box] = await db
+    .select({ id: mailboxesTable.id, quotaStatus: mailboxesTable.quotaStatus, smtpUser: mailboxesTable.smtpUser })
+    .from(mailboxesTable)
+    .where(eq(mailboxesTable.userId, userId));
+
+  if (box && box.quotaStatus === "quota_reached") {
+    await db.update(mailboxesTable).set({
+      quotaStatus:        null,
+      quotaReachedAt:     null,
+      quotaCooldownUntil: null,
+      quotaSmtpResponse:  null,
+      quotaProbeCount:    0,
+      updatedAt:          new Date(),
+    }).where(eq(mailboxesTable.id, box.id));
+
+    const mailboxEmail = box.smtpUser ?? `mailbox #${box.id}`;
+    logger.info(
+      { mailboxId: box.id, userId, campaignId },
+      "[SMTP-QUOTA] Last active/paused campaign ended — mailbox quota state cleared immediately",
+    );
+
+    await logActivity(userId, "mailbox_resumed",
+      `Mailbox ${mailboxEmail} quota cleared — last campaign ended with no active campaigns remaining.`,
+      { mailboxId: box.id, mailboxEmail, campaignId });
+  }
+
+  // ── Clean up stale deferred queue rows left by the finishing campaign ────
+  // Nothing will ever retry these now (its processor already exited), so
+  // move them to a terminal "failed" state instead of leaving them stuck
+  // showing up in "Retry Queue" / "Deferred" forever. lastError is kept for
+  // reporting/history; deferredCount and retryAfter are reset since neither
+  // means anything for a row that will never be retried again.
+  const cleaned = await db.update(emailQueueTable).set({
+    status:        "failed",
+    deferredCount: 0,
+    retryAfter:    null,
+  }).where(and(
+    eq(emailQueueTable.campaignId, campaignId),
+    eq(emailQueueTable.status, "deferred"),
+  )).returning({ id: emailQueueTable.id });
+
+  if (cleaned.length > 0) {
+    logger.info(
+      { campaignId, userId, count: cleaned.length },
+      "[SMTP-QUOTA] Stale deferred email_queue rows for finished campaign moved to terminal 'failed' state",
+    );
+  }
 }
 
 // ─── runQuotaRecovery ─────────────────────────────────────────────────────────
