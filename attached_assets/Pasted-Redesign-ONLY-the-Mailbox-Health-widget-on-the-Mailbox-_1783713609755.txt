@@ -1,0 +1,117 @@
+Redesign ONLY the "Mailbox Health" widget on the Mailbox page.
+Do NOT modify any backend logic or API calls.
+Do NOT change any calculations.
+This is a UI/UX redesign only.
+Current problems:
+•The six small cards feel cramped.
+•Labels wrap inconsistently.
+•Values are not visually aligned.
+•"Retrying" stretches while other cards remain centered.
+•Different cards have different visual weights.
+•It doesn't match the premium design of the new Mailbox page.
+Goals:
+Create a clean, modern SaaS status widget similar to Linear, Vercel, Stripe Dashboard, Notion, or Resend.
+Requirements:
+1.Replace the tiny boxes with a clean responsive grid.
+Desktop:
+◦2 columns × 3 rows
+OR
+◦3 columns × 2 rows
+(Choose whichever balances spacing better.)
+2.Every status card must have identical:
+◦width
+◦height
+◦padding
+◦border radius
+◦typography
+◦spacing
+3.Card layout:
+Top:
+icon
+Middle:
+Label
+Bottom:
+Large value
+Example:
+[icon]
+Connection
+Connected
+or
+[icon]
+Deferred
+7
+4.Do NOT let labels wrap.
+Use:
+Connection
+Bounce Rate
+Open Rate
+Quota Usage
+Suppressed
+Deferred
+5.Make values significantly larger than labels.
+Example:
+Deferred
+7
+instead of
+Deferred Items
+7
+6.Use semantic colors only on values/icons:
+Green
+Connected
+Healthy
+0 deferred
+Amber
+Retrying
+Cooling Down
+Deferred >0
+Red
+Disconnected
+Quota Reached
+Blue
+Neutral statistics
+Do NOT color the whole card.
+7.Cards should use theme tokens only.
+NO hardcoded dark colors.
+Support both:
+•Light mode
+•Dark mode
+using existing design tokens.
+8.Equal spacing:
+Same gap horizontally.
+Same gap vertically.
+Everything perfectly aligned.
+9.Improve typography:
+Label:
+12–13px
+Medium
+Muted
+Value:
+24–28px
+Bold
+Optional helper:
+"Active"
+"Queued"
+"0%"
+etc.
+10.Hover effect:
+Very subtle border highlight.
+Tiny lift (2px max).
+No glow.
+11.Mobile layout:
+2 cards per row.
+Desktop:
+3 cards per row.
+12.Add one premium summary row above the cards:
+Mailbox Health
+● Connected
+No active quota restrictions
+or
+● Cooling Down
+Retry queue: 7 emails
+This replaces forcing "Retrying" into one tiny card.
+13.Keep all existing data bindings exactly the same.
+Only redesign the layout.
+Do NOT touch backend logic.
+Do NOT rename API fields.
+Do NOT change calculations.
+The result should look like a premium SaaS analytics panel rather than six compressed statistic boxes.

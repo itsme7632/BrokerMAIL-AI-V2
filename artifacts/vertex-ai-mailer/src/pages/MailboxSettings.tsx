@@ -205,25 +205,22 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function HealthCard({
-  icon: Icon, label, value, level,
-}: { icon: React.ElementType; label: string; value: string; level: "good" | "warn" | "bad" | "neutral" }) {
+  icon: Icon, label, value, level, helper,
+}: { icon: React.ElementType; label: string; value: string; level: "good" | "warn" | "bad" | "neutral"; helper?: string }) {
   const colors = {
     good:    "text-emerald-600 dark:text-emerald-400",
     warn:    "text-amber-600 dark:text-amber-400",
     bad:     "text-destructive",
-    neutral: "text-foreground",
-  } as const;
-  const dot = {
-    good: "bg-emerald-500", warn: "bg-amber-500", bad: "bg-destructive", neutral: "bg-muted-foreground",
+    neutral: "text-blue-600 dark:text-blue-400",
   } as const;
   return (
-    <div className="rounded-xl border border-border bg-muted/40 p-3.5 space-y-1.5">
-      <div className="flex items-center gap-1.5 text-muted-foreground">
-        <Icon className="h-3.5 w-3.5" />
-        <span className="text-xs font-medium">{label}</span>
-        <span className={`ml-auto h-1.5 w-1.5 rounded-full ${dot[level]}`} />
+    <div className="group rounded-xl border border-border bg-muted/40 p-4 flex flex-col items-center justify-center text-center gap-2 h-[124px] transition-all duration-150 hover:border-foreground/20 hover:-translate-y-0.5">
+      <Icon className={`h-4 w-4 ${colors[level]}`} />
+      <span className="text-[12px] font-medium text-muted-foreground leading-none whitespace-nowrap">{label}</span>
+      <div className="flex flex-col items-center gap-0.5">
+        <p className={`text-2xl font-bold leading-none ${colors[level]}`}>{value}</p>
+        {helper && <span className="text-[11px] text-muted-foreground leading-none">{helper}</span>}
       </div>
-      <p className={`text-lg font-bold ${colors[level]}`}>{value}</p>
     </div>
   );
 }
@@ -444,18 +441,32 @@ function MailboxHealth({ visible, quotaPct, deferredCount }: { visible: boolean;
   const bounceLevel = (health?.bounceRate ?? 0) >= 5 ? "bad" : (health?.bounceRate ?? 0) >= 2 ? "warn" : "good";
   const quotaLevel  = quotaPct >= 90 ? "bad" : quotaPct >= 70 ? "warn" : "good";
   const connLevel   = deferredCount > 0 ? "warn" : "good";
+  const deferLevel  = deferredCount > 0 ? "warn" : "good";
+
+  const summaryDot  = connLevel === "good" ? "bg-emerald-500" : "bg-amber-500";
+  const summaryText = deferredCount > 0 ? "Retrying" : "Connected";
+  const summarySub  = deferredCount > 0
+    ? `Retry queue: ${deferredCount} email${deferredCount === 1 ? "" : "s"}`
+    : "No active quota restrictions";
 
   return (
     <Card>
       <SectionHeader icon={HeartPulse} title="Mailbox Health" />
-      <CardContent className="pt-0">
+      <CardContent className="pt-0 space-y-4">
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
+          <span className={`h-2 w-2 rounded-full flex-shrink-0 ${summaryDot}`} />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground leading-none">{summaryText}</p>
+            <p className="text-xs text-muted-foreground mt-1 leading-none">{summarySub}</p>
+          </div>
+        </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <HealthCard icon={Wifi}       label="Connection"     value={deferredCount > 0 ? "Retrying" : "Stable"} level={connLevel} />
-          <HealthCard icon={XCircle}    label="Bounce Rate"    value={`${health?.bounceRate ?? 0}%`} level={bounceLevel} />
-          <HealthCard icon={Mail}       label="Open Rate"      value={`${health?.openRate ?? 0}%`} level="neutral" />
-          <HealthCard icon={Gauge}      label="Quota Usage"    value={`${quotaPct}%`} level={quotaLevel} />
-          <HealthCard icon={Ban}        label="Suppressed"     value={String(health?.suppressionCount ?? 0)} level="neutral" />
-          <HealthCard icon={TimerReset} label="Deferred Items" value={String(deferredCount)} level={deferredCount > 0 ? "warn" : "good"} />
+          <HealthCard icon={Wifi}       label="Connection"  value={deferredCount > 0 ? "Retrying" : "Stable"} level={connLevel} />
+          <HealthCard icon={XCircle}    label="Bounce Rate" value={`${health?.bounceRate ?? 0}%`} level={bounceLevel} />
+          <HealthCard icon={Mail}       label="Open Rate"   value={`${health?.openRate ?? 0}%`} level="neutral" />
+          <HealthCard icon={Gauge}      label="Quota Usage" value={`${quotaPct}%`} level={quotaLevel} />
+          <HealthCard icon={Ban}        label="Suppressed"  value={String(health?.suppressionCount ?? 0)} level="neutral" />
+          <HealthCard icon={TimerReset} label="Deferred"    value={String(deferredCount)} level={deferLevel} />
         </div>
       </CardContent>
     </Card>
