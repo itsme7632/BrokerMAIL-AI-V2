@@ -1,0 +1,380 @@
+Redesign the Mailbox page completely to make it modern, clean, professional, responsive, and enterprise-grade. This is a UI/UX redesign only unless explicitly mentioned. Do NOT change SMTP, IMAP, campaign, quota recovery, or backend business logic. Preserve every existing API and functionality.
+
+IMPORTANT
+- Support BOTH Light Mode and Dark Mode.
+- Do NOT hardcode dark colors on cards.
+- Every component must use the existing theme system (CSS variables/Tailwind theme tokens).
+- Every card, border, text, badge, icon, input, table, button and chart must automatically adapt when the theme changes.
+- No inline colors except status colors (success/warning/error).
+
+==================================================
+OVERALL LAYOUT
+==================================================
+
+Replace the current long form with a dashboard layout.
+
+Desktop:
+- Two-column responsive layout
+- Left column: Configuration
+- Right column: Live Status
+
+Tablet:
+- Stack sections vertically
+
+Mobile:
+- Full responsive cards
+- Comfortable spacing
+- No horizontal scrolling
+
+Use consistent spacing.
+
+Large section cards.
+
+Rounded corners.
+
+Clean shadows.
+
+Professional typography.
+
+==================================================
+SECTION 1
+MAILBOX INFORMATION
+==================================================
+
+Card title:
+Mailbox Configuration
+
+Include only:
+
+Mailbox Name
+
+Email Address
+
+Status Badge
+(Connected / Error / Cooling Down / Disabled)
+
+Last Verified
+
+Provider icon if detectable
+
+This section is READ ONLY except mailbox name.
+
+Save button:
+Save Mailbox Name
+
+==================================================
+SECTION 2
+SMTP SETTINGS
+==================================================
+
+Separate card.
+
+Fields:
+
+SMTP Host
+
+SMTP Port
+
+Username
+
+Password
+
+Show/Hide password
+
+Test SMTP Connection button
+
+Save SMTP button
+
+Changing SMTP settings should NOT require touching any sending settings.
+
+==================================================
+SECTION 3
+IMAP SETTINGS
+==================================================
+
+Separate card.
+
+Fields:
+
+IMAP Host
+
+IMAP Port
+
+Username
+
+Password
+
+Show/Hide password
+
+Test IMAP button
+
+Save IMAP button
+
+Independent save.
+
+==================================================
+SECTION 4
+SENDING SETTINGS
+==================================================
+
+Separate card.
+
+Contains ONLY:
+
+Emails per batch
+
+Delay between emails
+
+Maximum emails per hour
+
+Custom hourly limit
+
+Batch size selector
+
+Save Sending Settings button
+
+Changing these values must NEVER require re-entering SMTP password.
+
+==================================================
+SECTION 5
+QUOTA RECOVERY SETTINGS
+==================================================
+
+Separate card.
+
+Contains ONLY:
+
+Initial Cooldown
+
+Probe Retry Interval
+
+Maximum Probe Attempts
+
+Auto Resume toggle
+
+Enable Quota Recovery toggle
+
+Save Recovery Settings button
+
+Again:
+
+NO SMTP password required.
+
+==================================================
+SECTION 6
+LIVE SMTP STATUS
+==================================================
+
+Beautiful status widget.
+
+Show:
+
+Current Status
+
+Connected
+
+Sending
+
+Cooling Down
+
+Quota Reached
+
+Paused
+
+Disconnected
+
+Current Hour Usage
+
+Progress bar
+
+23 / 60
+
+Cooldown Remaining
+
+Next Probe
+
+Failed Probes
+
+Last SMTP Error
+
+Last Successful Send
+
+Queue Size
+
+Retry Queue
+
+This card should update automatically.
+
+==================================================
+SECTION 7
+RECENT SMTP EVENTS
+==================================================
+
+Timeline style.
+
+Example:
+
+✔ Connected
+
+✔ Sent 60 emails
+
+⚠ Quota reached
+
+⏳ Cooling down
+
+✔ Probe successful
+
+▶ Campaign resumed
+
+Newest first.
+
+==================================================
+SECTION 8
+MAILBOX HEALTH
+==================================================
+
+Health cards.
+
+Connection Health
+
+Bounce Rate
+
+Open Rate
+
+Quota Usage
+
+Hourly Usage
+
+Suppression Count
+
+Green / Yellow / Red indicators.
+
+==================================================
+SECTION 9
+DANGER ZONE
+==================================================
+
+Separate red bordered card.
+
+Disable Mailbox
+
+Delete Mailbox
+
+Require confirmation.
+
+==================================================
+REMOVE DUPLICATION
+==================================================
+
+There must only be ONE SMTP Usage widget.
+
+Remove duplicate cards.
+
+Remove duplicated progress bars.
+
+Remove duplicated retry queue widgets.
+
+Remove duplicated cooldown widgets.
+
+==================================================
+RESPONSIVE
+==================================================
+
+Desktop:
+Clean two-column layout.
+
+Tablet:
+Cards wrap nicely.
+
+Mobile:
+Everything stacks vertically.
+
+Buttons become full width.
+
+Inputs become full width.
+
+No overflow.
+
+==================================================
+DESIGN STYLE
+==================================================
+
+Use premium SaaS style.
+
+Inspired by:
+
+Stripe Dashboard
+
+Linear
+
+Vercel
+
+Resend
+
+GitHub
+
+Professional spacing.
+
+Professional typography.
+
+Subtle shadows.
+
+Smooth hover animations.
+
+Consistent iconography.
+
+Large readable headings.
+
+==================================================
+LIGHT/DARK MODE
+==================================================
+
+Absolutely DO NOT hardcode colors.
+
+Every card must use theme tokens.
+
+Every text color must come from the theme.
+
+Every border must come from the theme.
+
+Every background must come from the theme.
+
+The page should look equally premium in Light Mode and Dark Mode.
+
+==================================================
+BACKEND
+==================================================
+
+Do NOT modify:
+
+SMTP logic
+
+IMAP logic
+
+Quota logic
+
+Recovery logic
+
+Campaign logic
+
+Database schema
+
+API endpoints
+
+Authentication
+
+This task is primarily a UI/UX redesign and form separation.
+
+==================================================
+FINAL CHECK
+==================================================
+
+Before finishing:
+
+- Build the frontend.
+- Verify Light Mode.
+- Verify Dark Mode.
+- Verify responsive desktop/tablet/mobile.
+- Ensure every Save button updates ONLY its own section.
+- Ensure SMTP password is NOT required when changing sending or recovery settings.
+- Ensure no functionality has regressed.
