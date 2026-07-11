@@ -3,6 +3,7 @@ import { AdminSettings } from "./AdminSettings";
 import { AdminProductHub } from "./AdminProductHub";
 import { AdminOverview } from "./admin/AdminOverview";
 import { AdminUsers } from "./admin/AdminUsers";
+import { AdminCampaigns } from "./admin/AdminCampaigns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,7 +76,7 @@ interface AdminSub {
   stripeCustomerId: string | null; stripeSubscriptionId: string | null;
 }
 
-type Tab = "overview" | "users" | "mailboxes" | "analytics" | "logs" | "settings" | "billing" | "support" | "product_hub";
+type Tab = "overview" | "users" | "campaigns" | "mailboxes" | "analytics" | "logs" | "settings" | "billing" | "support" | "product_hub";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

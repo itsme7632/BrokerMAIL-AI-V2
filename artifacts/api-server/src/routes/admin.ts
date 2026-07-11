@@ -480,6 +480,147 @@ router.get("/admin/mailboxes", requireAdmin, async (_req, res): Promise<void> =>
   res.json(mailboxes.map(m => ({ ...m, createdAt: m.createdAt?.toISOString() ?? null })));
 });
 
+// ─── Campaign Monitor ──────────────────────────────────────────────────────────
+// Read-only, cross-user view of campaign health for admins. Never touches
+// sending/processor logic — purely aggregates existing tables.
+
+router.get("/admin/campaigns", requireAdmin, async (req, res): Promise<void> => {
+  const search       = (req.query.search as string) ?? "";
+  const statusFilter  = (req.query.status as string) ?? "all";
+  const sendModeFilter = (req.query.sendMode as string) ?? "all";
+  const page  = Math.max(parseInt(req.query.page as string, 10) || 1, 1);
+  const limit = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 25, 1), 100);
+
+  const conditions = [];
+  if (search) {
+    conditions.push(or(
+      ilike(campaignsTable.name, `%${search}%`),
+      ilike(usersTable.name,     `%${search}%`),
+      ilike(usersTable.email,    `%${search}%`),
+    ));
+  }
+  if (statusFilter !== "all") {
+    if (statusFilter === "active") conditions.push(inArray(campaignsTable.status, ACTIVE_CAMPAIGN_STATUSES));
+    else conditions.push(eq(campaignsTable.status, statusFilter));
+  }
+  if (sendModeFilter !== "all") conditions.push(eq(campaignsTable.sendMode, sendModeFilter));
+
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const [totalResult] = await db.select({ count: count() })
+    .from(campaignsTable)
+    .leftJoin(usersTable, eq(campaignsTable.userId, usersTable.id))
+    .where(where);
+
+  const campaigns = await db.select({
+    id:            campaignsTable.id,
+    name:          campaignsTable.name,
+    status:        campaignsTable.status,
+    sendMode:      campaignsTable.sendMode,
+    totalLeads:    campaignsTable.totalLeads,
+    sentCount:     campaignsTable.sentCount,
+    draftedCount:  campaignsTable.draftedCount,
+    failedCount:   campaignsTable.failedCount,
+    pauseReason:   campaignsTable.pauseReason,
+    cooldownUntil: campaignsTable.cooldownUntil,
+    createdAt:     campaignsTable.createdAt,
+    updatedAt:     campaignsTable.updatedAt,
+    userId:        campaignsTable.userId,
+    userName:      usersTable.name,
+    userEmail:     usersTable.email,
+    mailboxHost: sql<string | null>`(SELECT smtp_host FROM mailboxes WHERE mailboxes.user_id = campaigns.user_id LIMIT 1)`,
+    mailboxQuotaStatus: sql<string | null>`(SELECT quota_status FROM mailboxes WHERE mailboxes.user_id = campaigns.user_id LIMIT 1)`,
+    recentErrorsCount: sql<number>`(SELECT COUNT(*)::int FROM leads WHERE leads.campaign_id = campaigns.id AND leads.status = 'failed')`,
+  })
+    .from(campaignsTable)
+    .leftJoin(usersTable, eq(campaignsTable.userId, usersTable.id))
+    .where(where)
+    .orderBy(desc(campaignsTable.updatedAt))
+    .limit(limit)
+    .offset((page - 1) * limit);
+
+  res.json({
+    data: campaigns.map(c => ({
+      ...c,
+      createdAt:     c.createdAt.toISOString(),
+      updatedAt:     c.updatedAt.toISOString(),
+      cooldownUntil: c.cooldownUntil?.toISOString() ?? null,
+    })),
+    total: totalResult?.count ?? 0,
+    page, limit,
+  });
+});
+
+// ─── GET /admin/campaigns/:id — detail: lead breakdown + recent failures ──────
+router.get("/admin/campaigns/:id", requireAdmin, async (req, res): Promise<void> => {
+  const campaignId = parseInt(req.params.id as string, 10);
+  if (!campaignId) { res.status(400).json({ error: "Invalid campaign id" }); return; }
+
+  const [campaign] = await db.select({
+    id:            campaignsTable.id,
+    name:          campaignsTable.name,
+    status:        campaignsTable.status,
+    sendMode:      campaignsTable.sendMode,
+    totalLeads:    campaignsTable.totalLeads,
+    sentCount:     campaignsTable.sentCount,
+    draftedCount:  campaignsTable.draftedCount,
+    failedCount:   campaignsTable.failedCount,
+    pauseReason:   campaignsTable.pauseReason,
+    cooldownUntil: campaignsTable.cooldownUntil,
+    currentJobId:  campaignsTable.currentJobId,
+    createdAt:     campaignsTable.createdAt,
+    updatedAt:     campaignsTable.updatedAt,
+    userId:        campaignsTable.userId,
+    userName:      usersTable.name,
+    userEmail:     usersTable.email,
+  }).from(campaignsTable)
+    .leftJoin(usersTable, eq(campaignsTable.userId, usersTable.id))
+    .where(eq(campaignsTable.id, campaignId));
+  if (!campaign) { res.status(404).json({ error: "Campaign not found" }); return; }
+
+  const statuses = ["new", "queued", "sending", "sent", "drafted", "failed"] as const;
+  const counts: Record<string, number> = {};
+  for (const s of statuses) {
+    const [row] = await db.select({ count: sql<number>`count(*)::int` })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.campaignId, campaignId), eq(leadsTable.status, s)));
+    counts[s] = row?.count ?? 0;
+  }
+
+  const recentFailures = await db.select({
+    id:           leadsTable.id,
+    name:         leadsTable.name,
+    email:        leadsTable.email,
+    errorMessage: leadsTable.errorMessage,
+    updatedAt:    leadsTable.updatedAt,
+  }).from(leadsTable)
+    .where(and(eq(leadsTable.campaignId, campaignId), eq(leadsTable.status, "failed")))
+    .orderBy(desc(leadsTable.updatedAt))
+    .limit(20);
+
+  const recentQueueErrors = await db.select({
+    id:        emailQueueTable.id,
+    email:     emailQueueTable.email,
+    lastError: emailQueueTable.lastError,
+    attempts:  emailQueueTable.attempts,
+    status:    emailQueueTable.status,
+    createdAt: emailQueueTable.createdAt,
+  }).from(emailQueueTable)
+    .where(and(eq(emailQueueTable.campaignId, campaignId), isNotNull(emailQueueTable.lastError)))
+    .orderBy(desc(emailQueueTable.createdAt))
+    .limit(20);
+
+  res.json({
+    ...campaign,
+    createdAt:     campaign.createdAt.toISOString(),
+    updatedAt:     campaign.updatedAt.toISOString(),
+    cooldownUntil: campaign.cooldownUntil?.toISOString() ?? null,
+    leadCounts:    counts,
+    recentFailures: recentFailures.map(f => ({ ...f, updatedAt: f.updatedAt.toISOString() })),
+    recentQueueErrors: recentQueueErrors.map(f => ({ ...f, createdAt: f.createdAt.toISOString() })),
+  });
+});
+
 // ─── TEMPORARY diagnostic: verify SMTP auth via the exact sendEmail() path ────
 // Admin-only, read-only, never sends an email. Uses the same decrypt() and
 // buildTransportOptions() helpers sendEmail() uses, and calls transporter.verify()
