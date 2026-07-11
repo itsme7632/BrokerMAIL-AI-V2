@@ -24,6 +24,7 @@ interface QuotaStats {
   quotaCooldownUntil: string | null;
   quotaSmtpResponse:  string | null;
   quotaProbeCount:    number;
+  healthState?: "auth_failed" | "cooling_down" | "recovering" | "connected";
 }
 
 interface HealthStats {
@@ -201,27 +202,6 @@ function StatusBadge({ status }: { status: string }) {
       <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${s.dot}`} />
       {s.label}
     </span>
-  );
-}
-
-function HealthCard({
-  icon: Icon, label, value, level, helper,
-}: { icon: React.ElementType; label: string; value: string; level: "good" | "warn" | "bad" | "neutral"; helper?: string }) {
-  const colors = {
-    good:    "text-emerald-600 dark:text-emerald-400",
-    warn:    "text-amber-600 dark:text-amber-400",
-    bad:     "text-destructive",
-    neutral: "text-blue-600 dark:text-blue-400",
-  } as const;
-  return (
-    <div className="group rounded-xl border border-border bg-muted/40 p-4 flex flex-col items-center justify-center text-center gap-2 h-[124px] transition-all duration-150 hover:border-foreground/20 hover:-translate-y-0.5">
-      <Icon className={`h-4 w-4 ${colors[level]}`} />
-      <span className="text-[12px] font-medium text-muted-foreground leading-none whitespace-nowrap">{label}</span>
-      <div className="flex flex-col items-center gap-0.5">
-        <p className={`text-2xl font-bold leading-none ${colors[level]}`}>{value}</p>
-        {helper && <span className="text-[11px] text-muted-foreground leading-none">{helper}</span>}
-      </div>
-    </div>
   );
 }
 
@@ -413,8 +393,52 @@ function RecentEvents({ visible, isConnected, quotaReachedAt, quotaCooldownUntil
 }
 
 // ─── Mailbox Health (real data from sent-emails/stats + suppressions/stats) ──
+// State (Healthy / Cooling Down / Recovering / Authentication Failed) is derived
+// server-side in GET /api/mailbox/quota from actual mailbox state (quota_status,
+// quota_probe_count, recent SMTP auth errors) — never from deferredCount. Deferred
+// rows are shown purely as a historical stat row, same as bounce/open rate.
 
-function MailboxHealth({ visible, quotaPct, deferredCount }: { visible: boolean; quotaPct: number; deferredCount: number }) {
+const HEALTH_STATE_META: Record<string, { label: string; sub: string; className: string; dot: string }> = {
+  auth_failed: {
+    label: "Authentication Failed",
+    sub: "Check your SMTP username and password",
+    className: "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-400",
+    dot: "bg-red-500",
+  },
+  cooling_down: {
+    label: "Cooling Down",
+    sub: "SMTP provider quota reached — waiting to retry",
+    className: "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50 text-amber-700 dark:text-amber-400",
+    dot: "bg-amber-500",
+  },
+  recovering: {
+    label: "Recovering",
+    sub: "Probing SMTP provider to resume sending",
+    className: "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/50 text-blue-700 dark:text-blue-400",
+    dot: "bg-blue-500",
+  },
+  connected: {
+    label: "Healthy",
+    sub: "Connected normally",
+    className: "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-400",
+    dot: "bg-emerald-500",
+  },
+};
+
+function HealthRow({ label, value, valueClassName }: { label: string; value: React.ReactNode; valueClassName?: string }) {
+  return (
+    <div className="flex items-center justify-between py-2 border-b border-border last:border-0">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className={`text-xs font-semibold text-foreground ${valueClassName ?? ""}`}>{value}</span>
+    </div>
+  );
+}
+
+function MailboxHealth({ visible, quotaPct, deferredCount, healthState, lastVerified }: {
+  visible: boolean; quotaPct: number; deferredCount: number;
+  healthState: "auth_failed" | "cooling_down" | "recovering" | "connected";
+  lastVerified: string | null;
+}) {
   const [health, setHealth] = useState<HealthStats | null>(null);
 
   useEffect(() => {
@@ -438,35 +462,39 @@ function MailboxHealth({ visible, quotaPct, deferredCount }: { visible: boolean;
 
   if (!visible) return null;
 
-  const bounceLevel = (health?.bounceRate ?? 0) >= 5 ? "bad" : (health?.bounceRate ?? 0) >= 2 ? "warn" : "good";
-  const quotaLevel  = quotaPct >= 90 ? "bad" : quotaPct >= 70 ? "warn" : "good";
-  const connLevel   = deferredCount > 0 ? "warn" : "good";
-  const deferLevel  = deferredCount > 0 ? "warn" : "good";
-
-  const summaryDot  = connLevel === "good" ? "bg-emerald-500" : "bg-amber-500";
-  const summaryText = deferredCount > 0 ? "Retrying" : "Connected";
-  const summarySub  = deferredCount > 0
-    ? `Retry queue: ${deferredCount} email${deferredCount === 1 ? "" : "s"}`
-    : "No active quota restrictions";
+  const meta = HEALTH_STATE_META[healthState] ?? HEALTH_STATE_META.connected;
+  const bounceLevel = (health?.bounceRate ?? 0) >= 5 ? "text-destructive" : (health?.bounceRate ?? 0) >= 2 ? "text-amber-600 dark:text-amber-400" : "text-foreground";
+  const quotaLevel  = quotaPct >= 90 ? "text-destructive" : quotaPct >= 70 ? "text-amber-600 dark:text-amber-400" : "text-foreground";
+  const deferLevel  = deferredCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground";
+  const connectionLabel = healthState === "connected" ? "Online" : healthState === "auth_failed" ? "Auth error" : "Retrying";
 
   return (
     <Card>
       <SectionHeader icon={HeartPulse} title="Mailbox Health" />
-      <CardContent className="pt-0 space-y-4">
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
-          <span className={`h-2 w-2 rounded-full flex-shrink-0 ${summaryDot}`} />
+      <CardContent className="pt-0 space-y-3">
+        <div className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${meta.className}`}>
+          <span className={`h-2 w-2 rounded-full flex-shrink-0 ${meta.dot}`} />
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground leading-none">{summaryText}</p>
-            <p className="text-xs text-muted-foreground mt-1 leading-none">{summarySub}</p>
+            <p className="text-sm font-semibold leading-none">{meta.label}</p>
+            <p className="text-xs opacity-80 mt-1 leading-none">{meta.sub}</p>
           </div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <HealthCard icon={Wifi}       label="Connection"  value={deferredCount > 0 ? "Retrying" : "Stable"} level={connLevel} />
-          <HealthCard icon={XCircle}    label="Bounce Rate" value={`${health?.bounceRate ?? 0}%`} level={bounceLevel} />
-          <HealthCard icon={Mail}       label="Open Rate"   value={`${health?.openRate ?? 0}%`} level="neutral" />
-          <HealthCard icon={Gauge}      label="Quota Usage" value={`${quotaPct}%`} level={quotaLevel} />
-          <HealthCard icon={Ban}        label="Suppressed"  value={String(health?.suppressionCount ?? 0)} level="neutral" />
-          <HealthCard icon={TimerReset} label="Deferred"    value={String(deferredCount)} level={deferLevel} />
+
+        <div>
+          <HealthRow label="Connection"  value={connectionLabel} valueClassName={healthState === "connected" ? "" : "text-amber-600 dark:text-amber-400"} />
+          <HealthRow label="Quota Usage" value={`${quotaPct}%`} valueClassName={quotaLevel} />
+          <HealthRow label="Deferred"    value={String(deferredCount)} valueClassName={deferLevel} />
+          <HealthRow label="Suppressed"  value={String(health?.suppressionCount ?? 0)} />
+          <HealthRow label="Bounce Rate" value={`${health?.bounceRate ?? 0}%`} valueClassName={bounceLevel} />
+          <HealthRow label="Open Rate"   value={`${health?.openRate ?? 0}%`} />
+        </div>
+
+        <div className="pt-1 border-t border-border">
+          <p className="text-xs font-medium text-muted-foreground pt-3">Last Activity</p>
+          <p className="text-xs text-foreground mt-1">Mailbox Connected</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {lastVerified ? new Date(lastVerified).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
+          </p>
         </div>
       </CardContent>
     </Card>
@@ -984,7 +1012,13 @@ export default function MailboxSettings() {
             quotaCooldownUntil={quotaSnapshot?.quotaCooldownUntil ?? null}
             quotaSmtpResponse={quotaSnapshot?.quotaSmtpResponse ?? null}
           />
-          <MailboxHealth visible={isConnected} quotaPct={quotaPct} deferredCount={quotaSnapshot?.deferredCount ?? 0} />
+          <MailboxHealth
+            visible={isConnected}
+            quotaPct={quotaPct}
+            deferredCount={quotaSnapshot?.deferredCount ?? 0}
+            healthState={quotaSnapshot?.healthState ?? "connected"}
+            lastVerified={lastVerified}
+          />
         </div>
       </div>
     </div>

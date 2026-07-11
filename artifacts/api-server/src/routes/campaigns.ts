@@ -502,7 +502,15 @@ export async function processCampaignJobQueue(
     const [campFinal] = await db.select({ status: campaignsTable.status, totalLeads: campaignsTable.totalLeads })
       .from(campaignsTable).where(eq(campaignsTable.id, campaignId));
 
-    if (campFinal && campFinal.status !== "cancelled") {
+    if (campFinal && campFinal.status === "cancelled") {
+      // The processor loop has now TRULY exited (this finally block only runs once the
+      // in-flight send/loop iteration has finished) — this is the correct, race-free point
+      // to run cleanup for a cancellation, rather than doing it synchronously inside the
+      // /cancel endpoint while this loop might still be mid-send.
+      logger.info({ jobId, campaignId }, "[QUEUE] Processor exited after cancellation — running deferred cleanup now");
+      await finalizeMailboxIfNoActiveCampaigns(user.id, campaignId).catch((err) =>
+        logger.error({ err, campaignId }, "[QUEUE] finalizeMailboxIfNoActiveCampaigns failed (non-fatal)"));
+    } else if (campFinal) {
       // Never finalize while any queue items are still pending/sending/deferred
       const [activeQRow] = await db.select({ count: sql<number>`count(*)::int` })
         .from(emailQueueTable)
@@ -1045,7 +1053,15 @@ export async function processCampaignFully(
     const [camp] = await db.select({ status: campaignsTable.status, totalLeads: campaignsTable.totalLeads })
       .from(campaignsTable).where(eq(campaignsTable.id, campaignId));
 
-    if (camp && camp.status !== "paused" && camp.status !== "cancelled" && camp.status !== "cooling_down") {
+    if (camp && camp.status === "cancelled") {
+      // The processor loop has now TRULY exited (this finally block only runs once the
+      // in-flight send/loop iteration has finished) — this is the correct, race-free point
+      // to run cleanup for a cancellation, rather than doing it synchronously inside the
+      // /cancel endpoint while this loop might still be mid-send.
+      logger.info({ campaignId }, "[CAMPAIGN] Processor exited after cancellation — running deferred cleanup now");
+      await finalizeMailboxIfNoActiveCampaigns(user.id, campaignId).catch((err) =>
+        logger.error({ err, campaignId }, "[CAMPAIGN] finalizeMailboxIfNoActiveCampaigns failed (non-fatal)"));
+    } else if (camp && camp.status !== "paused" && camp.status !== "cooling_down") {
       // Never finalize while any queue items are still pending/sending/deferred
       const [activeQRow] = await db.select({ count: sql<number>`count(*)::int` })
         .from(emailQueueTable)
@@ -2159,14 +2175,36 @@ router.post("/campaigns/:id/cancel", requireAuth, async (req, res): Promise<void
       .where(and(eq(campaignsTable.id, campaignId), eq(campaignsTable.userId, user.id)));
     if (!campaign) { res.status(404).json({ success: false, error: "Campaign not found" }); return; }
 
+    // Was a processor actually running for this campaign at the moment of cancellation?
+    // Check BEFORE flipping status/deleting the activeJobs entry — this must reflect
+    // whether the loop is still mid-iteration (e.g. mid-send), not whether it's about to stop.
+    const campaignKey = `campaign:${campaignId}`;
+    const legacyKey    = campaign.currentJobId ?? "";
+    const wasJobActive = activeJobs.has(campaignKey) || (legacyKey && activeJobs.has(legacyKey));
+
     await db.update(campaignsTable)
       .set({ status: "cancelled", updatedAt: new Date() })
       .where(eq(campaignsTable.id, campaignId));
 
-    activeJobs.delete(`campaign:${campaignId}`);
+    // Signal the loop to stop on its next iteration check (it polls activeJobs.get(key)).
+    activeJobs.delete(campaignKey);
+    if (legacyKey) activeJobs.delete(legacyKey);
 
-    await finalizeMailboxIfNoActiveCampaigns(user.id, campaignId).catch((err) =>
-      logger.error({ err, campaignId }, "[CANCEL] finalizeMailboxIfNoActiveCampaigns failed (non-fatal)"));
+    if (wasJobActive) {
+      // A processor loop is (or was, a moment ago) actively running/sending for this
+      // campaign. It may still be finishing its current send/iteration and could write
+      // more `status='deferred'` rows before it notices the cancellation and exits.
+      // Its own `finally` block is the true end-of-processor hook — it will run
+      // finalizeMailboxIfNoActiveCampaigns() itself once the loop has genuinely exited.
+      // Do NOT run cleanup here: doing so now would race the still-finishing loop and
+      // leave the deferred rows it writes afterward stuck (the original bug).
+      logger.info({ campaignId }, "[CANCEL] Processor was active — deferring cleanup to its own exit (finally block)");
+    } else {
+      // No processor was running (e.g. campaign was already idle/paused/cooling_down) —
+      // no finally block will ever fire for this cancellation, so cleanup must happen here.
+      await finalizeMailboxIfNoActiveCampaigns(user.id, campaignId).catch((err) =>
+        logger.error({ err, campaignId }, "[CANCEL] finalizeMailboxIfNoActiveCampaigns failed (non-fatal)"));
+    }
 
     res.json({ success: true, status: "cancelled" });
   } catch (err: any) {

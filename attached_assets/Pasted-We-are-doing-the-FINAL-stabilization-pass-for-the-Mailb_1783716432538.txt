@@ -1,0 +1,348 @@
+We are doing the FINAL stabilization pass for the Mailbox system.
+
+IMPORTANT:
+- Do NOT change SMTP sending logic.
+- Do NOT change quota detection logic.
+- Do NOT change bounce scanner logic.
+- Do NOT modify database schema.
+- Only fix the cleanup race, mailbox health logic, and UI.
+
+====================================================
+PART 1 — FIX THE DEFERRED CLEANUP RACE
+====================================================
+
+Current issue:
+
+Campaign cancellation/completion currently triggers finalizeMailboxIfNoActiveCampaigns() too early.
+
+Flow today:
+
+Campaign cancelled/completed
+→ cleanup executes
+→ SMTP worker still finishes several in-flight emails
+→ processor writes new email_queue.status='deferred'
+→ those rows are never cleaned
+
+Move the cleanup to the TRUE END OF THE PROCESSOR.
+
+Requirements:
+
+• Cleanup must execute only after the campaign processor has completely exited.
+• At that point no new deferred rows can be written.
+• Do not use arbitrary delays or timeouts.
+• Do not poll.
+• Do not sleep.
+• Hook into the processor's actual terminal lifecycle.
+
+When the processor finishes:
+
+1. Check whether this user still has ANY active campaign.
+
+Active means:
+
+pending
+queued
+sending
+paused
+cooling_down
+
+If ANY remain:
+
+Do nothing.
+
+If NONE remain:
+
+Immediately:
+
+Clear mailbox quota fields:
+
+quota_status
+quota_reached_at
+quota_cooldown_until
+quota_smtp_response
+quota_probe_count
+
+Then update ONLY this campaign's email_queue rows:
+
+status='deferred'
+↓
+
+status='failed'
+
+Reset:
+
+deferred_count
+retry_after
+
+DO NOT delete rows.
+
+DO NOT remove history.
+
+DO NOT clear last_error.
+
+History must remain intact.
+
+====================================================
+PART 2 — RETRY QUEUE API
+====================================================
+
+Currently /api/mailbox/quota counts ALL deferred rows.
+
+Improve it.
+
+Retry Queue should represent:
+
+Deferred rows that actually still belong to ACTIVE campaigns.
+
+Rows from:
+
+completed
+cancelled
+
+must NOT appear in Retry Queue.
+
+Historical failures still remain in database.
+
+Only the active retry queue should be counted.
+
+====================================================
+PART 3 — MAILBOX HEALTH LOGIC
+====================================================
+
+Current bug:
+
+Mailbox Health says "Retrying"
+
+only because:
+
+deferredCount > 0
+
+This is incorrect.
+
+Mailbox Health should NEVER derive state from deferredCount.
+
+Instead determine status from mailbox state.
+
+Priority:
+
+1.
+
+SMTP Authentication Failed
+
+2.
+
+Cooling Down
+
+(quota_status == quota_reached)
+
+3.
+
+Recovering
+
+(active probe running)
+
+4.
+
+Connected
+
+(no quota, no auth issue)
+
+Deferred rows are historical.
+
+They do NOT determine health.
+
+====================================================
+PART 4 — REDESIGN MAILBOX HEALTH CARD
+====================================================
+
+Redesign completely.
+
+Current card has:
+
+• oversized text
+• poor spacing
+• inconsistent alignment
+• cramped layout
+• mixed hierarchy
+
+New layout:
+
+------------------------------------
+
+Mailbox Health
+
+Large status badge
+
+Healthy
+Connected normally
+
+------------------------------------
+
+Connection
+
+Online
+
+Quota Usage
+
+0%
+
+Deferred
+
+0
+
+Suppressed
+
+0
+
+Bounce Rate
+
+3%
+
+Open Rate
+
+5%
+
+------------------------------------
+
+Last Activity
+
+Mailbox Connected
+
+2 minutes ago
+
+------------------------------------
+
+Rules:
+
+Everything left aligned.
+
+Consistent spacing.
+
+Consistent typography.
+
+Equal padding.
+
+Equal row height.
+
+Professional SaaS dashboard look.
+
+No giant "Retrying" text.
+
+No oversized numbers.
+
+No text clipping.
+
+No overlapping.
+
+Use existing theme tokens.
+
+Support BOTH light mode and dark mode.
+
+DO NOT hardcode dark colors.
+
+====================================================
+PART 5 — RIGHT SIDEBAR POLISH
+====================================================
+
+Make these cards visually consistent:
+
+Live SMTP Status
+
+Recent SMTP Events
+
+Mailbox Health
+
+Same width.
+
+Same padding.
+
+Same border radius.
+
+Same spacing.
+
+Same typography.
+
+Same visual hierarchy.
+
+====================================================
+PART 6 — VERIFY
+====================================================
+
+After implementation verify:
+
+Scenario 1
+
+Quota reached
+
+↓
+
+Cooling Down
+
+↓
+
+Probe
+
+↓
+
+Resume
+
+↓
+
+Connected
+
+Scenario 2
+
+Cancel campaign during cooldown
+
+↓
+
+processor exits
+
+↓
+
+cleanup executes
+
+↓
+
+Retry Queue = 0
+
+Deferred = 0
+
+Mailbox Health = Connected
+
+Scenario 3
+
+Completed campaign
+
+↓
+
+Mailbox immediately becomes clean
+
+↓
+
+No stale retry queue
+
+Scenario 4
+
+SMTP Authentication failure
+
+↓
+
+Authentication Failed
+
+(not Cooling Down)
+
+====================================================
+DO NOT TOUCH
+
+SMTP sending
+
+SMTP transport
+
+Bounce detection
+
+Database schema
+
+Campaign analytics
+
+Only perform the stabilization work above.

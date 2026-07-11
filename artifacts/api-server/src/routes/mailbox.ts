@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, mailboxesTable, templatesTable, draftsTable, usersTable, emailQueueTable } from "@workspace/db";
-import { eq, and, gte, sql, or, isNull, lte, isNotNull, desc, count } from "drizzle-orm";
+import { db, mailboxesTable, templatesTable, draftsTable, usersTable, emailQueueTable, campaignsTable } from "@workspace/db";
+import { eq, and, gte, sql, or, isNull, lte, isNotNull, desc, count, inArray } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { encrypt, decrypt } from "../lib/crypto";
 import { testSmtp, sendEmail } from "../lib/smtp";
@@ -351,6 +351,7 @@ router.get("/mailbox", requireAuth, async (req, res): Promise<void> => {
     maxPerHour:         box.maxPerHour         ?? 100,
     cooldownMinutes:    box.cooldownMinutes    ?? 60,
     probeRetryMinutes:  box.probeRetryMinutes  ?? 5,
+    updatedAt:          box.updatedAt?.toISOString() ?? null,
   });
 });
 
@@ -379,13 +380,22 @@ router.get("/mailbox/quota", requireAuth, async (req, res): Promise<void> => {
       gte(emailQueueTable.firstAttemptAt, hourAgo),
     ));
 
-  // Items currently deferred (waiting for backoff or provider cooldown)
+  // Items currently deferred (waiting for backoff or provider cooldown).
+  // Only count rows that still belong to an ACTIVE campaign (or have no campaign at
+  // all, e.g. single-send/composer items) — rows left behind by a campaign that has
+  // already completed/cancelled are historical and must not inflate the live Retry
+  // Queue / Deferred counters shown on the Mailbox page.
   const [deferredRow] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(emailQueueTable)
+    .leftJoin(campaignsTable, eq(campaignsTable.id, emailQueueTable.campaignId))
     .where(and(
       eq(emailQueueTable.userId, user.id),
       eq(emailQueueTable.status, "deferred"),
+      or(
+        isNull(emailQueueTable.campaignId),
+        sql`${campaignsTable.status} NOT IN ('completed', 'cancelled')`,
+      ),
     ));
 
   // Oldest firstAttemptAt in window → tells us when the next slot opens up
@@ -405,6 +415,60 @@ router.get("/mailbox/quota", requireAuth, async (req, res): Promise<void> => {
   const usedThisHour  = usedRow?.count    ?? 0;
   const deferredCount = deferredRow?.count ?? 0;
 
+  // ── Mailbox health state (Part 3 — derived from real mailbox state, NOT deferredCount) ──
+  // Priority: SMTP auth failure > cooling down (quota just hit) > recovering (probing to
+  // resume) > connected. Deferred rows are historical evidence, never the source of truth.
+  //
+  // Auth-failure detection: look at the most recent send attempt for this mailbox. If it
+  // failed with an SMTP auth error (EAUTH) and no successful send has happened since, the
+  // mailbox credentials are broken right now — a fundamentally different problem than a
+  // provider rate limit, and must never be shown as "Cooling Down"/"Retrying".
+  // `lastError` is not guaranteed to be JSON — campaign sends store a JSON blob with a
+  // `rawCode` field (built by buildSmtpErrorJson), but single-send/composer paths store a
+  // plain-text message. A `::jsonb` cast would throw and 500 this endpoint on the latter,
+  // so match textually instead: either the JSON `"rawCode":"EAUTH"` shape, or the common
+  // plain-text SMTP auth-failure signatures ("Invalid login", "authentication failed", 535).
+  const [lastAuthFailure] = await db
+    .select({ id: emailQueueTable.id, lastError: emailQueueTable.lastError })
+    .from(emailQueueTable)
+    .where(and(
+      eq(emailQueueTable.mailboxId, box.id),
+      inArray(emailQueueTable.status, ["deferred", "failed"]),
+      isNotNull(emailQueueTable.lastError),
+      sql`(
+        ${emailQueueTable.lastError} ILIKE '%"rawCode":"EAUTH"%'
+        OR ${emailQueueTable.lastError} ILIKE '%invalid login%'
+        OR ${emailQueueTable.lastError} ILIKE '%authentication failed%'
+        OR ${emailQueueTable.lastError} ILIKE '%535%'
+      )`,
+    ))
+    .orderBy(desc(emailQueueTable.id))
+    .limit(1);
+
+  let authFailed = false;
+  if (lastAuthFailure) {
+    // Successful sends are recorded with status='success' by every send path in this
+    // codebase (campaigns.ts and mailbox.ts single-send both use it — never 'sent').
+    const [lastSuccess] = await db
+      .select({ id: emailQueueTable.id })
+      .from(emailQueueTable)
+      .where(and(
+        eq(emailQueueTable.mailboxId, box.id),
+        eq(emailQueueTable.status, "success"),
+      ))
+      .orderBy(desc(emailQueueTable.id))
+      .limit(1);
+    // Only "currently" failed if no successful send has happened since that auth error.
+    authFailed = !lastSuccess || lastSuccess.id < lastAuthFailure.id;
+  }
+
+  const isQuotaReached = box.quotaStatus === "quota_reached";
+  const healthState: "auth_failed" | "cooling_down" | "recovering" | "connected" =
+    authFailed        ? "auth_failed"
+    : isQuotaReached && (box.quotaProbeCount ?? 0) > 0 ? "recovering"
+    : isQuotaReached  ? "cooling_down"
+    : "connected";
+
   res.json({
     hourlyLimit:    box.maxPerHour ?? 100,
     usedThisHour,
@@ -418,6 +482,8 @@ router.get("/mailbox/quota", requireAuth, async (req, res): Promise<void> => {
     quotaCooldownUntil: box.quotaCooldownUntil?.toISOString() ?? null,
     quotaSmtpResponse:  box.quotaSmtpResponse  ?? null,
     quotaProbeCount:    box.quotaProbeCount     ?? 0,
+    // Mailbox Health widget state — derived here, not from deferredCount, per stabilization spec
+    healthState,
   });
 });
 
