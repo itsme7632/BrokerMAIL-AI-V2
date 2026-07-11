@@ -1,0 +1,444 @@
+We are starting Phase 2 of BrokerMAIL AI.
+
+The USER PANEL is considered feature complete.
+
+From this point forward, our focus is the ADMIN PANEL.
+
+IMPORTANT
+
+Do NOT redesign or modify the user panel.
+
+Do NOT change SMTP logic.
+
+Do NOT change campaign sending logic.
+
+Do NOT change authentication.
+
+Do NOT change the database schema unless absolutely required.
+
+First perform a COMPLETE AUDIT of the existing admin panel before writing any code.
+
+==================================================
+PHASE 1 — ADMIN PANEL AUDIT
+==================================================
+
+Review every existing admin page.
+
+Identify:
+
+• Broken pages
+• Empty pages
+• Placeholder components
+• Duplicate functionality
+• Inconsistent layouts
+• Missing API integrations
+• Buttons that do nothing
+• Missing loading states
+• Missing empty states
+• Missing error handling
+• Missing responsive behavior
+• Visual inconsistencies
+
+Prepare a checklist of everything found.
+
+Do NOT duplicate existing features.
+
+Reuse existing components whenever possible.
+
+==================================================
+PHASE 2 — DASHBOARD REDESIGN
+==================================================
+
+Redesign the admin dashboard into a professional SaaS command center.
+
+Top KPI cards:
+
+• Total Users
+• Active Users
+• Active Campaigns
+• Emails Sent Today
+• Emails Sent This Month
+• Open Rate
+• Bounce Rate
+• Suppressed Emails
+• Connected Mailboxes
+• Gmail Accounts
+• Platform Health
+
+Dashboard sections:
+
+Recent Activity
+
+Latest Signups
+
+Recent Campaigns
+
+Recent Payments
+
+Support Requests
+
+Feature Requests
+
+Announcements
+
+Bug Reports
+
+Quick Actions
+
+System Status
+
+Workers
+
+Database
+
+API
+
+Queue
+
+SMTP
+
+IMAP
+
+All cards should share the same design system.
+
+==================================================
+PHASE 3 — USER MANAGEMENT
+==================================================
+
+Review the current Users page.
+
+Improve it rather than replacing it.
+
+Each user should display:
+
+Avatar
+
+Name
+
+Company
+
+Username
+
+Email
+
+Plan
+
+Status
+
+Created Date
+
+Last Login
+
+Campaigns
+
+Emails Sent
+
+SMTP Connected
+
+Gmail Connected
+
+Subscription
+
+Quick Actions:
+
+View
+
+Login As User
+
+Suspend
+
+Activate
+
+Reset Password
+
+Reset Usage
+
+Change Plan
+
+Delete
+
+Bulk actions:
+
+Suspend
+
+Delete
+
+Export
+
+Upgrade
+
+Search
+
+Filters
+
+==================================================
+PHASE 4 — SUBSCRIPTIONS
+==================================================
+
+Review existing Plans page.
+
+Improve it.
+
+Allow admin to manage:
+
+Plans
+
+Limits
+
+Features
+
+Monthly limits
+
+AI credits
+
+SMTP limits
+
+Campaign limits
+
+Storage
+
+Manual upgrades
+
+Manual downgrades
+
+Coupons
+
+Lifetime plans
+
+==================================================
+PHASE 5 — CAMPAIGN MONITOR
+==================================================
+
+Review current campaign management.
+
+Improve it.
+
+Show every campaign.
+
+Columns:
+
+User
+
+Campaign
+
+Status
+
+Mailbox
+
+Sent
+
+Queued
+
+Remaining
+
+Opened
+
+Failed
+
+Started
+
+Updated
+
+Actions:
+
+View
+
+Pause
+
+Resume
+
+Cancel
+
+Logs
+
+==================================================
+PHASE 6 — MAILBOX MONITOR
+==================================================
+
+Create a global mailbox monitor.
+
+Display:
+
+Mailbox
+
+Owner
+
+SMTP
+
+IMAP
+
+Status
+
+Health
+
+Quota
+
+Cooldown
+
+Retry Queue
+
+Deferred
+
+Last Probe
+
+Last Send
+
+Actions:
+
+Reset Quota
+
+Retry Queue
+
+Test SMTP
+
+Test IMAP
+
+Disconnect
+
+==================================================
+PHASE 7 — PLATFORM ANALYTICS
+==================================================
+
+Professional charts.
+
+Daily Emails
+
+Monthly Emails
+
+Open Rate
+
+Bounce Rate
+
+User Growth
+
+Revenue
+
+Campaign Growth
+
+Subscription Growth
+
+==================================================
+PHASE 8 — AUDIT LOGS
+==================================================
+
+Every important action.
+
+Admin actions
+
+User actions
+
+Campaign actions
+
+Mailbox actions
+
+Authentication
+
+Subscriptions
+
+Exports
+
+Deletes
+
+==================================================
+PHASE 9 — FEATURE FLAGS
+==================================================
+
+Review existing settings.
+
+If feature flags already exist, improve them.
+
+Otherwise create:
+
+SMTP
+
+Gmail
+
+AI
+
+Tracking
+
+Announcements
+
+Maintenance
+
+Beta Features
+
+==================================================
+PHASE 10 — SUPPORT CENTER
+==================================================
+
+Review existing:
+
+Feedback
+
+Roadmap
+
+Announcements
+
+Feature Requests
+
+Bug Reports
+
+Release Notes
+
+Improve consistency.
+
+==================================================
+UI REQUIREMENTS
+==================================================
+
+Professional SaaS appearance.
+
+Consistent spacing.
+
+Consistent typography.
+
+Consistent cards.
+
+Consistent tables.
+
+Consistent badges.
+
+Consistent colors.
+
+Consistent buttons.
+
+Support BOTH Light Mode and Dark Mode.
+
+Do NOT hardcode colors.
+
+Use theme tokens everywhere.
+
+Every page must include:
+
+Loading state
+
+Empty state
+
+Error state
+
+Responsive layout
+
+==================================================
+VERY IMPORTANT
+==================================================
+
+Before implementing ANY feature:
+
+1. Audit the existing implementation.
+
+2. Reuse existing APIs.
+
+3. Reuse existing database tables.
+
+4. Reuse existing components.
+
+5. Avoid duplicate functionality.
+
+6. Improve existing pages instead of rebuilding them whenever possible.
+
+==================================================
+FINAL GOAL
+==================================================
+
+Transform the Admin Panel into an enterprise-grade SaaS administration console that feels polished, fast, consistent, and production-ready while preserving all existing functionality.

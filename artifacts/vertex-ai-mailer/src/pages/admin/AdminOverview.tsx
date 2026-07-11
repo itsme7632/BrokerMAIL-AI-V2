@@ -1,0 +1,350 @@
+import { useCallback, useEffect, useState } from "react";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Users, UserCheck, Send, Zap, MailOpen, AlertTriangle, ShieldOff,
+  Server, Mail, HeartPulse, RefreshCw, AlertCircle, UserPlus, Megaphone,
+  BadgeDollarSign, LifeBuoy, Lightbulb, Bug, ArrowRight, Database,
+  Cog, ListChecks, Cpu, ExternalLink,
+} from "lucide-react";
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+interface Kpis {
+  totalUsers: number; activeUsers: number; activeCampaigns: number;
+  emailsSentToday: number; emailsSentMonth: number;
+  openRate: number; bounceRate: number; suppressedEmails: number;
+  connectedMailboxes: number; gmailAccounts: number;
+  platformHealth: "healthy" | "degraded" | "critical";
+}
+
+interface RecentSignup { id: number; name: string; email: string; plan: string; createdAt: string; }
+interface RecentCampaign { id: number; name: string; status: string; sentCount: number; totalLeads: number; userName: string | null; updatedAt: string | null; }
+interface RecentPayment { id: number; userName: string | null; userEmail: string | null; toPlanId: number; priceSnapshot: number; status: string; paymentStatus: string; createdAt: string; }
+interface SupportItem { id: number; subject: string; userName: string | null; userEmail: string; priority: string; status: string; createdAt: string; }
+interface FeatureRequestItem { id: number; title: string; category: string; status: string; createdAt: string; }
+interface BugReportItem { id: number; title: string; severity: string; status: string; createdAt: string; }
+interface AnnouncementItem { id: number; message: string; priority: number; createdAt: string; }
+interface ActivityItem { id: number; type: string; severity: string; description: string; createdAt: string; }
+
+interface DashboardOverview {
+  kpis: Kpis;
+  recent: {
+    signups: RecentSignup[]; campaigns: RecentCampaign[]; payments: RecentPayment[];
+    supportRequests: SupportItem[]; featureRequests: FeatureRequestItem[];
+    bugReports: BugReportItem[]; announcements: AnnouncementItem[]; activity: ActivityItem[];
+  };
+  systemStatus: {
+    database: string; api: string; workers: string;
+    queue: { pending: number }; smtp: string; imap: string; mailboxHealthPct: number;
+  };
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function token() { return localStorage.getItem("auth_token") ?? ""; }
+
+async function apiFetch(path: string) {
+  const res = await fetch(`/api/admin/${path}`, {
+    headers: { Authorization: `Bearer ${token()}` },
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(d.error ?? `Error ${res.status}`);
+  }
+  return res.json();
+}
+
+function relativeTime(iso: string | null) {
+  if (!iso) return "Never";
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+// ─── KPI card ───────────────────────────────────────────────────────────────
+
+const KPI_ACCENTS: Record<string, string> = {
+  blue: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+  emerald: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  purple: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
+  amber: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  red: "bg-red-500/10 text-red-600 dark:text-red-400",
+  indigo: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
+  teal: "bg-teal-500/10 text-teal-600 dark:text-teal-400",
+};
+
+function KpiCard({ icon: Icon, label, value, accent, loading }: {
+  icon: React.ElementType; label: string; value: string; accent: string; loading: boolean;
+}) {
+  return (
+    <Card className="p-4 flex items-center gap-3">
+      <div className={`h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0 ${KPI_ACCENTS[accent]}`}>
+        <Icon className="h-4.5 w-4.5" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs text-muted-foreground font-medium truncate">{label}</p>
+        {loading ? <Skeleton className="h-5 w-14 mt-1" /> : <p className="text-lg font-bold text-foreground leading-tight">{value}</p>}
+      </div>
+    </Card>
+  );
+}
+
+function HealthPill({ health }: { health: Kpis["platformHealth"] }) {
+  const map = {
+    healthy: { label: "Healthy", cls: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400", dot: "bg-emerald-500" },
+    degraded: { label: "Degraded", cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400", dot: "bg-amber-500" },
+    critical: { label: "Critical", cls: "bg-red-500/10 text-red-600 dark:text-red-400", dot: "bg-red-500" },
+  } as const;
+  const m = map[health] ?? map.healthy;
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-semibold ${m.cls}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${m.dot} animate-pulse`} />
+      {m.label}
+    </span>
+  );
+}
+
+function StatusRow({ label, status, sub }: { label: string; status: string; sub?: string }) {
+  const good = ["operational", "processing", "idle"].includes(status);
+  const bad = status === "down";
+  const cls = bad ? "text-red-600 dark:text-red-400" : good ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400";
+  const dot = bad ? "bg-red-500" : good ? "bg-emerald-500" : "bg-amber-500";
+  return (
+    <div className="flex items-center justify-between py-2 border-b border-border last:border-0">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className={`flex items-center gap-1.5 text-xs font-semibold capitalize ${cls}`}>
+        <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+        {sub ?? status}
+      </span>
+    </div>
+  );
+}
+
+// ─── Section shell ──────────────────────────────────────────────────────────
+
+function Section({ title, icon: Icon, action, children, empty }: {
+  title: string; icon: React.ElementType; action?: React.ReactNode;
+  children: React.ReactNode; empty?: boolean;
+}) {
+  return (
+    <Card className="p-4 flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Icon className="h-4 w-4 text-muted-foreground" />
+          <p className="text-sm font-semibold text-foreground">{title}</p>
+        </div>
+        {action}
+      </div>
+      {empty ? (
+        <div className="py-6 text-center text-xs text-muted-foreground">Nothing here yet.</div>
+      ) : (
+        <div className="flex flex-col gap-2.5">{children}</div>
+      )}
+    </Card>
+  );
+}
+
+function Row({ title, subtitle, meta, badge }: { title: string; subtitle?: string; meta?: string; badge?: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-1">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-foreground truncate">{title}</p>
+        {subtitle && <p className="text-xs text-muted-foreground truncate">{subtitle}</p>}
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {badge}
+        {meta && <span className="text-xs text-muted-foreground whitespace-nowrap">{meta}</span>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Quick actions ──────────────────────────────────────────────────────────
+
+const QUICK_ACTIONS = [
+  { label: "Manage users", tab: "users", icon: Users },
+  { label: "Mailbox monitor", tab: "mailboxes", icon: Server },
+  { label: "Platform analytics", tab: "analytics", icon: Cpu },
+  { label: "Billing & plans", tab: "billing", icon: BadgeDollarSign },
+  { label: "Feature flags", tab: "settings", icon: Cog },
+  { label: "Support center", tab: "support", icon: LifeBuoy },
+];
+
+// ─── Main component ─────────────────────────────────────────────────────────
+
+export function AdminOverview({ onNavigateTab }: { onNavigateTab: (tab: string) => void }) {
+  const [data, setData] = useState<DashboardOverview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const overview = await apiFetch("dashboard-overview");
+      setData(overview);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load dashboard");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (error) {
+    return (
+      <Card className="p-8 flex flex-col items-center gap-3 text-center">
+        <AlertCircle className="h-8 w-8 text-destructive" />
+        <p className="text-sm font-medium text-foreground">Couldn't load the dashboard</p>
+        <p className="text-xs text-muted-foreground">{error}</p>
+        <Button size="sm" variant="outline" onClick={load} className="gap-1.5">
+          <RefreshCw className="h-3.5 w-3.5" /> Retry
+        </Button>
+      </Card>
+    );
+  }
+
+  const k = data?.kpis;
+
+  return (
+    <div className="space-y-5">
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-foreground">Platform command center</p>
+          <p className="text-xs text-muted-foreground">Live snapshot across users, campaigns, and infrastructure</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {k && <HealthPill health={k.platformHealth} />}
+          <Button size="sm" variant="outline" onClick={load} className="h-8 gap-1.5">
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
+      </div>
+
+      {/* ── KPI grid ───────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+        <KpiCard icon={Users} label="Total Users" value={String(k?.totalUsers ?? 0)} accent="blue" loading={loading} />
+        <KpiCard icon={UserCheck} label="Active Users" value={String(k?.activeUsers ?? 0)} accent="emerald" loading={loading} />
+        <KpiCard icon={Zap} label="Active Campaigns" value={String(k?.activeCampaigns ?? 0)} accent="indigo" loading={loading} />
+        <KpiCard icon={Send} label="Emails Sent Today" value={String(k?.emailsSentToday ?? 0)} accent="blue" loading={loading} />
+        <KpiCard icon={Send} label="Emails Sent This Month" value={(k?.emailsSentMonth ?? 0).toLocaleString()} accent="blue" loading={loading} />
+        <KpiCard icon={MailOpen} label="Open Rate" value={`${k?.openRate ?? 0}%`} accent="teal" loading={loading} />
+        <KpiCard icon={AlertTriangle} label="Bounce Rate" value={`${k?.bounceRate ?? 0}%`} accent="amber" loading={loading} />
+        <KpiCard icon={ShieldOff} label="Suppressed Emails" value={String(k?.suppressedEmails ?? 0)} accent="red" loading={loading} />
+        <KpiCard icon={Server} label="Connected Mailboxes" value={String(k?.connectedMailboxes ?? 0)} accent="purple" loading={loading} />
+        <KpiCard icon={Mail} label="Gmail Accounts" value={String(k?.gmailAccounts ?? 0)} accent="purple" loading={loading} />
+        <KpiCard icon={HeartPulse} label="Platform Health" value={k ? k.platformHealth.charAt(0).toUpperCase() + k.platformHealth.slice(1) : "—"} accent={k?.platformHealth === "healthy" ? "emerald" : k?.platformHealth === "degraded" ? "amber" : "red"} loading={loading} />
+      </div>
+
+      {/* ── Two-column body ────────────────────────────────────────────── */}
+      <div className="grid lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 space-y-4">
+          <Section title="Recent Activity" icon={ListChecks} empty={!loading && (data?.recent.activity.length ?? 0) === 0}>
+            {loading ? Array(4).fill(0).map((_, i) => <Skeleton key={i} className="h-5 w-full" />) :
+              data?.recent.activity.map(a => (
+                <Row key={a.id} title={a.description} meta={relativeTime(a.createdAt)}
+                  badge={<Badge variant={a.severity === "error" ? "destructive" : "outline"} className="capitalize">{a.severity}</Badge>} />
+              ))}
+          </Section>
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Section title="Latest Signups" icon={UserPlus} action={<button onClick={() => onNavigateTab("users")} className="text-xs text-primary hover:underline flex items-center gap-1">View all <ArrowRight className="h-3 w-3" /></button>} empty={!loading && (data?.recent.signups.length ?? 0) === 0}>
+              {loading ? Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-5 w-full" />) :
+                data?.recent.signups.map(u => (
+                  <Row key={u.id} title={u.name} subtitle={u.email} meta={relativeTime(u.createdAt)}
+                    badge={<Badge variant="outline" className="capitalize">{u.plan}</Badge>} />
+                ))}
+            </Section>
+
+            <Section title="Recent Campaigns" icon={Send} empty={!loading && (data?.recent.campaigns.length ?? 0) === 0}>
+              {loading ? Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-5 w-full" />) :
+                data?.recent.campaigns.map(c => (
+                  <Row key={c.id} title={c.name} subtitle={c.userName ?? undefined} meta={`${c.sentCount}/${c.totalLeads} sent`}
+                    badge={<Badge variant="outline" className="capitalize">{c.status}</Badge>} />
+                ))}
+            </Section>
+          </div>
+
+          <Section title="Recent Payments & Upgrades" icon={BadgeDollarSign} empty={!loading && (data?.recent.payments.length ?? 0) === 0}>
+            {loading ? Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-5 w-full" />) :
+              data?.recent.payments.map(p => (
+                <Row key={p.id} title={p.userName ?? p.userEmail ?? "Unknown user"} subtitle={`$${(p.priceSnapshot / 100).toFixed(2)} · ${p.paymentStatus}`} meta={relativeTime(p.createdAt)}
+                  badge={<Badge variant={p.status === "approved" ? "default" : "outline"} className="capitalize">{p.status}</Badge>} />
+              ))}
+          </Section>
+        </div>
+
+        <div className="space-y-4">
+          <Card className="p-4">
+            <p className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><Cog className="h-4 w-4 text-muted-foreground" /> Quick Actions</p>
+            <div className="grid grid-cols-2 gap-2">
+              {QUICK_ACTIONS.map(qa => (
+                <button key={qa.tab} onClick={() => onNavigateTab(qa.tab)}
+                  className="flex flex-col items-start gap-2 rounded-lg border border-border p-3 text-left hover-elevate active-elevate-2 transition-colors">
+                  <qa.icon className="h-4 w-4 text-primary" />
+                  <span className="text-xs font-medium text-foreground leading-tight">{qa.label}</span>
+                </button>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="p-4">
+            <p className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2"><Database className="h-4 w-4 text-muted-foreground" /> System Status</p>
+            {loading ? <div className="space-y-2">{Array(6).fill(0).map((_, i) => <Skeleton key={i} className="h-6 w-full" />)}</div> : data && (
+              <div>
+                <StatusRow label="Database" status={data.systemStatus.database} />
+                <StatusRow label="API" status={data.systemStatus.api} />
+                <StatusRow label="Workers" status={data.systemStatus.workers} />
+                <StatusRow label="Queue" status={data.systemStatus.queue.pending > 0 ? "processing" : "idle"} sub={`${data.systemStatus.queue.pending} pending`} />
+                <StatusRow label="SMTP" status={data.systemStatus.smtp} sub={`${data.systemStatus.mailboxHealthPct}% healthy`} />
+                <StatusRow label="IMAP" status={data.systemStatus.imap} />
+              </div>
+            )}
+          </Card>
+
+          <Section title="Support Requests" icon={LifeBuoy} action={<button onClick={() => onNavigateTab("support")} className="text-xs text-primary hover:underline flex items-center gap-1">View all <ArrowRight className="h-3 w-3" /></button>} empty={!loading && (data?.recent.supportRequests.length ?? 0) === 0}>
+            {loading ? Array(2).fill(0).map((_, i) => <Skeleton key={i} className="h-5 w-full" />) :
+              data?.recent.supportRequests.map(s => (
+                <Row key={s.id} title={s.subject} subtitle={s.userEmail} meta={relativeTime(s.createdAt)}
+                  badge={<Badge variant={s.priority === "high" ? "destructive" : "outline"} className="capitalize">{s.priority}</Badge>} />
+              ))}
+          </Section>
+
+          <Section title="Feature Requests" icon={Lightbulb} empty={!loading && (data?.recent.featureRequests.length ?? 0) === 0}>
+            {loading ? Array(2).fill(0).map((_, i) => <Skeleton key={i} className="h-5 w-full" />) :
+              data?.recent.featureRequests.map(f => (
+                <Row key={f.id} title={f.title} meta={relativeTime(f.createdAt)}
+                  badge={<Badge variant="outline" className="capitalize">{f.category}</Badge>} />
+              ))}
+          </Section>
+
+          <Section title="Bug Reports" icon={Bug} empty={!loading && (data?.recent.bugReports.length ?? 0) === 0}>
+            {loading ? Array(2).fill(0).map((_, i) => <Skeleton key={i} className="h-5 w-full" />) :
+              data?.recent.bugReports.map(b => (
+                <Row key={b.id} title={b.title} meta={relativeTime(b.createdAt)}
+                  badge={<Badge variant={b.severity === "critical" || b.severity === "high" ? "destructive" : "outline"} className="capitalize">{b.severity}</Badge>} />
+              ))}
+          </Section>
+
+          <Section title="Announcements" icon={Megaphone} empty={!loading && (data?.recent.announcements.length ?? 0) === 0}>
+            {loading ? Array(2).fill(0).map((_, i) => <Skeleton key={i} className="h-5 w-full" />) :
+              data?.recent.announcements.map(a => (
+                <Row key={a.id} title={a.message} meta={relativeTime(a.createdAt)} />
+              ))}
+          </Section>
+        </div>
+      </div>
+    </div>
+  );
+}

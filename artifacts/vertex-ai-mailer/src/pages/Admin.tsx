@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { AdminSettings } from "./AdminSettings";
 import { AdminProductHub } from "./AdminProductHub";
+import { AdminOverview } from "./admin/AdminOverview";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -631,49 +632,7 @@ export default function Admin() {
 
           {/* ── OVERVIEW ─────────────────────────────────────────────────── */}
           {tab === "overview" && (
-            <div className="space-y-4">
-              <div className="grid sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-2 bg-slate-50 rounded-xl p-4 border border-slate-100">
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Platform Overview</p>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    {[
-                      ["Total Users",     stats?.totalUsers],
-                      ["Gmail Connected", stats?.gmailConnectedUsers],
-                      ["SMTP Mailboxes",  stats?.smtpMailboxes],
-                      ["Total Leads",     stats?.totalLeads],
-                      ["Campaigns Run",   stats?.totalCampaigns],
-                      ["Failed Sends",    stats?.failedSends],
-                    ].map(([label, val]) => (
-                      <div key={label as string} className="flex justify-between items-center py-1 border-b border-slate-100 last:border-0">
-                        <span className="text-slate-500 text-xs">{label}</span>
-                        <span className="font-semibold text-slate-800 text-sm">{statsLoading ? "…" : val ?? 0}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Email Volume</p>
-                  <div className="space-y-2">
-                    <div>
-                      <p className="text-xs text-slate-400">Today</p>
-                      <p className="text-2xl font-bold text-slate-900">{statsLoading ? "…" : stats?.emailsSentToday ?? 0}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-400">This Month</p>
-                      <p className="text-2xl font-bold text-blue-600">{statsLoading ? "…" : stats?.emailsSentMonth ?? 0}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-400">All Time</p>
-                      <p className="text-2xl font-bold text-slate-900">{statsLoading ? "…" : stats?.totalDraftsCreated ?? 0}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="text-center py-8 text-slate-400 text-sm">
-                <Activity className="h-8 w-8 mx-auto mb-2 text-slate-200" />
-                Navigate tabs above to manage users, mailboxes, analytics, logs, and settings.
-              </div>
-            </div>
+            <AdminOverview onNavigateTab={(t) => setTab(t as Tab)} />
           )}
 
           {/* ── USERS ────────────────────────────────────────────────────── */}

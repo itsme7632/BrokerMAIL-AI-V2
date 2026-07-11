@@ -5,6 +5,7 @@ import {
   plansTable, subscriptionsTable, planRequestsTable, supportTicketsTable,
   templatesTable, suppressionListTable, processedBouncesTable,
   emailTrackingEventsTable, backupHistoryTable,
+  featureRequestsTable, bugReportsTable, announcementsTable,
 } from "@workspace/db";
 import { count, desc, sql, eq, gte, and, or, ilike, isNotNull, inArray } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
@@ -59,6 +60,123 @@ router.get("/admin/stats", requireAdmin, async (_req, res): Promise<void> => {
     totalDraftsCreated: totalDrafts.count,
     failedSends:        failedDrafts.count,
     gmailConnectedUsers: gmailUsers.count,
+  });
+});
+
+// ─── Dashboard Overview (Phase 2 command center) ──────────────────────────────
+// Aggregates KPIs + recent activity feeds + system status in a single call so
+// the dashboard doesn't fan out a dozen requests on load. Read-only — reuses
+// the same tables the existing /admin/* endpoints already query.
+
+const ACTIVE_CAMPAIGN_STATUSES = ["pending", "sending", "paused", "queued", "cooling_down"];
+
+router.get("/admin/dashboard-overview", requireAdmin, async (_req, res): Promise<void> => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const since24h = new Date(Date.now() - 86_400_000);
+
+  const [
+    [totalUsers], [activeUsers], [activeCampaigns], [totalLeads],
+    [emailsToday], [emailsMonth], [totalSentAllTime], [failedAllTime],
+    [smtpMailboxes], [gmailUsers], [suppressedEmails],
+    [openedDistinct], [bouncedRecent],
+    recentSignups, recentCampaigns, recentPayments,
+    openSupportTickets, openFeatureRequests, openBugReports, activeAnnouncements,
+    recentActivity, queueCounts, mailboxHealth,
+  ] = await Promise.all([
+    db.select({ count: count() }).from(usersTable),
+    db.select({ count: count() }).from(usersTable).where(eq(usersTable.status, "active")),
+    db.select({ count: count() }).from(campaignsTable).where(inArray(campaignsTable.status, ACTIVE_CAMPAIGN_STATUSES)),
+    db.select({ count: count() }).from(leadsTable),
+    db.select({ count: count() }).from(draftsTable).where(and(eq(draftsTable.status, "success"), gte(draftsTable.createdAt, today))),
+    db.select({ count: count() }).from(draftsTable).where(and(eq(draftsTable.status, "success"), gte(draftsTable.createdAt, monthStart))),
+    db.select({ count: count() }).from(draftsTable).where(eq(draftsTable.status, "success")),
+    db.select({ count: count() }).from(draftsTable).where(eq(draftsTable.status, "failed")),
+    db.select({ count: count() }).from(mailboxesTable).where(eq(mailboxesTable.isActive, true)),
+    db.select({ count: count() }).from(usersTable).where(eq(usersTable.gmailConnected, true)),
+    db.select({ count: count() }).from(suppressionListTable),
+    db.select({ count: sql<number>`count(distinct ${emailTrackingEventsTable.draftId})` }).from(emailTrackingEventsTable).where(eq(emailTrackingEventsTable.eventType, "open")),
+    db.select({ count: count() }).from(processedBouncesTable).where(gte(processedBouncesTable.processedAt, since24h)),
+    db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, plan: usersTable.plan, createdAt: usersTable.createdAt })
+      .from(usersTable).orderBy(desc(usersTable.createdAt)).limit(5),
+    db.select({
+      id: campaignsTable.id, name: campaignsTable.name, status: campaignsTable.status,
+      sentCount: campaignsTable.sentCount, totalLeads: campaignsTable.totalLeads,
+      userName: usersTable.name, updatedAt: campaignsTable.updatedAt,
+    }).from(campaignsTable).leftJoin(usersTable, eq(campaignsTable.userId, usersTable.id))
+      .orderBy(desc(campaignsTable.updatedAt)).limit(5),
+    db.select({
+      id: planRequestsTable.id, userName: usersTable.name, userEmail: usersTable.email,
+      toPlanId: planRequestsTable.toPlanId, priceSnapshot: planRequestsTable.priceSnapshot,
+      status: planRequestsTable.status, paymentStatus: planRequestsTable.paymentStatus,
+      createdAt: planRequestsTable.createdAt,
+    }).from(planRequestsTable).leftJoin(usersTable, eq(planRequestsTable.userId, usersTable.id))
+      .orderBy(desc(planRequestsTable.createdAt)).limit(5),
+    db.select({ id: supportTicketsTable.id, subject: supportTicketsTable.subject, userName: supportTicketsTable.userName, userEmail: supportTicketsTable.userEmail, priority: supportTicketsTable.priority, status: supportTicketsTable.status, createdAt: supportTicketsTable.createdAt })
+      .from(supportTicketsTable).where(or(eq(supportTicketsTable.status, "open"), eq(supportTicketsTable.status, "pending")))
+      .orderBy(desc(supportTicketsTable.createdAt)).limit(5),
+    db.select({ id: featureRequestsTable.id, title: featureRequestsTable.title, category: featureRequestsTable.category, status: featureRequestsTable.status, createdAt: featureRequestsTable.createdAt })
+      .from(featureRequestsTable).where(eq(featureRequestsTable.status, "open"))
+      .orderBy(desc(featureRequestsTable.createdAt)).limit(5),
+    db.select({ id: bugReportsTable.id, title: bugReportsTable.title, severity: bugReportsTable.severity, status: bugReportsTable.status, createdAt: bugReportsTable.createdAt })
+      .from(bugReportsTable).where(eq(bugReportsTable.status, "open"))
+      .orderBy(desc(bugReportsTable.createdAt)).limit(5),
+    db.select({ id: announcementsTable.id, message: announcementsTable.message, priority: announcementsTable.priority, createdAt: announcementsTable.createdAt })
+      .from(announcementsTable).where(eq(announcementsTable.isActive, true))
+      .orderBy(desc(announcementsTable.priority)).limit(5),
+    db.select({ id: systemLogsTable.id, type: systemLogsTable.type, severity: systemLogsTable.severity, description: systemLogsTable.description, createdAt: systemLogsTable.createdAt })
+      .from(systemLogsTable).orderBy(desc(systemLogsTable.createdAt)).limit(8),
+    db.select({ count: count() }).from(emailQueueTable).where(inArray(emailQueueTable.status, ["pending", "sending"])),
+    db.select({
+      total: count(),
+      quotaReached: sql<number>`count(*) filter (where ${mailboxesTable.quotaStatus} = 'quota_reached')`,
+    }).from(mailboxesTable).where(eq(mailboxesTable.isActive, true)),
+  ]);
+
+  const totalSent = totalSentAllTime.count;
+  const bounceRate = totalSent > 0 ? Math.round((bouncedRecent.count / Math.max(totalSent, 1)) * 1000) / 10 : 0;
+  const openRate   = totalSent > 0 ? Math.round((openedDistinct.count / totalSent) * 1000) / 10 : 0;
+  const mbHealth = mailboxHealth[0] ?? { total: 0, quotaReached: 0 };
+  const healthyMailboxPct = mbHealth.total > 0 ? Math.round(((mbHealth.total - Number(mbHealth.quotaReached)) / mbHealth.total) * 100) : 100;
+  const failRatePct = totalSent + failedAllTime.count > 0 ? Math.round((failedAllTime.count / (totalSent + failedAllTime.count)) * 100) : 0;
+  const platformHealth: "healthy" | "degraded" | "critical" =
+    healthyMailboxPct < 50 || failRatePct > 25 ? "critical" :
+    healthyMailboxPct < 85 || failRatePct > 10 ? "degraded" : "healthy";
+
+  res.json({
+    kpis: {
+      totalUsers: totalUsers.count,
+      activeUsers: activeUsers.count,
+      activeCampaigns: activeCampaigns.count,
+      emailsSentToday: emailsToday.count,
+      emailsSentMonth: emailsMonth.count,
+      openRate,
+      bounceRate,
+      suppressedEmails: suppressedEmails.count,
+      connectedMailboxes: smtpMailboxes.count,
+      gmailAccounts: gmailUsers.count,
+      platformHealth,
+    },
+    recent: {
+      signups: recentSignups.map(u => ({ ...u, createdAt: u.createdAt.toISOString() })),
+      campaigns: recentCampaigns.map(c => ({ ...c, updatedAt: c.updatedAt?.toISOString() ?? null })),
+      payments: recentPayments.map(p => ({ ...p, createdAt: p.createdAt.toISOString() })),
+      supportRequests: openSupportTickets.map(t => ({ ...t, createdAt: t.createdAt.toISOString() })),
+      featureRequests: openFeatureRequests.map(f => ({ ...f, createdAt: f.createdAt.toISOString() })),
+      bugReports: openBugReports.map(b => ({ ...b, createdAt: b.createdAt.toISOString() })),
+      announcements: activeAnnouncements.map(a => ({ ...a, createdAt: a.createdAt.toISOString() })),
+      activity: recentActivity.map(a => ({ ...a, createdAt: a.createdAt.toISOString() })),
+    },
+    systemStatus: {
+      database: "operational",
+      api: "operational",
+      workers: queueCounts[0].count > 0 ? "processing" : "idle",
+      queue: { pending: queueCounts[0].count },
+      smtp: healthyMailboxPct >= 85 ? "operational" : healthyMailboxPct >= 50 ? "degraded" : "down",
+      imap: "operational",
+      mailboxHealthPct: healthyMailboxPct,
+    },
   });
 });
 
