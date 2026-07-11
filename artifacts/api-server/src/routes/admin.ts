@@ -234,6 +234,8 @@ router.get("/admin/users", requireAdmin, async (req, res): Promise<void> => {
     id:             usersTable.id,
     email:          usersTable.email,
     name:           usersTable.name,
+    avatarUrl:      usersTable.avatarUrl,
+    companyName:    usersTable.companyName,
     role:           usersTable.role,
     plan:           usersTable.plan,
     credits:        usersTable.credits,
@@ -243,6 +245,9 @@ router.get("/admin/users", requireAdmin, async (req, res): Promise<void> => {
     lastActiveAt:   usersTable.lastActiveAt,
     emailsSent: sql<number>`(SELECT COUNT(*)::int FROM drafts WHERE drafts.user_id = users.id AND drafts.status = 'success')`,
     smtpConnected: sql<boolean>`EXISTS(SELECT 1 FROM mailboxes WHERE mailboxes.user_id = users.id AND mailboxes.is_active = true)`,
+    campaignsCount: sql<number>`(SELECT COUNT(*)::int FROM campaigns WHERE campaigns.user_id = users.id)`,
+    subscriptionPlanName:   sql<string | null>`(SELECT plans.name FROM subscriptions JOIN plans ON plans.id = subscriptions.plan_id WHERE subscriptions.user_id = users.id LIMIT 1)`,
+    subscriptionBillingStatus: sql<string | null>`(SELECT subscriptions.billing_status FROM subscriptions WHERE subscriptions.user_id = users.id LIMIT 1)`,
   }).from(usersTable)
     .where(where)
     .orderBy(desc(usersTable.createdAt))
@@ -330,6 +335,106 @@ router.delete("/admin/users/:id", requireAdmin, async (req, res): Promise<void> 
     description: `Admin deleted user #${targetId}`,
   });
   res.json({ ok: true });
+});
+
+// ─── Admin: Login as user (impersonation) ─────────────────────────────────────
+
+router.post("/admin/users/:id/login-as", requireAdmin, async (req, res): Promise<void> => {
+  const targetId = parseInt((req.params.id as string), 10);
+  const admin    = req.user!;
+  if (targetId === admin.id) {
+    res.status(400).json({ error: "You are already signed in as yourself." });
+    return;
+  }
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, targetId));
+  if (!user) { res.status(404).json({ error: "User not found." }); return; }
+
+  const { signToken } = await import("../lib/auth");
+  const impersonationToken = signToken({ userId: user.id, email: user.email, role: user.role });
+
+  await db.insert(systemLogsTable).values({
+    userId:      admin.id,
+    type:        "admin_login_as",
+    severity:    "warn",
+    description: `Admin logged in as user #${targetId} (${user.email})`,
+  });
+
+  res.json({ ok: true, token: impersonationToken });
+});
+
+// ─── Admin: Reset a user's billing-period usage ────────────────────────────────
+
+router.post("/admin/users/:id/reset-usage", requireAdmin, async (req, res): Promise<void> => {
+  const targetId = parseInt((req.params.id as string), 10);
+  const admin    = req.user!;
+  const [user] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, targetId));
+  if (!user) { res.status(404).json({ error: "User not found." }); return; }
+
+  const [existingSub] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, targetId));
+  if (existingSub) {
+    await db.update(subscriptionsTable)
+      .set({ currentPeriodStart: new Date(), currentPeriodEnd: null, updatedAt: new Date() })
+      .where(eq(subscriptionsTable.userId, targetId));
+  }
+
+  await db.insert(systemLogsTable).values({
+    userId:      admin.id,
+    type:        "admin_reset_usage",
+    severity:    "info",
+    description: `Admin reset billing-period usage for user #${targetId}`,
+  });
+
+  res.json({ ok: true });
+});
+
+// ─── Admin: Bulk user actions ───────────────────────────────────────────────────
+
+router.post("/admin/users/bulk", requireAdmin, async (req, res): Promise<void> => {
+  const admin = req.user!;
+  const { action, ids, planId } = req.body as { action: string; ids: number[]; planId?: number };
+
+  if (!Array.isArray(ids) || ids.length === 0) { res.status(400).json({ error: "ids must be a non-empty array" }); return; }
+  const targetIds = ids.map(Number).filter(id => id !== admin.id);
+  if (targetIds.length === 0) { res.status(400).json({ error: "No valid target users (cannot act on your own account)." }); return; }
+
+  switch (action) {
+    case "suspend":
+      await db.update(usersTable).set({ status: "suspended", updatedAt: new Date() }).where(inArray(usersTable.id, targetIds));
+      break;
+    case "activate":
+      await db.update(usersTable).set({ status: "active", updatedAt: new Date() }).where(inArray(usersTable.id, targetIds));
+      break;
+    case "delete":
+      await db.delete(usersTable).where(inArray(usersTable.id, targetIds));
+      break;
+    case "upgrade": {
+      if (!planId) { res.status(400).json({ error: "planId is required for bulk upgrade" }); return; }
+      const [plan] = await db.select().from(plansTable).where(eq(plansTable.id, planId));
+      if (!plan) { res.status(404).json({ error: "Plan not found." }); return; }
+      for (const id of targetIds) {
+        const [existing] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, id));
+        if (existing) {
+          await db.update(subscriptionsTable).set({ planId, updatedAt: new Date() }).where(eq(subscriptionsTable.userId, id));
+        } else {
+          await db.insert(subscriptionsTable).values({ userId: id, planId, status: "active", billingStatus: "free" });
+        }
+      }
+      await db.update(usersTable).set({ plan: plan.slug, updatedAt: new Date() }).where(inArray(usersTable.id, targetIds));
+      break;
+    }
+    default:
+      res.status(400).json({ error: `Unknown bulk action: ${action}` });
+      return;
+  }
+
+  await db.insert(systemLogsTable).values({
+    userId:      admin.id,
+    type:        "admin_bulk_user_action",
+    severity:    action === "delete" ? "warn" : "info",
+    description: `Admin performed bulk "${action}" on ${targetIds.length} user(s): [${targetIds.join(", ")}]`,
+  });
+
+  res.json({ ok: true, affected: targetIds.length });
 });
 
 // Proxy-safe alias: POST /admin/users/remove (id in body)

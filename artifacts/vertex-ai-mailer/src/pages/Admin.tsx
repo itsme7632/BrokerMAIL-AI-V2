@@ -2,22 +2,19 @@ import { useState, useEffect, useCallback } from "react";
 import { AdminSettings } from "./AdminSettings";
 import { AdminProductHub } from "./AdminProductHub";
 import { AdminOverview } from "./admin/AdminOverview";
+import { AdminUsers } from "./admin/AdminUsers";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import {
   Users, Mail, BarChart3, Server, Zap, AlertCircle, CheckCircle2,
-  XCircle, RefreshCw, Trash2, ShieldCheck, ShieldOff, ChevronLeft,
+  RefreshCw, Trash2, ShieldCheck, ChevronLeft,
   ChevronRight, Search, Filter, Activity, TrendingUp, MailCheck,
-  UserCheck, Settings, Eye, MoreVertical, Crown, Ban, Edit2,
+  UserCheck, Settings, Eye, Ban, Edit2,
   CreditCard, ArrowUpCircle, CheckCheck, X as XIcon, TicketCheck,
   MessageSquare, Tag, Clock, Send, ChevronDown as ChevronDownIcon, Sparkles,
 } from "lucide-react";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,13 +24,6 @@ interface AdminStats {
   smtpMailboxes: number; totalCampaigns: number;
   failedSends: number; totalDraftsCreated: number;
   totalLeads: number; gmailConnectedUsers: number;
-}
-
-interface AdminUser {
-  id: number; name: string; email: string;
-  role: string; plan: string; credits: number; status: string;
-  gmailConnected: boolean; smtpConnected: boolean;
-  emailsSent: number; createdAt: string; lastActiveAt: string | null;
 }
 
 interface AdminMailbox {
@@ -217,89 +207,6 @@ function AnalyticsChart({ data }: { data: AnalyticsDay[] }) {
   );
 }
 
-// ─── User Edit Modal ──────────────────────────────────────────────────────────
-
-function EditUserModal({ user, onClose, onSave }: {
-  user: AdminUser; onClose: () => void;
-  onSave: (updates: Partial<AdminUser>) => Promise<void>;
-}) {
-  const [form, setForm] = useState({ plan: user.plan, credits: user.credits, role: user.role, status: user.status });
-  const [saving, setSaving] = useState(false);
-  const [planOptions, setPlanOptions] = useState<{ id: number; name: string; slug: string }[]>([]);
-  const set = (k: string, v: string | number) => setForm(f => ({ ...f, [k]: v }));
-
-  // Load plans dynamically — always reflects the real plan configuration
-  useEffect(() => {
-    apiFetch("billing/plans").then(setPlanOptions).catch(() => {});
-  }, []);
-
-  async function handleSave() {
-    setSaving(true);
-    try { await onSave(form); onClose(); }
-    finally { setSaving(false); }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-slate-200 overflow-hidden z-10">
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
-          <div className="h-9 w-9 rounded-xl bg-blue-50 flex items-center justify-center">
-            <Edit2 className="h-4 w-4 text-blue-600" />
-          </div>
-          <div>
-            <p className="font-semibold text-slate-900 text-sm">{user.name}</p>
-            <p className="text-xs text-slate-500">{user.email}</p>
-          </div>
-        </div>
-        <div className="p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Plan</label>
-              <select value={form.plan} onChange={e => set("plan", e.target.value)}
-                className="w-full h-9 px-3 rounded-xl border border-slate-200 text-sm bg-white">
-                {planOptions.length > 0
-                  ? planOptions.map(p => (
-                      <option key={p.slug} value={p.slug}>{p.name}</option>
-                    ))
-                  : <option value={form.plan}>{form.plan}</option>}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Credits</label>
-              <Input type="number" value={form.credits} min={0}
-                onChange={e => set("credits", parseInt(e.target.value) || 0)}
-                className="h-9 rounded-xl text-sm" />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Role</label>
-              <select value={form.role} onChange={e => set("role", e.target.value)}
-                className="w-full h-9 px-3 rounded-xl border border-slate-200 text-sm bg-white">
-                <option value="user">User</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</label>
-              <select value={form.status} onChange={e => set("status", e.target.value)}
-                className="w-full h-9 px-3 rounded-xl border border-slate-200 text-sm bg-white">
-                <option value="active">Active</option>
-                <option value="suspended">Suspended</option>
-              </select>
-            </div>
-          </div>
-        </div>
-        <div className="px-5 pb-5 flex gap-2">
-          <Button className="flex-1 rounded-xl gap-1.5" onClick={handleSave} disabled={saving}>
-            {saving ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" />Saving…</> : "Save changes"}
-          </Button>
-          <Button variant="outline" className="rounded-xl" onClick={onClose}>Cancel</Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main component ───────────────────────────────────────────────────────────
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
@@ -321,17 +228,6 @@ export default function Admin() {
   // Overview
   const [stats, setStats]             = useState<AdminStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
-
-  // Users
-  const [users, setUsers]             = useState<AdminUser[]>([]);
-  const [usersTotal, setUsersTotal]   = useState(0);
-  const [usersPage, setUsersPage]     = useState(1);
-  const [usersLoading, setUsersLoading] = useState(false);
-  const [usersSearch, setUsersSearch] = useState("");
-  const [usersRole, setUsersRole]     = useState("all");
-  const [usersPlan, setUsersPlan]     = useState("all");
-  const [usersStatus, setUsersStatus] = useState("all");
-  const [editUser, setEditUser]       = useState<AdminUser | null>(null);
 
   // Mailboxes
   const [mailboxes, setMailboxes]     = useState<AdminMailbox[]>([]);
@@ -397,22 +293,6 @@ export default function Admin() {
     finally { setStatsLoading(false); }
   }, []);
 
-  const loadUsers = useCallback(async () => {
-    setUsersLoading(true);
-    try {
-      const params = new URLSearchParams({
-        page: String(usersPage), limit: "20",
-        ...(usersSearch && { search: usersSearch }),
-        ...(usersRole   !== "all" && { role: usersRole }),
-        ...(usersPlan   !== "all" && { plan: usersPlan }),
-        ...(usersStatus !== "all" && { status: usersStatus }),
-      });
-      const data = await apiFetch(`users?${params}`);
-      setUsers(data.data); setUsersTotal(data.total);
-    } catch { /* silent */ }
-    finally { setUsersLoading(false); }
-  }, [usersPage, usersSearch, usersRole, usersPlan, usersStatus]);
-
   const loadMailboxes = useCallback(async () => {
     setMailboxesLoading(true);
     try { setMailboxes(await apiFetch("mailboxes")); }
@@ -473,7 +353,6 @@ export default function Admin() {
   // ── Effects ────────────────────────────────────────────────────────────────
 
   useEffect(() => { loadStats(); }, [loadStats]);
-  useEffect(() => { if (tab === "users")     loadUsers();    }, [tab, loadUsers]);
   useEffect(() => { if (tab === "mailboxes") loadMailboxes();}, [tab, loadMailboxes]);
   useEffect(() => { if (tab === "analytics") loadAnalytics();}, [tab, loadAnalytics, analyticsDays]);
   useEffect(() => { if (tab === "logs")      loadLogs();     }, [tab, loadLogs]);
@@ -482,33 +361,6 @@ export default function Admin() {
   useEffect(() => { if (tab === "support")   loadSupport();     }, [tab, loadSupport]);
 
   // ── User actions ───────────────────────────────────────────────────────────
-
-  async function saveUser(id: number, updates: Partial<AdminUser>) {
-    await apiFetch(`users/save`, { method: "POST", body: JSON.stringify({ id, ...updates }) });
-    toast({ title: "User updated" });
-    loadUsers();
-  }
-
-  async function deleteUser(id: number, name: string) {
-    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
-    try {
-      await apiFetch(`users/remove`, { method: "POST", body: JSON.stringify({ id }) });
-      toast({ title: "User deleted" });
-      loadUsers();
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Error", description: err.message });
-    }
-  }
-
-  async function toggleSuspend(user: AdminUser) {
-    const newStatus = user.status === "active" ? "suspended" : "active";
-    await saveUser(user.id, { status: newStatus });
-  }
-
-  async function toggleAdmin(user: AdminUser) {
-    const newRole = user.role === "admin" ? "user" : "admin";
-    await saveUser(user.id, { role: newRole });
-  }
 
   async function approvePlanRequest(id: number) {
     try {
@@ -578,7 +430,6 @@ export default function Admin() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  const usersPageCount = Math.max(Math.ceil(usersTotal / 20), 1);
   const logsPageCount  = Math.max(Math.ceil(logsTotal  / 50), 1);
 
   return (
@@ -636,169 +487,7 @@ export default function Admin() {
           )}
 
           {/* ── USERS ────────────────────────────────────────────────────── */}
-          {tab === "users" && (
-            <div className="space-y-4">
-              {/* Filters */}
-              <div className="flex flex-wrap gap-2">
-                <div className="relative flex-1 min-w-[180px]">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                  <Input
-                    placeholder="Search name or email…"
-                    value={usersSearch}
-                    onChange={e => { setUsersSearch(e.target.value); setUsersPage(1); }}
-                    className="pl-8 h-9 rounded-xl text-sm"
-                  />
-                </div>
-                {[
-                  { label: "Role",   value: usersRole,   setter: setUsersRole,   options: ["all","user","admin"] },
-                  { label: "Plan",   value: usersPlan,   setter: setUsersPlan,   options: ["all","free","pro","enterprise"] },
-                  { label: "Status", value: usersStatus, setter: setUsersStatus, options: ["all","active","suspended"] },
-                ].map(f => (
-                  <select key={f.label} value={f.value}
-                    onChange={e => { f.setter(e.target.value); setUsersPage(1); }}
-                    className="h-9 px-3 rounded-xl border border-slate-200 text-sm bg-white text-slate-700">
-                    {f.options.map(o => <option key={o} value={o}>{o === "all" ? `All ${f.label}s` : o.charAt(0).toUpperCase() + o.slice(1)}</option>)}
-                  </select>
-                ))}
-                <Button size="sm" variant="outline" onClick={loadUsers} className="h-9 rounded-xl gap-1.5">
-                  <RefreshCw className={`h-3.5 w-3.5 ${usersLoading ? "animate-spin" : ""}`} />
-                </Button>
-              </div>
-
-              {/* Table — desktop */}
-              <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-100">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-slate-50 text-left border-b border-slate-100">
-                      {["User", "Plan", "Credits", "Emails", "Gmail", "SMTP", "Status", "Joined", "Last Active", ""].map(h => (
-                        <th key={h} className="px-4 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {usersLoading ? Array(5).fill(0).map((_, i) => (
-                      <tr key={i} className="border-b border-slate-50">
-                        {Array(10).fill(0).map((_, j) => <td key={j} className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>)}
-                      </tr>
-                    )) : users.length === 0 ? (
-                      <tr><td colSpan={10} className="px-4 py-12 text-center text-slate-400 text-sm">No users found.</td></tr>
-                    ) : users.map(u => (
-                      <tr key={u.id} className="border-b border-slate-50 dark:border-slate-700/50 hover:bg-slate-50/60 dark:hover:bg-slate-700/40 transition-colors">
-                        <td className="px-4 py-3">
-                          <div>
-                            <p className="font-medium text-slate-900 text-sm">{u.name}</p>
-                            <p className="text-xs text-slate-400">{u.email}</p>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3"><PlanBadge plan={u.plan} /></td>
-                        <td className="px-4 py-3 font-mono text-xs text-slate-600">{u.credits}</td>
-                        <td className="px-4 py-3 font-semibold text-slate-800 text-xs">{u.emailsSent.toLocaleString()}</td>
-                        <td className="px-4 py-3">
-                          {u.gmailConnected
-                            ? <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                            : <XCircle className="h-4 w-4 text-slate-300" />}
-                        </td>
-                        <td className="px-4 py-3">
-                          {u.smtpConnected
-                            ? <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                            : <XCircle className="h-4 w-4 text-slate-300" />}
-                        </td>
-                        <td className="px-4 py-3"><StatusBadge status={u.status} /></td>
-                        <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{new Date(u.createdAt).toLocaleDateString()}</td>
-                        <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{relativeTime(u.lastActiveAt)}</td>
-                        <td className="px-4 py-3">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg">
-                                <MoreVertical className="h-3.5 w-3.5" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-44">
-                              <DropdownMenuItem onClick={() => setEditUser(u)} className="gap-2 text-sm">
-                                <Edit2 className="h-3.5 w-3.5" /> Edit user
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => toggleAdmin(u)} className="gap-2 text-sm">
-                                {u.role === "admin"
-                                  ? <><ShieldOff className="h-3.5 w-3.5" /> Remove admin</>
-                                  : <><Crown className="h-3.5 w-3.5" /> Make admin</>}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => toggleSuspend(u)} className="gap-2 text-sm">
-                                {u.status === "active"
-                                  ? <><Ban className="h-3.5 w-3.5 text-amber-500" /> Suspend</>
-                                  : <><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Activate</>}
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => deleteUser(u.id, u.name)} className="gap-2 text-sm text-red-600 focus:text-red-600 focus:bg-red-50">
-                                <Trash2 className="h-3.5 w-3.5" /> Delete user
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Cards — mobile */}
-              <div className="md:hidden space-y-3">
-                {usersLoading ? Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />) :
-                  users.map(u => (
-                    <div key={u.id} className="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="font-semibold text-slate-900 text-sm truncate">{u.name}</p>
-                          <p className="text-xs text-slate-400 truncate">{u.email}</p>
-                        </div>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                          <StatusBadge status={u.status} />
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg">
-                                <MoreVertical className="h-3.5 w-3.5" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-44">
-                              <DropdownMenuItem onClick={() => setEditUser(u)} className="gap-2 text-sm"><Edit2 className="h-3.5 w-3.5" /> Edit</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => toggleAdmin(u)} className="gap-2 text-sm">{u.role === "admin" ? <><ShieldOff className="h-3.5 w-3.5" />Remove admin</> : <><Crown className="h-3.5 w-3.5" />Make admin</>}</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => toggleSuspend(u)} className="gap-2 text-sm">{u.status === "active" ? <><Ban className="h-3.5 w-3.5" />Suspend</> : <><CheckCircle2 className="h-3.5 w-3.5" />Activate</>}</DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => deleteUser(u.id, u.name)} className="gap-2 text-sm text-red-600"><Trash2 className="h-3.5 w-3.5" />Delete</DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        <PlanBadge plan={u.plan} />
-                        {u.role === "admin" && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700"><Crown className="h-3 w-3" />Admin</span>}
-                        {u.gmailConnected && <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700">Gmail</span>}
-                        {u.smtpConnected  && <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-purple-700">SMTP</span>}
-                      </div>
-                      <p className="text-xs text-slate-400">{u.emailsSent} emails · Joined {new Date(u.createdAt).toLocaleDateString()}</p>
-                    </div>
-                  ))
-                }
-              </div>
-
-              {/* Pagination */}
-              <div className="flex items-center justify-between gap-4 pt-1">
-                <p className="text-xs text-slate-500">{usersTotal} user{usersTotal !== 1 ? "s" : ""} total</p>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg"
-                    disabled={usersPage <= 1} onClick={() => setUsersPage(p => p - 1)}>
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <span className="text-xs text-slate-600 min-w-[60px] text-center">
-                    {usersPage} / {usersPageCount}
-                  </span>
-                  <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg"
-                    disabled={usersPage >= usersPageCount} onClick={() => setUsersPage(p => p + 1)}>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
+          {tab === "users" && <AdminUsers />}
 
           {/* ── MAILBOXES ─────────────────────────────────────────────────── */}
           {tab === "mailboxes" && (
@@ -1478,15 +1167,6 @@ export default function Admin() {
               <AdminProductHub />
             </div>
           )}
-
-      {/* User edit modal */}
-      {editUser && (
-        <EditUserModal
-          user={editUser}
-          onClose={() => setEditUser(null)}
-          onSave={updates => saveUser(editUser.id, updates)}
-        />
-      )}
 
       {/* Reject plan request modal */}
       {rejectModal && (
