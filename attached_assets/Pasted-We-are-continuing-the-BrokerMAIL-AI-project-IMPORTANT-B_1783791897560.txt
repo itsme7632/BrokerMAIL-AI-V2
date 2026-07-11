@@ -1,0 +1,105 @@
+We are continuing the BrokerMAIL AI project.
+
+IMPORTANT:
+Before making any changes, inspect the repository and understand the current state. Continue exactly where the previous Replit Agent stopped.
+
+Current project status:
+
+COMPLETED
+✔ Mailbox redesign
+✔ SMTP quota recovery improvements
+✔ Bounce scanner improvements
+✔ Suppression List redesign
+✔ Campaign page fixes
+✔ Campaign remaining counter fixes
+✔ Deferred cleanup race fix
+✔ Retry queue fixes
+✔ Mailbox Health redesign
+✔ Dashboard redesign
+✔ Phase 3 - User Management
+✔ Phase 4 - Billing / Subscriptions retheme
+
+Billing tab has already been cleaned up for Light and Dark mode using theme tokens.
+
+DO NOT rebuild or redesign Billing again.
+
+Next task:
+
+Start Phase 5 — Campaign Monitor.
+
+Requirements:
+
+• Reuse existing backend and APIs whenever possible.
+• No database schema changes unless absolutely required.
+• No breaking existing campaign sending logic.
+• Keep desktop and mobile responsive.
+• Use theme tokens only.
+• Support both Light and Dark mode.
+• Do not hardcode colors.
+• Follow the design language used across the new Admin Dashboard.
+
+Campaign Monitor should include:
+
+- Live campaigns
+- Paused campaigns
+- Cooling down campaigns
+- Queued campaigns
+- Completed campaigns
+- Failed campaigns
+
+For every campaign show:
+
+- Campaign Name
+- User
+- Mailbox
+- Status
+- Progress
+- Sent
+- Remaining
+- Failed
+- Opens
+- Bounce Rate
+- SMTP/Gmail
+- Current Action
+- Created
+- Last Activity
+
+Actions:
+
+- Open Campaign
+- Pause
+- Resume
+- Cancel
+- View Queue
+- View Logs
+- Retry Failed
+- Export
+
+Add filters:
+
+- Status
+- User
+- Mailbox
+- Date
+- Search
+
+Add overview cards:
+
+- Active Campaigns
+- Queued Emails
+- Sending
+- Cooling Down
+- Completed Today
+- Failed Today
+
+Use existing APIs wherever possible.
+
+If an endpoint is missing, tell me before creating one.
+
+When Phase 5 is complete:
+
+Stop.
+
+Do NOT continue to Phase 6.
+
+I want to review Campaign Monitor first before proceeding.
