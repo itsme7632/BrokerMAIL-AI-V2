@@ -15,6 +15,7 @@ import {
   UserCheck, Settings, Eye, Ban, Edit2,
   CreditCard, ArrowUpCircle, CheckCheck, X as XIcon, TicketCheck,
   MessageSquare, Tag, Clock, Send, ChevronDown as ChevronDownIcon, Sparkles,
+  Megaphone,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -211,14 +212,15 @@ function AnalyticsChart({ data }: { data: AnalyticsDay[] }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
-  { id: "overview",   label: "Overview",   icon: BarChart3 },
-  { id: "users",      label: "Users",      icon: Users },
-  { id: "mailboxes",  label: "Mailboxes",  icon: Server },
-  { id: "analytics",  label: "Analytics",  icon: TrendingUp },
-  { id: "logs",       label: "Logs",       icon: Activity },
-  { id: "settings",   label: "Settings",   icon: Settings },
-  { id: "billing",    label: "Billing",    icon: CreditCard },
-  { id: "support",    label: "Support",    icon: TicketCheck },
+  { id: "overview",    label: "Overview",    icon: BarChart3 },
+  { id: "users",       label: "Users",       icon: Users },
+  { id: "campaigns",   label: "Campaigns",   icon: Megaphone },
+  { id: "mailboxes",   label: "Mailboxes",   icon: Server },
+  { id: "analytics",   label: "Analytics",   icon: TrendingUp },
+  { id: "logs",        label: "Logs",        icon: Activity },
+  { id: "settings",    label: "Settings",    icon: Settings },
+  { id: "billing",     label: "Billing",     icon: CreditCard },
+  { id: "support",     label: "Support",     icon: TicketCheck },
   { id: "product_hub", label: "Product Hub", icon: Sparkles },
 ];
 
@@ -489,6 +491,11 @@ export default function Admin() {
 
           {/* ── USERS ────────────────────────────────────────────────────── */}
           {tab === "users" && <AdminUsers />}
+
+          {/* ── CAMPAIGNS ────────────────────────────────────────────────── */}
+          {tab === "campaigns" && (
+            <AdminCampaigns onNavigateTab={(t) => setTab(t as Tab)} />
+          )}
 
           {/* ── MAILBOXES ─────────────────────────────────────────────────── */}
           {tab === "mailboxes" && (

@@ -7,7 +7,7 @@ import {
   emailTrackingEventsTable, backupHistoryTable,
   featureRequestsTable, bugReportsTable, announcementsTable,
 } from "@workspace/db";
-import { count, desc, sql, eq, gte, and, or, ilike, isNotNull, inArray } from "drizzle-orm";
+import { count, desc, sql, eq, gte, lte, gt, and, or, ilike, isNotNull, isNull, inArray } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
 import { logger } from "../lib/logger";
 import multer from "multer";
@@ -84,6 +84,7 @@ router.get("/admin/dashboard-overview", requireAdmin, async (_req, res): Promise
     recentSignups, recentCampaigns, recentPayments,
     openSupportTickets, openFeatureRequests, openBugReports, activeAnnouncements,
     recentActivity, queueCounts, mailboxHealth,
+    [cmSendingNow], [cmCoolingDown], [cmCompletedToday], [cmFailedToday], [cmQueuedEmails],
   ] = await Promise.all([
     db.select({ count: count() }).from(usersTable),
     db.select({ count: count() }).from(usersTable).where(eq(usersTable.status, "active")),
@@ -132,6 +133,19 @@ router.get("/admin/dashboard-overview", requireAdmin, async (_req, res): Promise
       total: count(),
       quotaReached: sql<number>`count(*) filter (where ${mailboxesTable.quotaStatus} = 'quota_reached')`,
     }).from(mailboxesTable).where(eq(mailboxesTable.isActive, true)),
+    // Campaign Monitor supplemental stats
+    db.select({ count: count() }).from(campaignsTable)
+      .where(and(eq(campaignsTable.status, "sending"), or(isNull(campaignsTable.cooldownUntil), lte(campaignsTable.cooldownUntil, new Date())))),
+    db.select({ count: count() }).from(campaignsTable)
+      .where(or(
+        and(eq(campaignsTable.status, "sending"), gt(campaignsTable.cooldownUntil, new Date())),
+        eq(campaignsTable.status, "cooling_down"),
+      )),
+    db.select({ count: count() }).from(campaignsTable)
+      .where(and(eq(campaignsTable.status, "completed"), gte(campaignsTable.updatedAt, today))),
+    db.select({ count: count() }).from(campaignsTable)
+      .where(and(eq(campaignsTable.status, "failed"), gte(campaignsTable.updatedAt, today))),
+    db.select({ count: count() }).from(emailQueueTable).where(eq(emailQueueTable.status, "pending")),
   ]);
 
   const totalSent = totalSentAllTime.count;
@@ -176,6 +190,14 @@ router.get("/admin/dashboard-overview", requireAdmin, async (_req, res): Promise
       smtp: healthyMailboxPct >= 85 ? "operational" : healthyMailboxPct >= 50 ? "degraded" : "down",
       imap: "operational",
       mailboxHealthPct: healthyMailboxPct,
+    },
+    campaignMonitor: {
+      activeCampaigns: activeCampaigns.count,
+      sendingNow:      cmSendingNow.count,
+      coolingDown:     cmCoolingDown.count,
+      completedToday:  cmCompletedToday.count,
+      failedToday:     cmFailedToday.count,
+      queuedEmails:    cmQueuedEmails.count,
     },
   });
 });
@@ -485,10 +507,14 @@ router.get("/admin/mailboxes", requireAdmin, async (_req, res): Promise<void> =>
 // sending/processor logic — purely aggregates existing tables.
 
 router.get("/admin/campaigns", requireAdmin, async (req, res): Promise<void> => {
-  const search       = (req.query.search as string) ?? "";
-  const statusFilter  = (req.query.status as string) ?? "all";
-  const sendModeFilter = (req.query.sendMode as string) ?? "all";
-  const page  = Math.max(parseInt(req.query.page as string, 10) || 1, 1);
+  const search         = (req.query.search    as string) ?? "";
+  const statusFilter   = (req.query.status    as string) ?? "all";
+  const sendModeFilter = (req.query.sendMode  as string) ?? "all";
+  const userIdFilter   = (req.query.userId    as string) ?? "";
+  const mailboxIdFilter = (req.query.mailboxId as string) ?? "";
+  const dateFrom       = (req.query.dateFrom  as string) ?? "";
+  const dateTo         = (req.query.dateTo    as string) ?? "";
+  const page  = Math.max(parseInt(req.query.page  as string, 10) || 1, 1);
   const limit = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 25, 1), 100);
 
   const conditions = [];
@@ -504,6 +530,16 @@ router.get("/admin/campaigns", requireAdmin, async (req, res): Promise<void> => 
     else conditions.push(eq(campaignsTable.status, statusFilter));
   }
   if (sendModeFilter !== "all") conditions.push(eq(campaignsTable.sendMode, sendModeFilter));
+  if (userIdFilter) {
+    const uid = parseInt(userIdFilter, 10);
+    if (!isNaN(uid)) conditions.push(eq(campaignsTable.userId, uid));
+  }
+  if (mailboxIdFilter) {
+    const mid = parseInt(mailboxIdFilter, 10);
+    if (!isNaN(mid)) conditions.push(sql`EXISTS(SELECT 1 FROM mailboxes WHERE mailboxes.user_id = ${campaignsTable.userId} AND mailboxes.id = ${mid})`);
+  }
+  if (dateFrom) conditions.push(gte(campaignsTable.createdAt, new Date(dateFrom)));
+  if (dateTo)   conditions.push(lte(campaignsTable.createdAt, new Date(dateTo)));
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -529,8 +565,10 @@ router.get("/admin/campaigns", requireAdmin, async (req, res): Promise<void> => 
     userName:      usersTable.name,
     userEmail:     usersTable.email,
     mailboxHost: sql<string | null>`(SELECT smtp_host FROM mailboxes WHERE mailboxes.user_id = campaigns.user_id LIMIT 1)`,
+    mailboxId:   sql<number | null>`(SELECT id FROM mailboxes WHERE mailboxes.user_id = campaigns.user_id LIMIT 1)`,
     mailboxQuotaStatus: sql<string | null>`(SELECT quota_status FROM mailboxes WHERE mailboxes.user_id = campaigns.user_id LIMIT 1)`,
     recentErrorsCount: sql<number>`(SELECT COUNT(*)::int FROM leads WHERE leads.campaign_id = campaigns.id AND leads.status = 'failed')`,
+    openCount: sql<number>`(SELECT COUNT(DISTINCT ete.draft_id)::int FROM email_tracking_events ete JOIN drafts d ON d.id = ete.draft_id WHERE d.campaign_id = campaigns.id AND ete.event_type = 'open')`,
   })
     .from(campaignsTable)
     .leftJoin(usersTable, eq(campaignsTable.userId, usersTable.id))
@@ -618,6 +656,122 @@ router.get("/admin/campaigns/:id", requireAdmin, async (req, res): Promise<void>
     leadCounts:    counts,
     recentFailures: recentFailures.map(f => ({ ...f, updatedAt: f.updatedAt.toISOString() })),
     recentQueueErrors: recentQueueErrors.map(f => ({ ...f, createdAt: f.createdAt.toISOString() })),
+  });
+});
+
+// ─── Admin campaign actions: Pause / Resume / Cancel ─────────────────────────
+// These update campaign status in the DB only. The running processor detects
+// the status change on its next iteration poll and stops/continues accordingly.
+// Resume sets status back to "sending" — if a processor was actively running
+// it will continue; if it had already exited the campaign owner must restart
+// from their own dashboard. This keeps admin actions safely decoupled from
+// the campaign processor lifecycle.
+
+router.post("/admin/campaigns/:id/pause", requireAdmin, async (req, res): Promise<void> => {
+  const campaignId = parseInt(req.params.id as string, 10);
+  if (!campaignId) { res.status(400).json({ success: false, error: "Invalid campaign id" }); return; }
+
+  try {
+    const [campaign] = await db.select({ id: campaignsTable.id, status: campaignsTable.status })
+      .from(campaignsTable).where(eq(campaignsTable.id, campaignId));
+    if (!campaign) { res.status(404).json({ success: false, error: "Campaign not found" }); return; }
+
+    await db.update(campaignsTable)
+      .set({ status: "paused", updatedAt: new Date() })
+      .where(eq(campaignsTable.id, campaignId));
+
+    res.json({ success: true, status: "paused" });
+  } catch (err: any) {
+    logger.error({ err, campaignId }, `Admin pause campaign error: ${err?.message}`);
+    res.status(500).json({ success: false, error: err?.message ?? "Failed to pause campaign" });
+  }
+});
+
+router.post("/admin/campaigns/:id/resume", requireAdmin, async (req, res): Promise<void> => {
+  const campaignId = parseInt(req.params.id as string, 10);
+  if (!campaignId) { res.status(400).json({ success: false, error: "Invalid campaign id" }); return; }
+
+  try {
+    const [campaign] = await db.select({ id: campaignsTable.id, status: campaignsTable.status })
+      .from(campaignsTable).where(eq(campaignsTable.id, campaignId));
+    if (!campaign) { res.status(404).json({ success: false, error: "Campaign not found" }); return; }
+    if (campaign.status !== "paused") {
+      res.status(400).json({ success: false, error: "Only paused campaigns can be resumed" }); return;
+    }
+
+    await db.update(campaignsTable)
+      .set({ status: "sending", updatedAt: new Date() })
+      .where(eq(campaignsTable.id, campaignId));
+
+    res.json({ success: true, status: "sending" });
+  } catch (err: any) {
+    logger.error({ err, campaignId }, `Admin resume campaign error: ${err?.message}`);
+    res.status(500).json({ success: false, error: err?.message ?? "Failed to resume campaign" });
+  }
+});
+
+router.post("/admin/campaigns/:id/cancel", requireAdmin, async (req, res): Promise<void> => {
+  const campaignId = parseInt(req.params.id as string, 10);
+  if (!campaignId) { res.status(400).json({ success: false, error: "Invalid campaign id" }); return; }
+
+  try {
+    const [campaign] = await db.select({ id: campaignsTable.id, status: campaignsTable.status })
+      .from(campaignsTable).where(eq(campaignsTable.id, campaignId));
+    if (!campaign) { res.status(404).json({ success: false, error: "Campaign not found" }); return; }
+    if (campaign.status === "cancelled" || campaign.status === "completed") {
+      res.status(400).json({ success: false, error: "Campaign is already finished" }); return;
+    }
+
+    await db.update(campaignsTable)
+      .set({ status: "cancelled", updatedAt: new Date() })
+      .where(eq(campaignsTable.id, campaignId));
+
+    res.json({ success: true, status: "cancelled" });
+  } catch (err: any) {
+    logger.error({ err, campaignId }, `Admin cancel campaign error: ${err?.message}`);
+    res.status(500).json({ success: false, error: err?.message ?? "Failed to cancel campaign" });
+  }
+});
+
+// ─── GET /admin/campaigns/:id/queue — email queue items for a campaign ─────────
+
+router.get("/admin/campaigns/:id/queue", requireAdmin, async (req, res): Promise<void> => {
+  const campaignId = parseInt(req.params.id as string, 10);
+  if (!campaignId) { res.status(400).json({ error: "Invalid campaign id" }); return; }
+
+  const page  = Math.max(parseInt(req.query.page  as string, 10) || 1, 1);
+  const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 100);
+
+  const [totalResult] = await db.select({ count: count() })
+    .from(emailQueueTable)
+    .where(eq(emailQueueTable.campaignId, campaignId));
+
+  const items = await db.select({
+    id:            emailQueueTable.id,
+    email:         emailQueueTable.email,
+    status:        emailQueueTable.status,
+    attempts:      emailQueueTable.attempts,
+    deferredCount: emailQueueTable.deferredCount,
+    lastError:     emailQueueTable.lastError,
+    sentAt:        emailQueueTable.sentAt,
+    retryAfter:    emailQueueTable.retryAfter,
+    createdAt:     emailQueueTable.createdAt,
+  })
+    .from(emailQueueTable)
+    .where(eq(emailQueueTable.campaignId, campaignId))
+    .orderBy(desc(emailQueueTable.createdAt))
+    .limit(limit)
+    .offset((page - 1) * limit);
+
+  res.json({
+    data: items.map(i => ({
+      ...i,
+      sentAt:     i.sentAt?.toISOString()     ?? null,
+      retryAfter: i.retryAfter?.toISOString() ?? null,
+      createdAt:  i.createdAt.toISOString(),
+    })),
+    total: totalResult?.count ?? 0,
+    page, limit,
   });
 });
 
