@@ -123,9 +123,9 @@ function StatCard({ icon: Icon, label, value, color, sub }: {
 
 function PlanBadge({ plan }: { plan: string }) {
   const styles: Record<string, string> = {
-    free:       "bg-slate-100 text-slate-600",
-    pro:        "bg-blue-100 text-blue-700",
-    enterprise: "bg-purple-100 text-purple-700",
+    free:       "bg-muted text-muted-foreground",
+    pro:        "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+    enterprise: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
   };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${styles[plan] ?? styles.free}`}>
@@ -136,8 +136,8 @@ function PlanBadge({ plan }: { plan: string }) {
 
 function StatusBadge({ status }: { status: string }) {
   return status === "active"
-    ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Active</span>
-    : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-600"><Ban className="h-3 w-3" />Suspended</span>;
+    ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Active</span>
+    : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-500/10 text-red-600 dark:text-red-400"><Ban className="h-3 w-3" />Suspended</span>;
 }
 
 function SeverityBadge({ severity }: { severity: string }) {
@@ -675,7 +675,7 @@ export default function Admin() {
           {tab === "billing" && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <p className="text-sm text-slate-500">Manage plans, subscriptions, and upgrade requests.</p>
+                <p className="text-sm text-muted-foreground">Manage plans, subscriptions, and upgrade requests.</p>
                 <Button variant="outline" size="sm" onClick={loadBillingData} className="gap-1.5 rounded-xl h-8">
                   <RefreshCw className={`h-3.5 w-3.5 ${billingLoading ? "animate-spin" : ""}`} />
                 </Button>
@@ -687,38 +687,38 @@ export default function Admin() {
                 return pending.length > 0 ? (
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-slate-800">Pending Upgrade Requests</p>
+                      <p className="text-sm font-semibold text-foreground">Pending Upgrade Requests</p>
                       <span className="px-2 py-0.5 rounded-full bg-amber-500 text-white text-xs font-bold">{pending.length}</span>
                     </div>
                     <div className="grid sm:grid-cols-2 gap-3">
                       {pending.map(r => {
                         const price = r.priceSnapshot ?? r.toPlanPrice ?? 0;
-                        const fmtPrice = (c: number) => c === 0 ? "Free" : `$${(c / 100).toFixed(0)}/mo`;
+                        const fmtPrice = (c: number) => c === 0 ? "Free" : `${(c / 100).toFixed(0)}/mo`;
                         return (
-                          <div key={r.id} className="bg-white border border-amber-200 rounded-2xl p-4 space-y-3 shadow-sm">
+                          <div key={r.id} className="bg-card border border-amber-500/30 rounded-2xl p-4 space-y-3 shadow-sm">
                             <div className="flex items-start justify-between gap-2">
                               <div>
-                                <p className="font-semibold text-slate-900 text-sm">{r.userName}</p>
-                                <p className="text-xs text-slate-400">{r.userEmail}</p>
+                                <p className="font-semibold text-foreground text-sm">{r.userName}</p>
+                                <p className="text-xs text-muted-foreground">{r.userEmail}</p>
                               </div>
                               <div className="flex flex-col items-end gap-1">
-                                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold">Pending</span>
+                                <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-semibold">Pending</span>
                                 {price > 0 && (
-                                  <span className="text-xs font-bold text-blue-700">{fmtPrice(price)}</span>
+                                  <span className="text-xs font-bold text-primary">{fmtPrice(price)}</span>
                                 )}
                               </div>
                             </div>
                             <div className="flex items-center gap-2 text-sm">
-                              <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-medium">{r.fromPlanName || "None"}</span>
-                              <ArrowUpCircle className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
-                              <span className="px-2 py-0.5 rounded-lg bg-blue-100 text-blue-700 text-xs font-semibold">{r.toPlanName}</span>
+                              <span className="px-2 py-0.5 rounded-lg bg-muted text-muted-foreground text-xs font-medium">{r.fromPlanName || "None"}</span>
+                              <ArrowUpCircle className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                              <span className="px-2 py-0.5 rounded-lg bg-primary/10 text-primary text-xs font-semibold">{r.toPlanName}</span>
                             </div>
                             {/* Payment status */}
                             <div className="flex items-center gap-2">
                               <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                r.paymentStatus === "paid" ? "bg-emerald-100 text-emerald-700"
-                                : r.paymentStatus === "not_required" ? "bg-slate-100 text-slate-500"
-                                : "bg-orange-100 text-orange-700"
+                                r.paymentStatus === "paid" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                : r.paymentStatus === "not_required" ? "bg-muted text-muted-foreground"
+                                : "bg-orange-500/10 text-orange-600 dark:text-orange-400"
                               }`}>
                                 {r.paymentStatus === "paid" ? "✓ Payment Received"
                                   : r.paymentStatus === "not_required" ? "No Payment Required"
@@ -726,19 +726,19 @@ export default function Admin() {
                               </span>
                               {r.paymentStatus !== "paid" && price > 0 && (
                                 <Button size="sm" variant="outline"
-                                  className="h-6 text-[11px] rounded-lg px-2 text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                                  className="h-6 text-[11px] rounded-lg px-2 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
                                   disabled={markingPaid === r.id}
                                   onClick={() => markRequestPaid(r.id)}>
                                   {markingPaid === r.id ? "…" : "Mark Paid"}
                                 </Button>
                               )}
                             </div>
-                            <p className="text-xs text-slate-400">{new Date(r.createdAt).toLocaleString()}</p>
+                            <p className="text-xs text-muted-foreground">{new Date(r.createdAt).toLocaleString()}</p>
                             <div className="flex gap-2">
                               <Button size="sm" className="flex-1 h-8 rounded-xl gap-1.5 text-xs" onClick={() => approvePlanRequest(r.id)}>
                                 <CheckCheck className="h-3.5 w-3.5" /> Approve
                               </Button>
-                              <Button size="sm" variant="outline" className="flex-1 h-8 rounded-xl gap-1.5 text-xs text-red-600 border-red-200 hover:bg-red-50"
+                              <Button size="sm" variant="outline" className="flex-1 h-8 rounded-xl gap-1.5 text-xs text-red-600 dark:text-red-400 border-red-500/30 hover:bg-red-500/10"
                                 onClick={() => setRejectModal({ id: r.id, note: "" })}>
                                 <XIcon className="h-3.5 w-3.5" /> Reject
                               </Button>
@@ -749,9 +749,9 @@ export default function Admin() {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
+                  <div className="flex items-center gap-3 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl">
                     <CheckCircle2 className="h-5 w-5 text-emerald-500 flex-shrink-0" />
-                    <p className="text-sm text-emerald-800">No pending upgrade requests.</p>
+                    <p className="text-sm text-emerald-700 dark:text-emerald-400">No pending upgrade requests.</p>
                   </div>
                 );
               })()}
@@ -759,34 +759,34 @@ export default function Admin() {
               {/* ── All plan requests history ─────────────────── */}
               {planRequests.filter(r => r.status !== "pending").length > 0 && (
                 <div className="space-y-3">
-                  <p className="text-sm font-semibold text-slate-800">Request History</p>
-                  <div className="overflow-x-auto rounded-xl border border-slate-100">
+                  <p className="text-sm font-semibold text-foreground">Request History</p>
+                  <div className="overflow-x-auto rounded-xl border border-border">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="bg-slate-50 border-b border-slate-100 text-left">
+                        <tr className="bg-muted/50 border-b border-border text-left">
                           {["User", "From", "To", "Price", "Payment", "Status", "Date"].map(h => (
-                            <th key={h} className="px-4 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap">{h}</th>
+                            <th key={h} className="px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {planRequests.filter(r => r.status !== "pending").slice(0, 15).map(r => {
                           const price = r.priceSnapshot ?? r.toPlanPrice ?? 0;
-                          const fmtP = (c: number) => c === 0 ? "Free" : `$${(c / 100).toFixed(0)}/mo`;
+                          const fmtP = (c: number) => c === 0 ? "Free" : `${(c / 100).toFixed(0)}/mo`;
                           return (
-                            <tr key={r.id} className="border-b border-slate-50 dark:border-slate-700/50 hover:bg-slate-50/60 dark:hover:bg-slate-700/40">
+                            <tr key={r.id} className="border-b border-border/60 hover:bg-muted/40 transition-colors">
                               <td className="px-4 py-2.5">
-                                <p className="font-medium text-slate-800 text-xs">{r.userName}</p>
-                                <p className="text-slate-400 text-xs">{r.userEmail}</p>
+                                <p className="font-medium text-foreground text-xs">{r.userName}</p>
+                                <p className="text-muted-foreground text-xs">{r.userEmail}</p>
                               </td>
-                              <td className="px-4 py-2.5 text-xs text-slate-500">{r.fromPlanName || "—"}</td>
-                              <td className="px-4 py-2.5 text-xs font-semibold text-slate-700">{r.toPlanName}</td>
-                              <td className="px-4 py-2.5 text-xs font-semibold text-blue-700">{fmtP(price)}</td>
+                              <td className="px-4 py-2.5 text-xs text-muted-foreground">{r.fromPlanName || "—"}</td>
+                              <td className="px-4 py-2.5 text-xs font-semibold text-foreground">{r.toPlanName}</td>
+                              <td className="px-4 py-2.5 text-xs font-semibold text-primary">{fmtP(price)}</td>
                               <td className="px-4 py-2.5">
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                  r.paymentStatus === "paid" ? "bg-emerald-100 text-emerald-700"
-                                  : r.paymentStatus === "not_required" ? "bg-slate-100 text-slate-500"
-                                  : "bg-orange-100 text-orange-700"
+                                  r.paymentStatus === "paid" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                  : r.paymentStatus === "not_required" ? "bg-muted text-muted-foreground"
+                                  : "bg-orange-500/10 text-orange-600 dark:text-orange-400"
                                 }`}>
                                   {r.paymentStatus === "paid" ? "Paid"
                                     : r.paymentStatus === "not_required" ? "N/A"
@@ -795,11 +795,11 @@ export default function Admin() {
                               </td>
                               <td className="px-4 py-2.5">
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                  r.status === "approved" ? "bg-emerald-100 text-emerald-700"
-                                  : r.status === "rejected" ? "bg-red-100 text-red-600"
-                                  : "bg-slate-100 text-slate-500"}`}>{r.status}</span>
+                                  r.status === "approved" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                  : r.status === "rejected" ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                                  : "bg-muted text-muted-foreground"}`}>{r.status}</span>
                               </td>
-                              <td className="px-4 py-2.5 text-xs text-slate-400">{new Date(r.createdAt).toLocaleDateString()}</td>
+                              <td className="px-4 py-2.5 text-xs text-muted-foreground">{new Date(r.createdAt).toLocaleDateString()}</td>
                             </tr>
                           );
                         })}
@@ -811,18 +811,18 @@ export default function Admin() {
 
               {/* ── User subscriptions ───────────────────────── */}
               <div className="space-y-3">
-                <p className="text-sm font-semibold text-slate-800">User Subscriptions</p>
+                <p className="text-sm font-semibold text-foreground">User Subscriptions</p>
                 {billingLoading ? (
                   <div className="space-y-2">{Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-12 rounded-xl" />)}</div>
                 ) : allSubs.length === 0 ? (
-                  <p className="text-sm text-slate-400 py-6 text-center">No active subscriptions yet. Users get subscriptions when they visit Plans & Billing.</p>
+                  <p className="text-sm text-muted-foreground py-6 text-center">No active subscriptions yet. Users get subscriptions when they visit Plans & Billing.</p>
                 ) : (
-                  <div className="overflow-x-auto rounded-xl border border-slate-100">
+                  <div className="overflow-x-auto rounded-xl border border-border">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="bg-slate-50 border-b border-slate-100 text-left">
+                        <tr className="bg-muted/50 border-b border-border text-left">
                           {["User", "Plan", "Billing", "Emails Used", "SMTP", "Period Start", "Stripe Sub", "Actions"].map(h => (
-                            <th key={h} className="px-4 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap">{h}</th>
+                            <th key={h} className="px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
                       </thead>
@@ -831,35 +831,35 @@ export default function Admin() {
                           const unlimited = s.monthlyEmailLimit === -1;
                           const pct = unlimited ? 0 : Math.min((s.emailsSentThisMonth / Math.max(s.monthlyEmailLimit, 1)) * 100, 100);
                           return (
-                            <tr key={s.userId} className="border-b border-slate-50 dark:border-slate-700/50 hover:bg-slate-50/60 dark:hover:bg-slate-700/40">
+                            <tr key={s.userId} className="border-b border-border/60 hover:bg-muted/40 transition-colors">
                               <td className="px-4 py-3">
-                                <p className="font-medium text-slate-900 text-xs">{s.userName}</p>
-                                <p className="text-slate-400 text-xs">{s.userEmail}</p>
+                                <p className="font-medium text-foreground text-xs">{s.userName}</p>
+                                <p className="text-muted-foreground text-xs">{s.userEmail}</p>
                               </td>
                               <td className="px-4 py-3">
                                 <PlanBadge plan={s.planSlug} />
                               </td>
                               <td className="px-4 py-3">
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${
-                                  s.billingStatus === "paid" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+                                  s.billingStatus === "paid" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>
                                   {s.billingStatus}
                                 </span>
                               </td>
                               <td className="px-4 py-3">
                                 <div className="flex items-center gap-2 min-w-[80px]">
-                                  <span className="text-xs font-semibold text-slate-800">{s.emailsSentThisMonth}</span>
+                                  <span className="text-xs font-semibold text-foreground">{s.emailsSentThisMonth}</span>
                                   {!unlimited && (
-                                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden min-w-[40px]">
-                                      <div className={`h-full rounded-full ${pct >= 90 ? "bg-red-500" : pct >= 75 ? "bg-amber-500" : "bg-blue-500"}`}
+                                    <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden min-w-[40px]">
+                                      <div className={`h-full rounded-full ${pct >= 90 ? "bg-red-500" : pct >= 75 ? "bg-amber-500" : "bg-primary"}`}
                                         style={{ width: `${pct}%` }} />
                                     </div>
                                   )}
-                                  <span className="text-xs text-slate-400">/ {unlimited ? "∞" : s.monthlyEmailLimit}</span>
+                                  <span className="text-xs text-muted-foreground">/ {unlimited ? "∞" : s.monthlyEmailLimit}</span>
                                 </div>
                               </td>
-                              <td className="px-4 py-3 text-xs font-semibold text-slate-700">{s.smtpAccountsUsed}</td>
-                              <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{new Date(s.currentPeriodStart).toLocaleDateString()}</td>
-                              <td className="px-4 py-3 text-xs font-mono text-slate-400">{s.stripeSubscriptionId ?? "—"}</td>
+                              <td className="px-4 py-3 text-xs font-semibold text-foreground">{s.smtpAccountsUsed}</td>
+                              <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{new Date(s.currentPeriodStart).toLocaleDateString()}</td>
+                              <td className="px-4 py-3 text-xs font-mono text-muted-foreground">{s.stripeSubscriptionId ?? "—"}</td>
                               <td className="px-4 py-3">
                                 <Button size="sm" variant="outline" className="h-7 text-xs rounded-lg px-2"
                                   onClick={() => setAssignPlanModal({ userId: s.userId, userName: s.userName, currentPlanId: s.planId })}>
@@ -877,26 +877,26 @@ export default function Admin() {
 
               {/* ── Plans config ─────────────────────────────── */}
               <div className="space-y-3">
-                <p className="text-sm font-semibold text-slate-800">Plan Configuration</p>
-                <div className="overflow-x-auto rounded-xl border border-slate-100">
+                <p className="text-sm font-semibold text-foreground">Plan Configuration</p>
+                <div className="overflow-x-auto rounded-xl border border-border">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="bg-slate-50 border-b border-slate-100 text-left">
+                      <tr className="bg-muted/50 border-b border-border text-left">
                         {["Plan", "Emails/mo", "SMTP Accts", "Campaigns", "Batch Size", ""].map(h => (
-                          <th key={h} className="px-4 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap">{h}</th>
+                          <th key={h} className="px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {allPlans.map(p => (
-                        <tr key={p.id} className="border-b border-slate-50 dark:border-slate-700/50 hover:bg-slate-50/60 dark:hover:bg-slate-700/40">
+                        <tr key={p.id} className="border-b border-border/60 hover:bg-muted/40 transition-colors">
                           <td className="px-4 py-3">
                             <PlanBadge plan={p.slug} />
-                            <p className="text-xs text-slate-400 mt-0.5">{p.description}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{p.description}</p>
                           </td>
                           {[p.monthlyEmailLimit, p.smtpAccountsLimit, p.campaignsLimit, p.batchSendLimit].map((v, i) => (
-                            <td key={i} className="px-4 py-3 font-mono text-xs font-semibold text-slate-700">
-                              {v === -1 ? <span className="text-emerald-600">∞</span> : v.toLocaleString()}
+                            <td key={i} className="px-4 py-3 font-mono text-xs font-semibold text-foreground">
+                              {v === -1 ? <span className="text-emerald-600 dark:text-emerald-400">∞</span> : v.toLocaleString()}
                             </td>
                           ))}
                           <td className="px-4 py-3">
@@ -1172,19 +1172,19 @@ export default function Admin() {
       {rejectModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setRejectModal(null)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-slate-200 z-10 p-5 space-y-4">
-            <h3 className="font-bold text-slate-900">Reject Upgrade Request</h3>
+          <div className="relative bg-card rounded-2xl shadow-2xl w-full max-w-sm border border-border z-10 p-5 space-y-4">
+            <h3 className="font-bold text-foreground">Reject Upgrade Request</h3>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Reason (optional)</label>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Reason (optional)</label>
               <textarea
                 value={rejectModal.note}
                 onChange={e => setRejectModal(r => r ? { ...r, note: e.target.value } : null)}
                 placeholder="Let the user know why their request was rejected…"
-                className="w-full h-24 px-3 py-2 rounded-xl border border-slate-200 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full h-24 px-3 py-2 rounded-xl border border-input bg-background text-foreground text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
             <div className="flex gap-2">
-              <Button className="flex-1 rounded-xl bg-red-600 hover:bg-red-700 gap-1.5"
+              <Button className="flex-1 rounded-xl bg-red-600 hover:bg-red-700 text-white gap-1.5"
                 onClick={() => rejectPlanRequest(rejectModal.id, rejectModal.note)}>
                 <XIcon className="h-4 w-4" /> Reject Request
               </Button>
@@ -1198,22 +1198,22 @@ export default function Admin() {
       {assignPlanModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setAssignPlanModal(null)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-slate-200 z-10 p-5 space-y-4">
+          <div className="relative bg-card rounded-2xl shadow-2xl w-full max-w-sm border border-border z-10 p-5 space-y-4">
             <div>
-              <h3 className="font-bold text-slate-900">Assign Plan</h3>
-              <p className="text-xs text-slate-500 mt-0.5">for {assignPlanModal.userName}</p>
+              <h3 className="font-bold text-foreground">Assign Plan</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">for {assignPlanModal.userName}</p>
             </div>
             <div className="space-y-2">
               {allPlans.map(p => (
                 <button key={p.id} onClick={() => doAssignPlan(assignPlanModal.userId, p.id)}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border text-sm transition-colors ${
                     p.id === assignPlanModal.currentPlanId
-                      ? "border-blue-500 bg-blue-50 text-blue-700"
-                      : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border hover:border-primary/40 hover:bg-muted/50 text-foreground"
                   }`}>
                   <span className="font-semibold">{p.name}</span>
-                  <span className="text-xs text-slate-500">{p.monthlyEmailLimit === -1 ? "∞" : p.monthlyEmailLimit.toLocaleString()} emails/mo</span>
-                  {p.id === assignPlanModal.currentPlanId && <CheckCircle2 className="h-4 w-4 text-blue-600" />}
+                  <span className="text-xs text-muted-foreground">{p.monthlyEmailLimit === -1 ? "∞" : p.monthlyEmailLimit.toLocaleString()} emails/mo</span>
+                  {p.id === assignPlanModal.currentPlanId && <CheckCircle2 className="h-4 w-4 text-primary" />}
                 </button>
               ))}
             </div>
@@ -1226,14 +1226,14 @@ export default function Admin() {
       {editPlan && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setEditPlan(null)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-slate-200 z-10 overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-blue-50 flex items-center justify-center">
-                <CreditCard className="h-4 w-4 text-blue-600" />
+          <div className="relative bg-card rounded-2xl shadow-2xl w-full max-w-sm border border-border z-10 overflow-hidden">
+            <div className="px-5 py-4 border-b border-border flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                <CreditCard className="h-4 w-4 text-primary" />
               </div>
               <div>
-                <p className="font-semibold text-slate-900 text-sm">Edit {editPlan.name} Plan</p>
-                <p className="text-xs text-slate-500">Use -1 for unlimited</p>
+                <p className="font-semibold text-foreground text-sm">Edit {editPlan.name} Plan</p>
+                <p className="text-xs text-muted-foreground">Use -1 for unlimited</p>
               </div>
             </div>
             <div className="p-5 grid grid-cols-2 gap-3">
@@ -1244,7 +1244,7 @@ export default function Admin() {
                 { key: "batchSendLimit",     label: "Batch Size" },
               ].map(f => (
                 <div key={f.key} className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{f.label}</label>
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{f.label}</label>
                   <Input type="number"
                     value={(editPlanForm as any)[f.key]}
                     onChange={e => setEditPlanForm(form => ({ ...form, [f.key]: parseInt(e.target.value) || 0 }))}
