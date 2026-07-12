@@ -85,6 +85,7 @@ router.get("/admin/dashboard-overview", requireAdmin, async (_req, res): Promise
     openSupportTickets, openFeatureRequests, openBugReports, activeAnnouncements,
     recentActivity, queueCounts, mailboxHealth,
     [cmSendingNow], [cmCoolingDown], [cmCompletedToday], [cmFailedToday], [cmQueuedEmails],
+    [mbTotal], [mbConnected], [mbDisconnected], [mbCoolingDown], [mbActiveToday], [mbFailed],
   ] = await Promise.all([
     db.select({ count: count() }).from(usersTable),
     db.select({ count: count() }).from(usersTable).where(eq(usersTable.status, "active")),
@@ -146,6 +147,13 @@ router.get("/admin/dashboard-overview", requireAdmin, async (_req, res): Promise
     db.select({ count: count() }).from(campaignsTable)
       .where(and(eq(campaignsTable.status, "failed"), gte(campaignsTable.updatedAt, today))),
     db.select({ count: count() }).from(emailQueueTable).where(eq(emailQueueTable.status, "pending")),
+    // Mailbox Monitor stats
+    db.select({ count: count() }).from(mailboxesTable),
+    db.select({ count: count() }).from(mailboxesTable).where(and(eq(mailboxesTable.isActive, true), isNull(mailboxesTable.quotaStatus))),
+    db.select({ count: count() }).from(mailboxesTable).where(eq(mailboxesTable.isActive, false)),
+    db.select({ count: count() }).from(mailboxesTable).where(eq(mailboxesTable.quotaStatus, "quota_reached")),
+    db.select({ count: sql<number>`count(distinct ${emailQueueTable.mailboxId})::int` }).from(emailQueueTable).where(and(isNotNull(emailQueueTable.firstAttemptAt), gte(emailQueueTable.firstAttemptAt, today))),
+    db.select({ count: count() }).from(mailboxesTable).where(and(isNotNull(mailboxesTable.quotaStatus), gt(mailboxesTable.quotaProbeCount, 2))),
   ]);
 
   const totalSent = totalSentAllTime.count;
@@ -198,6 +206,16 @@ router.get("/admin/dashboard-overview", requireAdmin, async (_req, res): Promise
       completedToday:  cmCompletedToday.count,
       failedToday:     cmFailedToday.count,
       queuedEmails:    cmQueuedEmails.count,
+    },
+    mailboxMonitor: {
+      totalMailboxes:    mbTotal.count,
+      connected:         mbConnected.count,
+      disconnected:      mbDisconnected.count,
+      coolingDown:       mbCoolingDown.count,
+      smtpAccounts:      mbTotal.count,
+      gmailAccounts:     gmailUsers.count,
+      activeToday:       mbActiveToday.count,
+      failedConnections: mbFailed.count,
     },
   });
 });
@@ -480,26 +498,221 @@ router.post("/admin/users/remove", requireAdmin, async (req, res): Promise<void>
 
 // ─── Mailboxes ────────────────────────────────────────────────────────────────
 
-router.get("/admin/mailboxes", requireAdmin, async (_req, res): Promise<void> => {
-  const mailboxes = await db.select({
-    id:         mailboxesTable.id,
-    userId:     mailboxesTable.userId,
-    userName:   usersTable.name,
-    userEmail:  usersTable.email,
-    smtpHost:   mailboxesTable.smtpHost,
-    smtpPort:   mailboxesTable.smtpPort,
-    smtpUser:   mailboxesTable.smtpUser,
-    smtpSecure: mailboxesTable.smtpSecure,
-    fromName:   mailboxesTable.fromName,
-    isActive:   mailboxesTable.isActive,
-    createdAt:  mailboxesTable.createdAt,
-    emailsSent: sql<number>`(SELECT COUNT(*)::int FROM drafts WHERE drafts.user_id = ${mailboxesTable.userId} AND drafts.status = 'success' AND drafts.gmail_draft_id LIKE 'smtp:%')`,
-  })
-    .from(mailboxesTable)
-    .leftJoin(usersTable, eq(mailboxesTable.userId, usersTable.id))
-    .orderBy(desc(mailboxesTable.createdAt));
+router.get("/admin/mailboxes", requireAdmin, async (req, res): Promise<void> => {
+  const search   = (req.query.search   as string) ?? "";
+  const userId   = (req.query.userId   as string) ?? "";
+  const status   = (req.query.status   as string) ?? "all";
+  const provider = (req.query.provider as string) ?? "";
+  const dateFrom = (req.query.dateFrom as string) ?? "";
+  const dateTo   = (req.query.dateTo   as string) ?? "";
+  const page     = Math.max(1, parseInt((req.query.page  as string) ?? "1",  10));
+  const limit    = Math.min(100, Math.max(1, parseInt((req.query.limit as string) ?? "25", 10)));
+  const offset   = (page - 1) * limit;
+  const hourAgo  = new Date(Date.now() - 3_600_000);
 
-  res.json(mailboxes.map(m => ({ ...m, createdAt: m.createdAt?.toISOString() ?? null })));
+  const conditions: ReturnType<typeof eq>[] = [];
+
+  if (search) {
+    conditions.push(or(
+      ilike(mailboxesTable.smtpUser,  `%${search}%`),
+      ilike(mailboxesTable.fromName,  `%${search}%`),
+      ilike(mailboxesTable.smtpHost,  `%${search}%`),
+      ilike(usersTable.name,          `%${search}%`),
+      ilike(usersTable.email,         `%${search}%`),
+    ) as any);
+  }
+  if (userId) {
+    const uid = parseInt(userId, 10);
+    if (!isNaN(uid)) conditions.push(eq(mailboxesTable.userId, uid) as any);
+  }
+  if (status === "active")       conditions.push(and(eq(mailboxesTable.isActive, true),  isNull(mailboxesTable.quotaStatus)) as any);
+  else if (status === "inactive")     conditions.push(eq(mailboxesTable.isActive, false) as any);
+  else if (status === "cooling_down") conditions.push(eq(mailboxesTable.quotaStatus, "quota_reached") as any);
+  else if (status === "recovering")   conditions.push(and(eq(mailboxesTable.quotaStatus, "quota_reached"), gt(mailboxesTable.quotaProbeCount, 0)) as any);
+
+  if (provider === "google")    conditions.push(ilike(mailboxesTable.smtpHost, "%gmail%") as any);
+  else if (provider === "microsoft") conditions.push(or(ilike(mailboxesTable.smtpHost, "%outlook%"), ilike(mailboxesTable.smtpHost, "%office365%")) as any);
+  else if (provider === "sendgrid")  conditions.push(ilike(mailboxesTable.smtpHost, "%sendgrid%") as any);
+  else if (provider === "mailgun")   conditions.push(ilike(mailboxesTable.smtpHost, "%mailgun%") as any);
+  else if (provider === "amazon")    conditions.push(ilike(mailboxesTable.smtpHost, "%amazonaws%") as any);
+
+  if (dateFrom) { const d = new Date(dateFrom); if (!isNaN(d.getTime())) conditions.push(gte(mailboxesTable.createdAt, d) as any); }
+  if (dateTo)   { const d = new Date(dateTo); d.setHours(23, 59, 59, 999); if (!isNaN(d.getTime())) conditions.push(lte(mailboxesTable.createdAt, d) as any); }
+
+  const where = conditions.length > 0 ? and(...(conditions as any[])) : undefined;
+
+  const [rows, [{ total }]] = await Promise.all([
+    db.select({
+      id:         mailboxesTable.id,
+      userId:     mailboxesTable.userId,
+      userName:   usersTable.name,
+      userEmail:  usersTable.email,
+      smtpHost:   mailboxesTable.smtpHost,
+      smtpPort:   mailboxesTable.smtpPort,
+      smtpUser:   mailboxesTable.smtpUser,
+      smtpSecure: mailboxesTable.smtpSecure,
+      fromName:   mailboxesTable.fromName,
+      replyTo:    mailboxesTable.replyTo,
+      imapHost:   mailboxesTable.imapHost,
+      imapPort:   mailboxesTable.imapPort,
+      imapUser:   mailboxesTable.imapUser,
+      isActive:   mailboxesTable.isActive,
+      maxPerHour: mailboxesTable.maxPerHour,
+      batchSize:  mailboxesTable.batchSize,
+      quotaStatus:        mailboxesTable.quotaStatus,
+      quotaCooldownUntil: mailboxesTable.quotaCooldownUntil,
+      quotaProbeCount:    mailboxesTable.quotaProbeCount,
+      quotaSmtpResponse:  mailboxesTable.quotaSmtpResponse,
+      quotaReachedAt:     mailboxesTable.quotaReachedAt,
+      cooldownMinutes:    mailboxesTable.cooldownMinutes,
+      probeRetryMinutes:  mailboxesTable.probeRetryMinutes,
+      createdAt:  mailboxesTable.createdAt,
+      updatedAt:  mailboxesTable.updatedAt,
+      emailsSent:   sql<number>`(SELECT COUNT(*)::int FROM email_queue WHERE email_queue.mailbox_id = ${mailboxesTable.id} AND email_queue.status = 'success')`,
+      usedThisHour: sql<number>`(SELECT COUNT(*)::int FROM email_queue WHERE email_queue.mailbox_id = ${mailboxesTable.id} AND email_queue.first_attempt_at >= ${hourAgo})`,
+      deferredCount: sql<number>`(SELECT COUNT(*)::int FROM email_queue WHERE email_queue.mailbox_id = ${mailboxesTable.id} AND email_queue.status = 'deferred')`,
+      lastSuccessAt: sql<string | null>`(SELECT MAX(sent_at)::text FROM email_queue WHERE email_queue.mailbox_id = ${mailboxesTable.id} AND email_queue.status = 'success')`,
+      lastError:     sql<string | null>`(SELECT last_error FROM email_queue WHERE email_queue.mailbox_id = ${mailboxesTable.id} AND email_queue.status IN ('failed','deferred') ORDER BY id DESC LIMIT 1)`,
+      activeCampaigns: sql<number>`(SELECT COUNT(*)::int FROM campaigns WHERE campaigns.user_id = ${mailboxesTable.userId} AND campaigns.status IN ('pending','sending','paused','queued','cooling_down'))`,
+      openCount:    sql<number>`(SELECT COUNT(*)::int FROM email_tracking_events ete JOIN drafts d ON d.id = ete.draft_id WHERE d.user_id = ${mailboxesTable.userId} AND ete.event_type = 'open')`,
+      suppressed:   sql<number>`(SELECT COUNT(*)::int FROM suppression_list WHERE suppression_list.user_id = ${mailboxesTable.userId})`,
+    })
+      .from(mailboxesTable)
+      .leftJoin(usersTable, eq(mailboxesTable.userId, usersTable.id))
+      .where(where)
+      .orderBy(desc(mailboxesTable.updatedAt))
+      .limit(limit)
+      .offset(offset),
+    db.select({ total: count() })
+      .from(mailboxesTable)
+      .leftJoin(usersTable, eq(mailboxesTable.userId, usersTable.id))
+      .where(where),
+  ]);
+
+  res.json({
+    data: rows.map(m => ({
+      ...m,
+      createdAt:          m.createdAt?.toISOString()          ?? null,
+      updatedAt:          m.updatedAt?.toISOString()          ?? null,
+      quotaReachedAt:     m.quotaReachedAt?.toISOString()     ?? null,
+      quotaCooldownUntil: m.quotaCooldownUntil?.toISOString() ?? null,
+    })),
+    total,
+    page,
+    limit,
+  });
+});
+
+// ─── Mailbox Actions ──────────────────────────────────────────────────────────
+
+router.post("/admin/mailboxes/:id/disable", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  const [mb] = await db.select({ id: mailboxesTable.id }).from(mailboxesTable).where(eq(mailboxesTable.id, id));
+  if (!mb) { res.status(404).json({ error: "Mailbox not found" }); return; }
+  await db.update(mailboxesTable).set({ isActive: false, updatedAt: new Date() }).where(eq(mailboxesTable.id, id));
+  res.json({ success: true });
+});
+
+router.post("/admin/mailboxes/:id/enable", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  const [mb] = await db.select({ id: mailboxesTable.id }).from(mailboxesTable).where(eq(mailboxesTable.id, id));
+  if (!mb) { res.status(404).json({ error: "Mailbox not found" }); return; }
+  await db.update(mailboxesTable).set({ isActive: true, updatedAt: new Date() }).where(eq(mailboxesTable.id, id));
+  res.json({ success: true });
+});
+
+router.post("/admin/mailboxes/:id/force-quota-reset", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  const [mb] = await db.select({ id: mailboxesTable.id }).from(mailboxesTable).where(eq(mailboxesTable.id, id));
+  if (!mb) { res.status(404).json({ error: "Mailbox not found" }); return; }
+  await db.update(mailboxesTable).set({
+    quotaStatus:        null,
+    quotaReachedAt:     null,
+    quotaCooldownUntil: null,
+    quotaSmtpResponse:  null,
+    quotaProbeCount:    0,
+    updatedAt: new Date(),
+  }).where(eq(mailboxesTable.id, id));
+  res.json({ success: true });
+});
+
+router.post("/admin/mailboxes/:id/test-connection", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  const [mailbox] = await db.select().from(mailboxesTable).where(eq(mailboxesTable.id, id));
+  if (!mailbox) { res.status(404).json({ error: "Mailbox not found" }); return; }
+  const decryptedPass = decrypt(mailbox.smtpPassEncrypted);
+  const transport = nodemailer.createTransport(buildTransportOptions(mailbox, decryptedPass) as any);
+  try {
+    await transport.verify();
+    res.json({ ok: true, message: "SMTP connection verified successfully" });
+  } catch (err: any) {
+    res.status(502).json({ ok: false, error: err?.message ?? "SMTP verification failed", code: err?.code });
+  } finally {
+    transport.close();
+  }
+});
+
+router.get("/admin/mailboxes/:id/queue", requireAdmin, async (req, res): Promise<void> => {
+  const id     = parseInt(req.params.id, 10);
+  const page   = Math.max(1, parseInt((req.query.page  as string) ?? "1",  10));
+  const limit  = Math.min(100, parseInt((req.query.limit as string) ?? "50", 10));
+  const offset = (page - 1) * limit;
+
+  const [rows, [{ total }]] = await Promise.all([
+    db.select({
+      id:           emailQueueTable.id,
+      email:        emailQueueTable.email,
+      status:       emailQueueTable.status,
+      attempts:     emailQueueTable.attempts,
+      deferredCount: emailQueueTable.deferredCount,
+      lastError:    emailQueueTable.lastError,
+      sentAt:       emailQueueTable.sentAt,
+      retryAfter:   emailQueueTable.retryAfter,
+      createdAt:    emailQueueTable.createdAt,
+    })
+      .from(emailQueueTable)
+      .where(eq(emailQueueTable.mailboxId, id))
+      .orderBy(desc(emailQueueTable.id))
+      .limit(limit)
+      .offset(offset),
+    db.select({ total: count() }).from(emailQueueTable).where(eq(emailQueueTable.mailboxId, id)),
+  ]);
+
+  res.json({
+    data: rows.map(r => ({
+      ...r,
+      sentAt:     r.sentAt?.toISOString()     ?? null,
+      retryAfter: r.retryAfter?.toISOString() ?? null,
+      createdAt:  r.createdAt.toISOString(),
+    })),
+    total, page, limit,
+  });
+});
+
+router.get("/admin/mailboxes/:id/smtp-usage", requireAdmin, async (req, res): Promise<void> => {
+  const id    = parseInt(req.params.id, 10);
+  const since = new Date(Date.now() - 24 * 3_600_000);
+
+  const rows = await db
+    .select({
+      hour:    sql<string>`date_trunc('hour', ${emailQueueTable.firstAttemptAt})::text`,
+      total:   count(),
+      success: sql<number>`count(*) filter (where ${emailQueueTable.status} = 'success')::int`,
+      failed:  sql<number>`count(*) filter (where ${emailQueueTable.status} IN ('failed','deferred'))::int`,
+    })
+    .from(emailQueueTable)
+    .where(and(
+      eq(emailQueueTable.mailboxId, id),
+      isNotNull(emailQueueTable.firstAttemptAt),
+      gte(emailQueueTable.firstAttemptAt, since),
+    ))
+    .groupBy(sql`date_trunc('hour', ${emailQueueTable.firstAttemptAt})`)
+    .orderBy(sql`date_trunc('hour', ${emailQueueTable.firstAttemptAt})`);
+
+  const peak = rows.reduce((mx, r) => Math.max(mx, Number(r.total)), 0);
+  const avg  = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + Number(r.total), 0) / rows.length) : 0;
+
+  res.json({ data: rows, peak, avg });
 });
 
 // ─── Campaign Monitor ──────────────────────────────────────────────────────────

@@ -1,0 +1,242 @@
+Phase 5 (Campaign Monitor) is approved.
+
+Now begin Phase 6 — Admin Mailboxes.
+
+IMPORTANT
+
+Before writing code, inspect the existing Mailboxes admin tab and reuse as much backend and frontend as possible.
+
+Do NOT rebuild working functionality.
+
+Reuse existing APIs wherever possible.
+
+Only create or extend endpoints if absolutely necessary.
+
+No database schema changes unless required.
+
+Do not modify SMTP sending logic or quota recovery logic.
+
+Use theme tokens only.
+
+Everything must work correctly in both Light and Dark mode.
+
+Desktop and mobile responsive.
+
+=====================================
+GOAL
+=====================================
+
+Turn the Mailboxes page into a professional operations dashboard.
+
+=====================================
+OVERVIEW CARDS
+=====================================
+
+Top overview cards:
+
+• Total Mailboxes
+• Connected
+• Disconnected
+• Cooling Down
+• SMTP Accounts
+• Gmail Accounts
+• Active Today
+• Failed Connections
+
+=====================================
+FILTERS
+=====================================
+
+Search
+
+User
+
+Mailbox
+
+Connection Type
+
+Status
+
+Provider
+
+Date
+
+=====================================
+TABLE
+=====================================
+
+Show:
+
+Mailbox Name
+
+Owner
+
+Email Address
+
+Provider
+
+SMTP / Gmail badge
+
+Connection Status
+
+Quota Status
+
+Current Hour Usage
+
+Hourly Limit
+
+Cooldown Remaining
+
+Last Successful Send
+
+Last Error
+
+Campaigns Using This Mailbox
+
+Created
+
+Last Activity
+
+=====================================
+ROW ACTIONS
+=====================================
+
+View Mailbox
+
+View Campaigns
+
+View SMTP Usage
+
+View Queue
+
+Test Connection
+
+Reconnect
+
+Disable
+
+Enable
+
+Force Quota Reset
+
+View Logs
+
+=====================================
+MAILBOX DETAILS DRAWER
+=====================================
+
+Professional side drawer with:
+
+Mailbox Information
+
+SMTP Configuration (masked)
+
+IMAP Configuration (masked)
+
+Provider
+
+Health Status
+
+Live SMTP Status
+
+Hourly Usage
+
+Cooldown Timer
+
+Probe Attempts
+
+Bounce Rate
+
+Open Rate
+
+Suppressed Count
+
+Deferred Queue
+
+Retry Queue
+
+Recent SMTP Events
+
+Recent Campaigns
+
+=====================================
+SMTP USAGE
+=====================================
+
+Beautiful hourly usage chart
+
+Daily history
+
+Last 24 hours
+
+Peak usage
+
+Average usage
+
+=====================================
+HEALTH
+=====================================
+
+Professional health indicator.
+
+States:
+
+Connected
+
+Healthy
+
+Cooling Down
+
+Recovering
+
+Authentication Failed
+
+Disconnected
+
+Warning
+
+=====================================
+AUTO REFRESH
+=====================================
+
+Refresh every 30 seconds while live activity exists.
+
+=====================================
+BACKEND
+=====================================
+
+Reuse existing mailbox endpoints whenever possible.
+
+Extend existing endpoints before creating new ones.
+
+Only create endpoints if existing APIs cannot support the UI.
+
+=====================================
+DESIGN
+=====================================
+
+Match the quality of the new Dashboard and Campaign Monitor.
+
+No hardcoded colors.
+
+Theme tokens only.
+
+Consistent spacing.
+
+Professional badges.
+
+Consistent tables.
+
+Consistent cards.
+
+=====================================
+IMPORTANT
+=====================================
+
+When Phase 6 is complete:
+
+STOP.
+
+Do NOT begin Phase 7.
+
+I want to review the Mailboxes page before continuing.

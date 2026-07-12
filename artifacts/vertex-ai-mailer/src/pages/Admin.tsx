@@ -4,6 +4,7 @@ import { AdminProductHub } from "./AdminProductHub";
 import { AdminOverview } from "./admin/AdminOverview";
 import { AdminUsers } from "./admin/AdminUsers";
 import { AdminCampaigns } from "./admin/AdminCampaigns";
+import { AdminMailboxes } from "./admin/AdminMailboxes";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -498,65 +499,7 @@ export default function Admin() {
           )}
 
           {/* ── MAILBOXES ─────────────────────────────────────────────────── */}
-          {tab === "mailboxes" && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-slate-600"><span className="font-semibold text-slate-900">{mailboxes.length}</span> connected SMTP mailbox{mailboxes.length !== 1 ? "es" : ""}</p>
-                <Button variant="outline" size="sm" onClick={loadMailboxes} className="gap-1.5 rounded-xl h-8">
-                  <RefreshCw className={`h-3.5 w-3.5 ${mailboxesLoading ? "animate-spin" : ""}`} />
-                </Button>
-              </div>
-
-              {mailboxesLoading ? (
-                <div className="space-y-2">
-                  {Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}
-                </div>
-              ) : mailboxes.length === 0 ? (
-                <div className="py-16 text-center">
-                  <Server className="h-10 w-10 mx-auto text-slate-200 mb-3" />
-                  <p className="text-slate-500 text-sm">No SMTP mailboxes configured yet.</p>
-                  <p className="text-slate-400 text-xs mt-1">Users connect mailboxes from their Mailbox Settings page.</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto rounded-xl border border-slate-100">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-100 text-left">
-                        {["User", "SMTP Address", "Provider", "Security", "Emails Sent", "Status", "Connected"].map(h => (
-                          <th key={h} className="px-4 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {mailboxes.map(m => (
-                        <tr key={m.id} className="border-b border-slate-50 dark:border-slate-700/50 hover:bg-slate-50/60 dark:hover:bg-slate-700/40">
-                          <td className="px-4 py-3">
-                            <p className="font-medium text-slate-900 text-sm">{m.userName ?? "—"}</p>
-                            <p className="text-xs text-slate-400">{m.userEmail ?? "—"}</p>
-                          </td>
-                          <td className="px-4 py-3">
-                            <p className="text-sm font-mono text-slate-700">{m.smtpUser}</p>
-                            <p className="text-xs text-slate-400">{m.fromName ?? ""}</p>
-                          </td>
-                          <td className="px-4 py-3 text-xs text-slate-600 font-mono">{m.smtpHost}:{m.smtpPort}</td>
-                          <td className="px-4 py-3">
-                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 uppercase">{m.smtpSecure}</span>
-                          </td>
-                          <td className="px-4 py-3 font-semibold text-slate-800 text-xs">{m.emailsSent.toLocaleString()}</td>
-                          <td className="px-4 py-3">
-                            {m.isActive
-                              ? <span className="flex items-center gap-1 text-xs text-emerald-600 font-semibold"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Active</span>
-                              : <span className="flex items-center gap-1 text-xs text-slate-400"><span className="h-1.5 w-1.5 rounded-full bg-slate-300" />Inactive</span>}
-                          </td>
-                          <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{new Date(m.createdAt).toLocaleDateString()}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
+          {tab === "mailboxes" && <AdminMailboxes />}
 
           {/* ── ANALYTICS ─────────────────────────────────────────────────── */}
           {tab === "analytics" && (
