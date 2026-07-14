@@ -1,0 +1,332 @@
+We are continuing development of BrokerMAIL AI.
+
+IMPORTANT
+
+Before writing ANY code:
+
+1. Inspect the entire repository.
+2. Read the current Admin components.
+3. Determine exactly what was already completed.
+4. Continue from the current implementation.
+5. Do NOT rebuild completed work.
+6. Do NOT duplicate components.
+7. Reuse existing backend APIs wherever possible.
+8. Extend existing endpoints before creating new ones.
+9. No database schema changes unless absolutely necessary.
+10. Use theme tokens only.
+11. Support both Light and Dark mode.
+12. Keep desktop and mobile responsive.
+
+========================================
+CURRENT PROJECT STATUS
+========================================
+
+USER PANEL
+
+✔ Mailbox redesign
+✔ SMTP quota recovery
+✔ Bounce scanner
+✔ Suppression List redesign
+✔ Campaign page improvements
+✔ Campaign remaining fixes
+✔ Deferred cleanup
+✔ Retry queue cleanup
+✔ Mailbox Health redesign
+
+ADMIN PANEL
+
+✔ Phase 1 Audit
+✔ Phase 2 Dashboard
+✔ Phase 3 User Management
+✔ Phase 4 Billing / Subscriptions
+✔ Phase 5 Campaign Monitor
+
+Phase 6 (Admin Mailboxes) was STARTED but NOT FINISHED.
+
+Before building anything:
+
+Audit the current AdminMailboxes.tsx and backend admin routes.
+
+Determine exactly what has already been implemented.
+
+Continue only the missing pieces.
+
+========================================
+PHASE 6
+Admin Mailboxes
+========================================
+
+Finish only the missing functionality.
+
+Professional operations center including:
+
+Overview cards
+
+• Total Mailboxes
+• Connected
+• Disconnected
+• Cooling Down
+• SMTP
+• Gmail
+• Active Today
+• Failed Connections
+
+Filters
+
+Search
+
+Provider
+
+Status
+
+Connection Type
+
+User
+
+Date
+
+Professional table
+
+Mailbox
+
+Owner
+
+Provider
+
+SMTP/Gmail
+
+Connection
+
+Quota
+
+Hourly Usage
+
+Cooldown
+
+Last Successful Send
+
+Last Error
+
+Campaign Count
+
+Created
+
+Last Activity
+
+Actions
+
+View
+
+View Campaigns
+
+View SMTP Usage
+
+View Queue
+
+View SMTP Events
+
+Test SMTP
+
+Test IMAP
+
+Force Reconnect
+
+Disable
+
+Enable
+
+Reset Quota
+
+Drawer
+
+SMTP
+
+IMAP
+
+Provider
+
+Live Status
+
+Usage
+
+Cooldown
+
+Probe Attempts
+
+Retry Queue
+
+Deferred Queue
+
+Recent Events
+
+Campaigns
+
+Usage charts
+
+Health
+
+Connected
+
+Cooling Down
+
+Recovering
+
+Authentication Failed
+
+Disconnected
+
+Warning
+
+Auto-refresh while active.
+
+Reuse backend wherever possible.
+
+If endpoints are missing, extend existing admin routes before creating new ones.
+
+When Phase 6 is complete:
+
+STOP.
+
+Do NOT continue automatically.
+
+I want to review it.
+
+========================================
+AFTER I APPROVE PHASE 6
+========================================
+
+Continue in this exact order:
+
+Phase 7
+Support Center
+
+- Support Tickets
+- Contact Messages
+- Internal Notes
+- Assignment
+- Priority
+- Status
+- Search
+- Filters
+
+Stop for review.
+
+Phase 8
+Product Hub
+
+- What's New
+- Releases
+- Roadmap
+- Announcements
+
+Stop for review.
+
+Phase 9
+Bug Reports
+
+Professional management
+
+Stop for review.
+
+Phase 10
+Feature Requests
+
+Voting
+
+Status
+
+Roadmap linkage
+
+Stop for review.
+
+Phase 11
+Analytics
+
+MRR
+
+Growth
+
+Users
+
+Campaigns
+
+Mailboxes
+
+Open Rate
+
+Bounce Rate
+
+Revenue
+
+Charts
+
+Stop for review.
+
+Phase 12
+Platform Monitoring
+
+API
+
+Database
+
+Workers
+
+Queues
+
+SMTP
+
+IMAP
+
+Cron Jobs
+
+Sessions
+
+Errors
+
+Memory
+
+CPU
+
+Disk
+
+Stop for review.
+
+Phase 13
+Audit Logs
+
+Professional filtering
+
+Export
+
+Timeline
+
+User activity
+
+Admin activity
+
+Security events
+
+Stop for review.
+
+Phase 14
+Final Polish
+
+Accessibility
+
+Mobile responsiveness
+
+Theme consistency
+
+Performance
+
+Empty states
+
+Loading states
+
+Animations
+
+Consistency audit
+
+STOP.
+
+Do not continue beyond each phase until I approve it.

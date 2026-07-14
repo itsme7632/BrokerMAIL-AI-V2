@@ -658,7 +658,16 @@ router.get("/admin/mailboxes/:id/queue", requireAdmin, async (req, res): Promise
   const id     = parseInt(req.params.id, 10);
   const page   = Math.max(1, parseInt((req.query.page  as string) ?? "1",  10));
   const limit  = Math.min(100, parseInt((req.query.limit as string) ?? "50", 10));
+  const view   = (req.query.view as string) ?? "all"; // all | retry | deferred
   const offset = (page - 1) * limit;
+
+  const baseCondition = eq(emailQueueTable.mailboxId, id);
+  // "Deferred" = items currently backed off after a soft failure (status='deferred').
+  // "Retry"    = items that failed at least once and are queued for another attempt.
+  const where =
+    view === "deferred" ? and(baseCondition, eq(emailQueueTable.status, "deferred")) :
+    view === "retry"    ? and(baseCondition, inArray(emailQueueTable.status, ["pending", "queued"]), gt(emailQueueTable.attempts, 0)) :
+    baseCondition;
 
   const [rows, [{ total }]] = await Promise.all([
     db.select({
@@ -673,11 +682,11 @@ router.get("/admin/mailboxes/:id/queue", requireAdmin, async (req, res): Promise
       createdAt:    emailQueueTable.createdAt,
     })
       .from(emailQueueTable)
-      .where(eq(emailQueueTable.mailboxId, id))
+      .where(where)
       .orderBy(desc(emailQueueTable.id))
       .limit(limit)
       .offset(offset),
-    db.select({ total: count() }).from(emailQueueTable).where(eq(emailQueueTable.mailboxId, id)),
+    db.select({ total: count() }).from(emailQueueTable).where(where),
   ]);
 
   res.json({

@@ -34,8 +34,8 @@ import {
   CheckCircle2, XCircle, AlertTriangle, Loader2,
   Zap, Clock, Mail, Activity, ChevronLeft, ChevronRight,
   Eye, List, Wifi, WifiOff, BarChart3, Inbox,
-  Shield, ShieldOff, RotateCcw, PlayCircle, Ban,
-  TrendingUp, Users, Globe, Timer, Database,
+  History, RotateCcw, PlayCircle, Ban,
+  TrendingUp, Users, Database,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -104,6 +104,25 @@ interface SmtpUsagePoint {
   total: number;
   success: number;
   failed: number;
+}
+
+interface SmtpHistoryItem {
+  id: number;
+  email: string;
+  subject: string | null;
+  status: string;
+  attempts: number;
+  deferredCount: number;
+  lastError: string | null;
+  sentAt: string | null;
+  firstAttemptAt: string | null;
+  createdAt: string;
+}
+
+interface UserLite {
+  id: number;
+  name: string | null;
+  email: string;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -278,26 +297,35 @@ function CooldownRemaining({ until }: { until: string | null }) {
 
 // ─── Queue drawer ─────────────────────────────────────────────────────────────
 
+const QUEUE_VIEWS = [
+  { value: "all",      label: "All" },
+  { value: "retry",    label: "Retry Queue" },
+  { value: "deferred", label: "Deferred Queue" },
+];
+
 function QueueDrawer({ mailboxId, mailboxEmail, open, onClose }: {
   mailboxId: number; mailboxEmail: string; open: boolean; onClose: () => void;
 }) {
   const [items, setItems]     = useState<QueueItem[]>([]);
   const [total, setTotal]     = useState(0);
   const [page, setPage]       = useState(1);
+  const [view, setView]       = useState("all");
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!open) return;
     setLoading(true);
     try {
-      const data = await apiFetch(`mailboxes/${mailboxId}/queue?page=${page}&limit=30`);
+      const data = await apiFetch(`mailboxes/${mailboxId}/queue?page=${page}&limit=30&view=${view}`);
       setItems(data.data);
       setTotal(data.total);
     } catch { /* silent */ }
     finally { setLoading(false); }
-  }, [mailboxId, open, page]);
+  }, [mailboxId, open, page, view]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setPage(1); }, [view]);
+  useEffect(() => { if (!open) setView("all"); }, [open]);
 
   const pageCount = Math.max(Math.ceil(total / 30), 1);
 
@@ -319,6 +347,20 @@ function QueueDrawer({ mailboxId, mailboxEmail, open, onClose }: {
           </SheetTitle>
           <p className="text-xs text-muted-foreground truncate">{mailboxEmail} · {total} items</p>
         </SheetHeader>
+        <div className="flex items-center gap-1 mb-3">
+          {QUEUE_VIEWS.map(v => (
+            <button
+              key={v.value}
+              onClick={() => setView(v.value)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors
+                ${view === v.value
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
         <div className="space-y-2">
           {loading ? Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-xl" />) :
           items.length === 0 ? (
@@ -447,18 +489,130 @@ function SmtpUsageDrawer({ mailboxId, mailboxEmail, open, onClose }: {
   );
 }
 
+// ─── SMTP Events drawer ────────────────────────────────────────────────────────
+
+const SMTP_EVENT_TABS = [
+  { value: "all",      label: "All" },
+  { value: "success",  label: "Success" },
+  { value: "failed",   label: "Failed" },
+  { value: "deferred", label: "Deferred" },
+];
+
+function SmtpEventsDrawer({ mailboxId, mailboxEmail, open, onClose }: {
+  mailboxId: number; mailboxEmail: string; open: boolean; onClose: () => void;
+}) {
+  const [items, setItems]     = useState<SmtpHistoryItem[]>([]);
+  const [total, setTotal]     = useState(0);
+  const [page, setPage]       = useState(1);
+  const [status, setStatus]   = useState("all");
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!open) return;
+    setLoading(true);
+    try {
+      const data = await apiFetch(`mailboxes/${mailboxId}/smtp-history?page=${page}&limit=30&status=${status}`);
+      setItems(data.data);
+      setTotal(data.total);
+    } catch { /* silent */ }
+    finally { setLoading(false); }
+  }, [mailboxId, open, page, status]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { setPage(1); }, [status]);
+  useEffect(() => { if (!open) setStatus("all"); }, [open]);
+
+  const pageCount = Math.max(Math.ceil(total / 30), 1);
+
+  const STATUS_CLS: Record<string, string> = {
+    pending:  "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+    success:  "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    failed:   "bg-red-500/10 text-red-600 dark:text-red-400",
+    deferred: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    sending:  "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={o => { if (!o) onClose(); }}>
+      <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
+        <SheetHeader className="pb-4">
+          <SheetTitle className="text-base flex items-center gap-2">
+            <History className="h-4 w-4 text-muted-foreground" />
+            SMTP Events
+          </SheetTitle>
+          <p className="text-xs text-muted-foreground truncate">{mailboxEmail} · {total} events</p>
+        </SheetHeader>
+        <div className="flex items-center gap-1 mb-3 overflow-x-auto">
+          {SMTP_EVENT_TABS.map(t => (
+            <button
+              key={t.value}
+              onClick={() => setStatus(t.value)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors
+                ${status === t.value
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div className="space-y-2">
+          {loading ? Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />) :
+          items.length === 0 ? (
+            <div className="py-12 text-center text-muted-foreground text-sm">
+              <History className="h-8 w-8 mx-auto mb-2 opacity-40" />
+              No SMTP events found.
+            </div>
+          ) : items.map(item => (
+            <div key={item.id} className="rounded-xl border border-border p-3 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-foreground truncate">{item.email}</p>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold capitalize flex-shrink-0 ${STATUS_CLS[item.status] ?? "bg-muted text-muted-foreground"}`}>{item.status}</span>
+              </div>
+              {item.subject && <p className="text-xs text-muted-foreground truncate">{item.subject}</p>}
+              <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+                <span>Attempts: <span className="text-foreground font-medium">{item.attempts}</span></span>
+                {item.deferredCount > 0 && <span>Deferred: <span className="text-amber-600 dark:text-amber-400 font-medium">{item.deferredCount}×</span></span>}
+                {item.sentAt && <span>Sent: {timeAgo(item.sentAt)}</span>}
+                {item.firstAttemptAt && <span>First attempt: {timeAgo(item.firstAttemptAt)}</span>}
+              </div>
+              {item.lastError && (
+                <p className="text-xs text-red-600 dark:text-red-400 truncate">{
+                  (() => { try { return JSON.parse(item.lastError).friendly ?? item.lastError; } catch { return item.lastError; } })()
+                }</p>
+              )}
+            </div>
+          ))}
+        </div>
+        {total > 30 && (
+          <div className="flex items-center justify-between pt-4">
+            <span className="text-xs text-muted-foreground">{page} / {pageCount}</span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+              <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page >= pageCount} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
+            </div>
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ─── Mailbox Detail drawer ────────────────────────────────────────────────────
 
-function DetailDrawer({ mailbox, open, onClose, onAction }: {
+function DetailDrawer({ mailbox, open, onClose, onAction, onOpenHistory }: {
   mailbox: AdminMailbox | null;
   open: boolean;
   onClose: () => void;
   onAction: (action: string, id: number) => void;
+  onOpenHistory: (m: AdminMailbox) => void;
 }) {
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [testing, setTesting] = useState(false);
+  const [imapResult, setImapResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [testingImap, setTestingImap] = useState(false);
 
-  useEffect(() => { if (!open) { setTestResult(null); } }, [open]);
+  useEffect(() => { if (!open) { setTestResult(null); setImapResult(null); } }, [open]);
 
   if (!mailbox) return null;
 
@@ -466,6 +620,7 @@ function DetailDrawer({ mailbox, open, onClose, onAction }: {
   const { label: healthLabel, cls: healthCls } = getHealthInfo(health);
   const provider = inferProvider(mailbox.smtpHost);
   const quotaUsedPct = mailbox.maxPerHour > 0 ? Math.min((mailbox.usedThisHour / mailbox.maxPerHour) * 100, 100) : 0;
+  const hasImap = !!(mailbox.imapHost && mailbox.imapUser);
 
   const handleTest = async () => {
     setTesting(true);
@@ -477,6 +632,19 @@ function DetailDrawer({ mailbox, open, onClose, onAction }: {
       setTestResult({ ok: false, msg: e instanceof Error ? e.message : "Test failed" });
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleTestImap = async () => {
+    setTestingImap(true);
+    setImapResult(null);
+    try {
+      const r = await apiFetch(`mailboxes/${mailbox.id}/test-imap`, { method: "POST" });
+      setImapResult({ ok: r.ok, msg: r.message ?? r.error ?? "IMAP checked" });
+    } catch (e) {
+      setImapResult({ ok: false, msg: e instanceof Error ? e.message : "Test failed" });
+    } finally {
+      setTestingImap(false);
     }
   };
 
@@ -626,8 +794,8 @@ function DetailDrawer({ mailbox, open, onClose, onAction }: {
         </div>
 
         {/* Test connection */}
-        <div className="rounded-xl border border-border p-4 mb-4">
-          <p className="text-xs font-semibold text-foreground mb-3">Test Connection</p>
+        <div className="rounded-xl border border-border p-4 mb-4 space-y-3">
+          <p className="text-xs font-semibold text-foreground">Connection Tests</p>
           <Button
             variant="outline"
             size="sm"
@@ -639,15 +807,41 @@ function DetailDrawer({ mailbox, open, onClose, onAction }: {
             {testing ? "Testing…" : "Test SMTP Connection"}
           </Button>
           {testResult && (
-            <div className={`mt-3 rounded-lg p-2.5 text-xs flex items-center gap-2 ${testResult.ok ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-red-500/10 text-red-600 dark:text-red-400"}`}>
+            <div className={`rounded-lg p-2.5 text-xs flex items-center gap-2 ${testResult.ok ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-red-500/10 text-red-600 dark:text-red-400"}`}>
               {testResult.ok ? <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> : <XCircle className="h-4 w-4 flex-shrink-0" />}
               {testResult.msg}
             </div>
+          )}
+          {hasImap && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full rounded-xl h-9 gap-2"
+                disabled={testingImap}
+                onClick={handleTestImap}
+              >
+                {testingImap ? <Loader2 className="h-4 w-4 animate-spin" /> : <Inbox className="h-4 w-4" />}
+                {testingImap ? "Testing…" : "Test IMAP Connection"}
+              </Button>
+              {imapResult && (
+                <div className={`rounded-lg p-2.5 text-xs flex items-center gap-2 ${imapResult.ok ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-red-500/10 text-red-600 dark:text-red-400"}`}>
+                  {imapResult.ok ? <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> : <XCircle className="h-4 w-4 flex-shrink-0" />}
+                  {imapResult.msg}
+                </div>
+              )}
+            </>
           )}
         </div>
 
         {/* Actions */}
         <div className="space-y-2">
+          <Button variant="outline" size="sm" className="w-full rounded-xl h-9 gap-2" onClick={() => onOpenHistory(mailbox)}>
+            <History className="h-4 w-4" /> View SMTP Events
+          </Button>
+          <Button variant="outline" size="sm" className="w-full rounded-xl h-9 gap-2 text-blue-600 dark:text-blue-400" onClick={() => onAction("force-reconnect", mailbox.id)}>
+            <Zap className="h-4 w-4" /> Force Reconnect
+          </Button>
           {mailbox.isActive ? (
             <Button variant="outline" size="sm" className="w-full rounded-xl h-9 gap-2 text-muted-foreground" onClick={() => onAction("disable", mailbox.id)}>
               <Ban className="h-4 w-4" /> Disable Mailbox
@@ -723,8 +917,10 @@ export function AdminMailboxes() {
   const [search, setSearch]         = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [providerFilter, setProviderFilter] = useState("");
+  const [userFilter, setUserFilter] = useState("");
   const [dateFrom, setDateFrom]     = useState("");
   const [dateTo, setDateTo]         = useState("");
+  const [users, setUsers]           = useState<UserLite[]>([]);
 
   // Action loading
   const [actionLoading, setActionLoading] = useState<number | null>(null);
@@ -733,6 +929,7 @@ export function AdminMailboxes() {
   const [detailMailbox, setDetailMailbox] = useState<AdminMailbox | null>(null);
   const [queueMailbox, setQueueMailbox]   = useState<AdminMailbox | null>(null);
   const [usageMailbox, setUsageMailbox]   = useState<AdminMailbox | null>(null);
+  const [historyMailbox, setHistoryMailbox] = useState<AdminMailbox | null>(null);
 
   const pageCount = Math.max(Math.ceil(total / 25), 1);
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -756,6 +953,7 @@ export function AdminMailboxes() {
         ...(search                          && { search }),
         ...(statusFilter !== "all"          && { status: statusFilter }),
         ...(providerFilter                  && { provider: providerFilter }),
+        ...(userFilter                      && { userId: userFilter }),
         ...(dateFrom                        && { dateFrom }),
         ...(dateTo                          && { dateTo }),
       });
@@ -765,13 +963,23 @@ export function AdminMailboxes() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load mailboxes");
     } finally { setLoading(false); }
-  }, [page, search, statusFilter, providerFilter, dateFrom, dateTo]);
+  }, [page, search, statusFilter, providerFilter, userFilter, dateFrom, dateTo]);
+
+  const loadUsers = useCallback(async () => {
+    try {
+      const data = await apiFetch("users?limit=100");
+      setUsers(data.data.map((u: any) => ({ id: u.id, name: u.name, email: u.email })));
+    } catch { /* silent */ }
+  }, []);
 
   // Auto-refresh while mailboxes with live activity exist
   useEffect(() => {
     loadStats();
     loadMailboxes();
   }, [loadStats, loadMailboxes]);
+
+  // Fetch the user list once for the filter dropdown
+  useEffect(() => { loadUsers(); }, [loadUsers]);
 
   useEffect(() => {
     if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
@@ -786,7 +994,7 @@ export function AdminMailboxes() {
   }, [mailboxes, loadStats, loadMailboxes]);
 
   // Reset page on filter change
-  useEffect(() => { setPage(1); }, [search, statusFilter, providerFilter, dateFrom, dateTo]);
+  useEffect(() => { setPage(1); }, [search, statusFilter, providerFilter, userFilter, dateFrom, dateTo]);
 
   // ── Action handler ────────────────────────────────────────────────────────
 
@@ -809,10 +1017,10 @@ export function AdminMailboxes() {
   };
 
   const clearFilters = () => {
-    setSearch(""); setStatusFilter("all"); setProviderFilter("");
+    setSearch(""); setStatusFilter("all"); setProviderFilter(""); setUserFilter("");
     setDateFrom(""); setDateTo("");
   };
-  const hasFilters = search || statusFilter !== "all" || providerFilter || dateFrom || dateTo;
+  const hasFilters = search || statusFilter !== "all" || providerFilter || userFilter || dateFrom || dateTo;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -870,6 +1078,18 @@ export function AdminMailboxes() {
             <SelectItem value="sendgrid">SendGrid</SelectItem>
             <SelectItem value="mailgun">Mailgun</SelectItem>
             <SelectItem value="amazon">Amazon SES</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={userFilter || "all"} onValueChange={v => setUserFilter(v === "all" ? "" : v)}>
+          <SelectTrigger className="h-9 rounded-xl w-full sm:w-44">
+            <SelectValue placeholder="User" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Users</SelectItem>
+            {users.map(u => (
+              <SelectItem key={u.id} value={String(u.id)}>{u.name ?? u.email}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
@@ -1034,9 +1254,20 @@ export function AdminMailboxes() {
                         <DropdownMenuItem onClick={() => setUsageMailbox(m)}>
                           <BarChart3 className="h-4 w-4 mr-2" /> View SMTP Usage
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setHistoryMailbox(m)}>
+                          <History className="h-4 w-4 mr-2" /> View SMTP Events
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={() => handleAction("test-connection", m.id)}>
-                          <Wifi className="h-4 w-4 mr-2" /> Test Connection
+                          <Wifi className="h-4 w-4 mr-2" /> Test SMTP
+                        </DropdownMenuItem>
+                        {m.imapHost && (
+                          <DropdownMenuItem onClick={() => handleAction("test-imap", m.id)}>
+                            <Inbox className="h-4 w-4 mr-2" /> Test IMAP
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem onClick={() => handleAction("force-reconnect", m.id)} className="text-blue-600 dark:text-blue-400">
+                          <Zap className="h-4 w-4 mr-2" /> Force Reconnect
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         {m.isActive ? (
@@ -1092,8 +1323,13 @@ export function AdminMailboxes() {
                       <DropdownMenuItem onClick={() => setDetailMailbox(m)}><Eye className="h-4 w-4 mr-2" /> View Mailbox</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => setQueueMailbox(m)}><List className="h-4 w-4 mr-2" /> View Queue</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => setUsageMailbox(m)}><BarChart3 className="h-4 w-4 mr-2" /> View SMTP Usage</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setHistoryMailbox(m)}><History className="h-4 w-4 mr-2" /> View SMTP Events</DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => handleAction("test-connection", m.id)}><Wifi className="h-4 w-4 mr-2" /> Test Connection</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleAction("test-connection", m.id)}><Wifi className="h-4 w-4 mr-2" /> Test SMTP</DropdownMenuItem>
+                      {m.imapHost && (
+                        <DropdownMenuItem onClick={() => handleAction("test-imap", m.id)}><Inbox className="h-4 w-4 mr-2" /> Test IMAP</DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={() => handleAction("force-reconnect", m.id)} className="text-blue-600 dark:text-blue-400"><Zap className="h-4 w-4 mr-2" /> Force Reconnect</DropdownMenuItem>
                       <DropdownMenuSeparator />
                       {m.isActive
                         ? <DropdownMenuItem onClick={() => handleAction("disable", m.id)} className="text-muted-foreground"><Ban className="h-4 w-4 mr-2" /> Disable</DropdownMenuItem>
@@ -1160,6 +1396,7 @@ export function AdminMailboxes() {
         open={!!detailMailbox}
         onClose={() => setDetailMailbox(null)}
         onAction={handleAction}
+        onOpenHistory={setHistoryMailbox}
       />
       <QueueDrawer
         mailboxId={queueMailbox?.id ?? 0}
@@ -1172,6 +1409,12 @@ export function AdminMailboxes() {
         mailboxEmail={usageMailbox?.smtpUser ?? ""}
         open={!!usageMailbox}
         onClose={() => setUsageMailbox(null)}
+      />
+      <SmtpEventsDrawer
+        mailboxId={historyMailbox?.id ?? 0}
+        mailboxEmail={historyMailbox?.smtpUser ?? ""}
+        open={!!historyMailbox}
+        onClose={() => setHistoryMailbox(null)}
       />
     </div>
   );
