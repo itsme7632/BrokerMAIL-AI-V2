@@ -16,6 +16,8 @@ import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { decrypt } from "../lib/crypto";
 import { buildTransportOptions } from "../lib/smtp";
+import { testImap } from "../lib/imap";
+import os from "os";
 
 const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -713,6 +715,93 @@ router.get("/admin/mailboxes/:id/smtp-usage", requireAdmin, async (req, res): Pr
   const avg  = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + Number(r.total), 0) / rows.length) : 0;
 
   res.json({ data: rows, peak, avg });
+});
+
+// ─── POST /admin/mailboxes/:id/test-imap ─────────────────────────────────────
+
+router.post("/admin/mailboxes/:id/test-imap", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  const [mailbox] = await db.select().from(mailboxesTable).where(eq(mailboxesTable.id, id));
+  if (!mailbox) { res.status(404).json({ error: "Mailbox not found" }); return; }
+  if (!mailbox.imapHost || !mailbox.imapUser || !mailbox.imapPassEncrypted) {
+    res.json({ ok: false, message: "IMAP is not configured for this mailbox" });
+    return;
+  }
+  try {
+    await testImap({
+      imapHost:          mailbox.imapHost,
+      imapPort:          mailbox.imapPort ?? 993,
+      imapUser:          mailbox.imapUser,
+      imapPassEncrypted: mailbox.imapPassEncrypted,
+    });
+    res.json({ ok: true, message: "IMAP connection verified successfully" });
+  } catch (err: any) {
+    res.status(502).json({ ok: false, error: err?.message ?? "IMAP verification failed" });
+  }
+});
+
+// ─── POST /admin/mailboxes/:id/force-reconnect ────────────────────────────────
+
+router.post("/admin/mailboxes/:id/force-reconnect", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  const [mb] = await db.select({ id: mailboxesTable.id }).from(mailboxesTable).where(eq(mailboxesTable.id, id));
+  if (!mb) { res.status(404).json({ error: "Mailbox not found" }); return; }
+  await db.update(mailboxesTable).set({
+    isActive:           true,
+    quotaStatus:        null,
+    quotaReachedAt:     null,
+    quotaCooldownUntil: null,
+    quotaSmtpResponse:  null,
+    quotaProbeCount:    0,
+    updatedAt:          new Date(),
+  }).where(eq(mailboxesTable.id, id));
+  res.json({ success: true });
+});
+
+// ─── GET /admin/mailboxes/:id/smtp-history ────────────────────────────────────
+
+router.get("/admin/mailboxes/:id/smtp-history", requireAdmin, async (req, res): Promise<void> => {
+  const id     = parseInt(req.params.id, 10);
+  const page   = Math.max(1, parseInt((req.query.page  as string) ?? "1",  10));
+  const limit  = Math.min(100, parseInt((req.query.limit as string) ?? "50", 10));
+  const status = (req.query.status as string) ?? "all";
+  const offset = (page - 1) * limit;
+
+  const baseCondition = eq(emailQueueTable.mailboxId, id);
+  const where = status !== "all"
+    ? and(baseCondition, eq(emailQueueTable.status, status))
+    : baseCondition;
+
+  const [rows, [{ total }]] = await Promise.all([
+    db.select({
+      id:             emailQueueTable.id,
+      email:          emailQueueTable.email,
+      subject:        emailQueueTable.subject,
+      status:         emailQueueTable.status,
+      attempts:       emailQueueTable.attempts,
+      deferredCount:  emailQueueTable.deferredCount,
+      lastError:      emailQueueTable.lastError,
+      sentAt:         emailQueueTable.sentAt,
+      firstAttemptAt: emailQueueTable.firstAttemptAt,
+      createdAt:      emailQueueTable.createdAt,
+    })
+      .from(emailQueueTable)
+      .where(where)
+      .orderBy(desc(emailQueueTable.id))
+      .limit(limit)
+      .offset(offset),
+    db.select({ total: count() }).from(emailQueueTable).where(where),
+  ]);
+
+  res.json({
+    data: rows.map(r => ({
+      ...r,
+      sentAt:         r.sentAt?.toISOString()         ?? null,
+      firstAttemptAt: r.firstAttemptAt?.toISOString() ?? null,
+      createdAt:      r.createdAt.toISOString(),
+    })),
+    total, page, limit,
+  });
 });
 
 // ─── Campaign Monitor ──────────────────────────────────────────────────────────
