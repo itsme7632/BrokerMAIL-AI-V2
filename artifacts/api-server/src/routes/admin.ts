@@ -648,6 +648,10 @@ router.post("/admin/mailboxes/:id/force-quota-reset", requireAdmin, async (req, 
     quotaProbeCount:    0,
     updatedAt: new Date(),
   }).where(eq(mailboxesTable.id, id));
+  await db.insert(systemLogsTable).values({
+    userId: req.user!.id, type: "admin_mailbox_quota_reset", severity: "info",
+    description: `Admin force-reset quota state for mailbox #${id}`,
+  });
   res.json({ success: true });
 });
 
@@ -777,6 +781,10 @@ router.post("/admin/mailboxes/:id/force-reconnect", requireAdmin, async (req, re
     quotaProbeCount:    0,
     updatedAt:          new Date(),
   }).where(eq(mailboxesTable.id, id));
+  await db.insert(systemLogsTable).values({
+    userId: req.user!.id, type: "admin_mailbox_reconnect", severity: "info",
+    description: `Admin force-reconnected mailbox #${id}`,
+  });
   res.json({ success: true });
 });
 
@@ -1004,6 +1012,11 @@ router.post("/admin/campaigns/:id/pause", requireAdmin, async (req, res): Promis
       .set({ status: "paused", updatedAt: new Date() })
       .where(eq(campaignsTable.id, campaignId));
 
+    await db.insert(systemLogsTable).values({
+      userId: req.user!.id, type: "admin_campaign_pause", severity: "info",
+      description: `Admin paused campaign #${campaignId}`,
+    });
+
     res.json({ success: true, status: "paused" });
   } catch (err: any) {
     logger.error({ err, campaignId }, `Admin pause campaign error: ${err?.message}`);
@@ -1027,6 +1040,11 @@ router.post("/admin/campaigns/:id/resume", requireAdmin, async (req, res): Promi
       .set({ status: "sending", updatedAt: new Date() })
       .where(eq(campaignsTable.id, campaignId));
 
+    await db.insert(systemLogsTable).values({
+      userId: req.user!.id, type: "admin_campaign_resume", severity: "info",
+      description: `Admin resumed campaign #${campaignId}`,
+    });
+
     res.json({ success: true, status: "sending" });
   } catch (err: any) {
     logger.error({ err, campaignId }, `Admin resume campaign error: ${err?.message}`);
@@ -1049,6 +1067,11 @@ router.post("/admin/campaigns/:id/cancel", requireAdmin, async (req, res): Promi
     await db.update(campaignsTable)
       .set({ status: "cancelled", updatedAt: new Date() })
       .where(eq(campaignsTable.id, campaignId));
+
+    await db.insert(systemLogsTable).values({
+      userId: req.user!.id, type: "admin_campaign_cancel", severity: "warn",
+      description: `Admin cancelled campaign #${campaignId}`,
+    });
 
     res.json({ success: true, status: "cancelled" });
   } catch (err: any) {
