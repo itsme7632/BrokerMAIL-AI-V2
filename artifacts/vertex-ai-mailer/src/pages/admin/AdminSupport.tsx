@@ -78,6 +78,20 @@ async function apiFetch(path: string, opts?: RequestInit) {
   return res.json();
 }
 
+// Bug reports & feature requests are owned by the Product Hub module, not /api/admin.
+async function productHubFetch(path: string, opts?: RequestInit) {
+  const res = await fetch(`/api/product-hub/admin/${path}`, {
+    ...opts,
+    headers: {
+      Authorization: `Bearer ${token()}`,
+      "Content-Type": "application/json",
+      ...opts?.headers,
+    },
+  });
+  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error ?? `Error ${res.status}`); }
+  return res.json();
+}
+
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60_000);
@@ -163,12 +177,13 @@ function TicketSheet({ ticket, open, onClose, onUpdate }: {
   ticket: SupportTicket | null; open: boolean;
   onClose: () => void; onUpdate: () => void;
 }) {
-  const [reply, setReply]   = useState("");
-  const [note, setNote]     = useState("");
-  const [saving, setSaving] = useState(false);
+  const [reply, setReply]     = useState("");
+  const [note, setNote]       = useState("");
+  const [assignee, setAssignee] = useState("");
+  const [saving, setSaving]   = useState(false);
 
   useEffect(() => {
-    if (ticket) { setNote(ticket.adminNote ?? ""); setReply(""); }
+    if (ticket) { setNote(ticket.adminNote ?? ""); setReply(""); setAssignee(ticket.assignedTo ?? ""); }
   }, [ticket]);
 
   if (!ticket) return null;
@@ -256,6 +271,23 @@ function TicketSheet({ ticket, open, onClose, onUpdate }: {
           </div>
         </div>
 
+        {/* Assignment */}
+        <div className="mb-3">
+          <p className="text-xs font-medium text-muted-foreground mb-1">Assigned To</p>
+          <div className="flex gap-1.5">
+            <Input
+              value={assignee}
+              onChange={e => setAssignee(e.target.value)}
+              placeholder="Unassigned — enter admin name or email"
+              className="h-8 rounded-lg text-xs flex-1"
+            />
+            <Button size="sm" variant="outline" className="h-8 text-xs rounded-lg whitespace-nowrap"
+              onClick={() => patch({ assignedTo: assignee.trim() || null })}>
+              Save
+            </Button>
+          </div>
+        </div>
+
         {/* Note */}
         <div className="mb-3">
           <p className="text-xs font-medium text-muted-foreground mb-1">Admin Note (private)</p>
@@ -314,7 +346,7 @@ function BugSheet({ bug, open, onClose, onUpdate }: {
   if (!bug) return null;
 
   const patch = async (body: object) => {
-    await apiFetch(`bug-reports/${bug.id}`, { method: "PATCH", body: JSON.stringify(body) });
+    await productHubFetch(`bug-reports/${bug.id}`, { method: "PUT", body: JSON.stringify(body) });
     onUpdate();
   };
 
@@ -420,7 +452,7 @@ function FeatureSheet({ feature, open, onClose, onUpdate }: {
   if (!feature) return null;
 
   const patch = async (body: object) => {
-    await apiFetch(`feature-requests/${feature.id}`, { method: "PATCH", body: JSON.stringify(body) });
+    await productHubFetch(`feature-requests/${feature.id}`, { method: "PUT", body: JSON.stringify(body) });
     onUpdate();
   };
 
@@ -501,6 +533,7 @@ function TicketsPanel() {
   const [search, setSearch]           = useState("");
   const [statusFilter, setStatus]     = useState("all");
   const [priorityFilter, setPriority] = useState("all");
+  const [categoryFilter, setCategory] = useState("all");
   const [selected, setSelected]       = useState<SupportTicket | null>(null);
   const LIMIT = 25;
 
@@ -512,6 +545,7 @@ function TicketsPanel() {
         ...(search         && { search }),
         ...(statusFilter   !== "all" && { status:   statusFilter }),
         ...(priorityFilter !== "all" && { priority: priorityFilter }),
+        ...(categoryFilter !== "all" && { category: categoryFilter }),
       });
       const data = await apiFetch(`support?${params}`);
       // API returns array or paginated; handle both
@@ -519,10 +553,10 @@ function TicketsPanel() {
       const tot  = Array.isArray(data) ? arr.length : (data.total ?? arr.length);
       setItems(arr); setTotal(tot);
     } catch { /* silent */ } finally { setLoading(false); }
-  }, [page, search, statusFilter, priorityFilter]);
+  }, [page, search, statusFilter, priorityFilter, categoryFilter]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); }, [search, statusFilter, priorityFilter]);
+  useEffect(() => { setPage(1); }, [search, statusFilter, priorityFilter, categoryFilter]);
 
   const pageCount = Math.max(Math.ceil(total / LIMIT), 1);
 
@@ -547,6 +581,16 @@ function TicketsPanel() {
           <SelectContent>
             {["all","low","medium","high","urgent"].map(p => (
               <SelectItem key={p} value={p} className="text-xs capitalize">{p === "all" ? "All Priorities" : p}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={categoryFilter} onValueChange={setCategory}>
+          <SelectTrigger className="h-9 rounded-xl w-full sm:w-40"><SelectValue placeholder="Category" /></SelectTrigger>
+          <SelectContent>
+            {["all","general","technical","smtp","billing","subscription","bug","feature_request","contact","other"].map(c => (
+              <SelectItem key={c} value={c} className="text-xs capitalize">
+                {c === "all" ? "All Categories" : c === "contact" ? "Contact Form" : c.replace(/_/g, " ")}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -575,6 +619,7 @@ function TicketsPanel() {
                     <span className="text-xs font-mono text-muted-foreground">#{t.id}</span>
                     <Pill label={t.status}   cls={TICKET_STATUS_CLS[t.status]   ?? "bg-muted text-muted-foreground"} />
                     <Pill label={t.priority} cls={PRIORITY_CLS[t.priority]     ?? PRIORITY_CLS.medium} />
+                    {t.category === "contact" && <Pill label="contact form" cls="bg-violet-500/10 text-violet-600 dark:text-violet-400" />}
                   </div>
                   <p className="text-sm font-semibold text-foreground truncate">{t.subject}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
@@ -627,7 +672,7 @@ function BugsPanel() {
         ...(statusFilter !== "all" && { status:   statusFilter }),
         ...(sevFilter    !== "all" && { severity: sevFilter }),
       });
-      const data = await apiFetch(`bug-reports?${params}`);
+      const data = await productHubFetch(`bug-reports?${params}`);
       setItems(data.data ?? []); setTotal(data.total ?? 0);
     } catch { /* silent */ } finally { setLoading(false); }
   }, [page, search, statusFilter, sevFilter]);
@@ -735,7 +780,7 @@ function FeaturesPanel() {
         ...(statusFilter !== "all" && { status:   statusFilter }),
         ...(catFilter    !== "all" && { category: catFilter }),
       });
-      const data = await apiFetch(`feature-requests?${params}`);
+      const data = await productHubFetch(`feature-requests?${params}`);
       setItems(data.data ?? []); setTotal(data.total ?? 0);
     } catch { /* silent */ } finally { setLoading(false); }
   }, [page, search, statusFilter, catFilter]);
@@ -835,9 +880,9 @@ export function AdminSupport() {
     try {
       const ov = await apiFetch("dashboard-overview");
       setOverview({
-        openTickets:     (ov.recentActivity?.pendingPlanRequests ?? 0) as number,
-        openBugs:        (ov.recentActivity?.openBugReports?.length    ?? 0) as number,
-        pendingFeatures: (ov.recentActivity?.openFeatureRequests?.length ?? 0) as number,
+        openTickets:     (ov.recent?.counts?.openSupportTickets  ?? 0) as number,
+        openBugs:        (ov.recent?.counts?.openBugReports      ?? 0) as number,
+        pendingFeatures: (ov.recent?.counts?.openFeatureRequests ?? 0) as number,
       });
     } catch { /* silent */ } finally { setOvLoading(false); }
   }, []);

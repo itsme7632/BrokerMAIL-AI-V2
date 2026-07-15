@@ -88,6 +88,7 @@ router.get("/admin/dashboard-overview", requireAdmin, async (_req, res): Promise
     recentActivity, queueCounts, mailboxHealth,
     [cmSendingNow], [cmCoolingDown], [cmCompletedToday], [cmFailedToday], [cmQueuedEmails],
     [mbTotal], [mbConnected], [mbDisconnected], [mbCoolingDown], [mbActiveToday], [mbFailed],
+    [openTicketsCount], [openBugsCount], [openFeaturesCount],
   ] = await Promise.all([
     db.select({ count: count() }).from(usersTable),
     db.select({ count: count() }).from(usersTable).where(eq(usersTable.status, "active")),
@@ -156,6 +157,9 @@ router.get("/admin/dashboard-overview", requireAdmin, async (_req, res): Promise
     db.select({ count: count() }).from(mailboxesTable).where(eq(mailboxesTable.quotaStatus, "quota_reached")),
     db.select({ count: sql<number>`count(distinct ${emailQueueTable.mailboxId})::int` }).from(emailQueueTable).where(and(isNotNull(emailQueueTable.firstAttemptAt), gte(emailQueueTable.firstAttemptAt, today))),
     db.select({ count: count() }).from(mailboxesTable).where(and(isNotNull(mailboxesTable.quotaStatus), gt(mailboxesTable.quotaProbeCount, 2))),
+    db.select({ count: count() }).from(supportTicketsTable).where(or(eq(supportTicketsTable.status, "open"), eq(supportTicketsTable.status, "in_progress"))),
+    db.select({ count: count() }).from(bugReportsTable).where(eq(bugReportsTable.status, "open")),
+    db.select({ count: count() }).from(featureRequestsTable).where(eq(featureRequestsTable.status, "open")),
   ]);
 
   const totalSent = totalSentAllTime.count;
@@ -191,6 +195,11 @@ router.get("/admin/dashboard-overview", requireAdmin, async (_req, res): Promise
       bugReports: openBugReports.map(b => ({ ...b, createdAt: b.createdAt.toISOString() })),
       announcements: activeAnnouncements.map(a => ({ ...a, createdAt: a.createdAt.toISOString() })),
       activity: recentActivity.map(a => ({ ...a, createdAt: a.createdAt.toISOString() })),
+      counts: {
+        openSupportTickets: openTicketsCount.count,
+        openBugReports:     openBugsCount.count,
+        openFeatureRequests: openFeaturesCount.count,
+      },
     },
     systemStatus: {
       database: "operational",
@@ -1843,11 +1852,13 @@ router.post("/admin/users/:id/set-temp-password", requireAdmin, async (req, res)
 router.get("/admin/support", requireAdmin, async (req, res): Promise<void> => {
   const statusFilter   = (req.query.status   as string) || "all";
   const priorityFilter = (req.query.priority as string) || "all";
+  const categoryFilter = (req.query.category as string) || "all";
   const search         = (req.query.search   as string) || "";
 
   const conditions = [];
   if (statusFilter   !== "all") conditions.push(eq(supportTicketsTable.status, statusFilter));
   if (priorityFilter !== "all") conditions.push(eq(supportTicketsTable.priority, priorityFilter));
+  if (categoryFilter !== "all") conditions.push(eq(supportTicketsTable.category, categoryFilter));
   if (search) {
     conditions.push(or(
       ilike(supportTicketsTable.subject,   `%${search}%`),

@@ -59,6 +59,39 @@ router.get("/support/files/:filename", (req, res) => {
   res.sendFile(filePath);
 });
 
+// ─── Public contact form (no auth — marketing site) ─────────────────────────────
+
+router.post("/support/contact", async (req, res): Promise<void> => {
+  const { name, email, company, message } =
+    req.body as { name: string; email: string; company?: string; message: string };
+
+  if (!name?.trim() || !email?.trim() || !message?.trim()) {
+    res.status(400).json({ error: "Name, email, and message are required." }); return;
+  }
+
+  const [ticket] = await db.insert(supportTicketsTable).values({
+    userId:      null,
+    userEmail:   email.trim(),
+    userName:    name.trim(),
+    subject:     company?.trim() ? `Contact form — ${company.trim()}` : "Contact form submission",
+    category:    "contact",
+    priority:    "medium",
+    message:     message.trim(),
+    attachments: [],
+    status:      "open",
+    replies:     [],
+  }).returning();
+
+  await db.insert(systemLogsTable).values({
+    userId:      null,
+    type:        "contact_message_received",
+    severity:    "info",
+    description: `Contact form submission from ${email.trim()} (${name.trim()})`,
+  });
+
+  res.status(201).json({ ok: true, id: ticket.id });
+});
+
 // ─── Create ticket ─────────────────────────────────────────────────────────────
 
 router.post("/support/tickets", requireAuth, async (req, res): Promise<void> => {

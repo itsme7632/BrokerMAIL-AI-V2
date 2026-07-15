@@ -14,11 +14,12 @@ function FadeUp({ children, delay = 0, className = "" }: { children: React.React
   );
 }
 
-type FormState = "idle" | "submitting" | "success";
+type FormState = "idle" | "submitting" | "success" | "error";
 
 export default function Contact() {
   const [form, setForm] = useState({ name: "", email: "", company: "", message: "" });
   const [status, setStatus] = useState<FormState>("idle");
+  const [error, setError] = useState<string | null>(null);
   const platform = usePlatformSettings();
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
@@ -29,8 +30,22 @@ export default function Contact() {
     e.preventDefault();
     if (!form.name || !form.email || !form.message) return;
     setStatus("submitting");
-    await new Promise(r => setTimeout(r, 900));
-    setStatus("success");
+    setError(null);
+    try {
+      const res = await fetch("/api/support/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? "Something went wrong. Please try again.");
+      }
+      setStatus("success");
+    } catch (err: any) {
+      setError(err.message ?? "Something went wrong. Please try again.");
+      setStatus("error");
+    }
   }
 
   const supportEmail    = platform.supportEmail    || "support@brokermail.ai";
@@ -151,6 +166,11 @@ export default function Contact() {
                 </motion.div>
               ) : (
                 <>
+                  {status === "error" && error && (
+                    <div className="mb-5 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-600">
+                      {error}
+                    </div>
+                  )}
                   <div className="flex items-center gap-3 mb-7">
                     <div className="h-9 w-9 rounded-xl bg-blue-50 flex items-center justify-center">
                       <MessageSquare className="h-4.5 w-4.5 text-blue-600" style={{ height: 18, width: 18 }} />
