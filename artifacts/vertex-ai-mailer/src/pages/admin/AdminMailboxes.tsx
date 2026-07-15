@@ -135,6 +135,8 @@ interface SmtpHistoryItem {
   sentAt: string | null;
   firstAttemptAt: string | null;
   createdAt: string;
+  campaignId: number | null;
+  campaignName: string | null;
 }
 
 interface UserLite {
@@ -241,14 +243,19 @@ type HealthState =
   | "auth_failed"
   | "connection_timeout"
   | "smtp_auth_error"
-  | "provider_rejected"
+  | "provider_error"
   | "mailbox_disabled"
   | "tls_error"
+  | "quota_reached"
   | "cooling_down"
   | "recovering"
+  | "connection_failed"
   | "smtp_unreachable"
+  | "network_error"
+  | "dns_failure"
   | "invalid_credentials"
-  | "mailbox_offline";
+  | "mailbox_offline"
+  | "unknown";
 
 function deriveHealth(m: AdminMailbox): HealthState {
   if (!m.isActive) {
@@ -265,40 +272,56 @@ function deriveHealth(m: AdminMailbox): HealthState {
     return "tls_error";
   }
 
-  // Unreachable / DNS
-  if (rc === "ECONNREFUSED" || rc === "ENOTFOUND" || msg.includes("dns") || msg.includes("getaddrinfo")) {
+  // DNS failure
+  if (rc === "ENOTFOUND" || msg.includes("getaddrinfo") || msg.includes("dns lookup")) {
+    return "dns_failure";
+  }
+
+  // Connection refused (host reachable but port closed)
+  if (rc === "ECONNREFUSED") {
+    return "connection_failed";
+  }
+
+  // Unreachable (generic — host unreachable, no route)
+  if (msg.includes("unreachable") || msg.includes("no route") || msg.includes("ehostunreach")) {
     return "smtp_unreachable";
   }
 
-  // Timeout / reset
-  if (rc === "ETIMEDOUT" || rc === "ECONNRESET" || msg.includes("timed out") || msg.includes("connection reset")) {
+  // Network error (reset, aborted, etc.)
+  if (rc === "ECONNRESET" || rc === "EPIPE" || msg.includes("connection reset") || msg.includes("connection aborted")) {
+    return "network_error";
+  }
+
+  // Timeout
+  if (rc === "ETIMEDOUT" || msg.includes("timed out") || msg.includes("timeout")) {
     return "connection_timeout";
   }
 
   // Auth / credentials
   if (rc === "EAUTH" || resp.includes("535") || resp.includes("534") || resp.includes("454 4.7") ||
       msg.includes("invalid login") || msg.includes("authentication failed") || msg.includes("invalid credentials")) {
-    // If the mailbox has never sent anything successfully, it's truly invalid credentials
     if (m.emailsSent === 0 && m.deferredCount > 0) return "invalid_credentials";
-    // Check responseCode
     if (p.responseCode === 535 || resp.includes("535")) return "smtp_auth_error";
-    // Provider-specific rejection
-    if (resp.includes("provider") || resp.includes("blocked") || resp.includes("policy")) return "provider_rejected";
+    if (resp.includes("provider") || resp.includes("blocked") || resp.includes("policy")) return "provider_error";
     return "auth_failed";
   }
 
   // Provider rejected (550, 554, etc.)
   if (resp.includes("550") || resp.includes("554") || resp.includes("rejected") || resp.includes("not permitted")) {
-    return "provider_rejected";
+    return "provider_error";
   }
 
   // Quota / cooling down
   if (m.quotaStatus === "quota_reached") {
-    return (m.quotaProbeCount ?? 0) > 2 ? "recovering" : "cooling_down";
+    const probeCount = m.quotaProbeCount ?? 0;
+    if (probeCount === 0) return "quota_reached";
+    return probeCount > 2 ? "recovering" : "cooling_down";
   }
 
-  // No errors, recently active
-  if (m.usedThisHour > 0 || m.emailsSent > 0) return "healthy";
+  // Unknown error present but no pattern matched
+  if (m.lastError) return "unknown";
+
+  // No errors
   return "healthy";
 }
 
@@ -312,18 +335,23 @@ interface HealthInfo {
 
 function getHealthInfo(state: HealthState): HealthInfo {
   const map: Record<HealthState, HealthInfo> = {
-    healthy:            { label: "Healthy",                 emoji: "🟢", cls: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",  dotCls: "bg-emerald-500 animate-pulse", severity: "green"  },
-    auth_failed:        { label: "Authentication Failed",   emoji: "🟡", cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400",        dotCls: "bg-amber-500",                 severity: "yellow" },
-    connection_timeout: { label: "Connection Timeout",      emoji: "🟡", cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400",        dotCls: "bg-amber-500",                 severity: "yellow" },
-    smtp_auth_error:    { label: "SMTP Auth Error",         emoji: "🟡", cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400",        dotCls: "bg-amber-500",                 severity: "yellow" },
-    provider_rejected:  { label: "Provider Rejected Login", emoji: "🟡", cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400",        dotCls: "bg-amber-500",                 severity: "yellow" },
-    mailbox_disabled:   { label: "Mailbox Disabled",        emoji: "🟡", cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400",        dotCls: "bg-amber-500",                 severity: "yellow" },
-    tls_error:          { label: "TLS/SSL Error",           emoji: "🟡", cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400",        dotCls: "bg-amber-500",                 severity: "yellow" },
-    cooling_down:       { label: "Cooling Down",            emoji: "🟠", cls: "bg-orange-500/10 text-orange-600 dark:text-orange-400",     dotCls: "bg-orange-500",                severity: "orange" },
-    recovering:         { label: "Recovering",              emoji: "🟠", cls: "bg-violet-500/10 text-violet-600 dark:text-violet-400",     dotCls: "bg-violet-500 animate-pulse",  severity: "orange" },
-    smtp_unreachable:   { label: "SMTP Unreachable",        emoji: "🔴", cls: "bg-red-500/10 text-red-600 dark:text-red-400",             dotCls: "bg-red-500",                   severity: "red"    },
-    invalid_credentials:{ label: "Invalid Credentials",     emoji: "🔴", cls: "bg-red-500/10 text-red-600 dark:text-red-400",             dotCls: "bg-red-500",                   severity: "red"    },
-    mailbox_offline:    { label: "Mailbox Offline",         emoji: "🔴", cls: "bg-red-500/10 text-red-600 dark:text-red-400",             dotCls: "bg-red-500",                   severity: "red"    },
+    healthy:            { label: "Healthy",                    emoji: "🟢", cls: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",  dotCls: "bg-emerald-500 animate-pulse", severity: "green"  },
+    auth_failed:        { label: "Authentication Failed",      emoji: "🟡", cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400",        dotCls: "bg-amber-500",                 severity: "yellow" },
+    connection_timeout: { label: "Timeout",                    emoji: "🟡", cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400",        dotCls: "bg-amber-500",                 severity: "yellow" },
+    smtp_auth_error:    { label: "SMTP Authentication Failed", emoji: "🟡", cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400",        dotCls: "bg-amber-500",                 severity: "yellow" },
+    provider_error:     { label: "Provider Error",             emoji: "🟡", cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400",        dotCls: "bg-amber-500",                 severity: "yellow" },
+    mailbox_disabled:   { label: "Mailbox Disabled",           emoji: "🟡", cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400",        dotCls: "bg-amber-500",                 severity: "yellow" },
+    tls_error:          { label: "TLS/SSL Error",              emoji: "🟡", cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400",        dotCls: "bg-amber-500",                 severity: "yellow" },
+    quota_reached:      { label: "Quota Reached",              emoji: "🟠", cls: "bg-orange-500/10 text-orange-600 dark:text-orange-400",     dotCls: "bg-orange-500",                severity: "orange" },
+    cooling_down:       { label: "Cooling Down",               emoji: "🟠", cls: "bg-orange-500/10 text-orange-600 dark:text-orange-400",     dotCls: "bg-orange-500",                severity: "orange" },
+    recovering:         { label: "Recovering",                 emoji: "🟠", cls: "bg-violet-500/10 text-violet-600 dark:text-violet-400",     dotCls: "bg-violet-500 animate-pulse",  severity: "orange" },
+    connection_failed:  { label: "Connection Failed",          emoji: "🔴", cls: "bg-red-500/10 text-red-600 dark:text-red-400",             dotCls: "bg-red-500",                   severity: "red"    },
+    smtp_unreachable:   { label: "SMTP Unreachable",           emoji: "🔴", cls: "bg-red-500/10 text-red-600 dark:text-red-400",             dotCls: "bg-red-500",                   severity: "red"    },
+    network_error:      { label: "Network Error",              emoji: "🔴", cls: "bg-red-500/10 text-red-600 dark:text-red-400",             dotCls: "bg-red-500",                   severity: "red"    },
+    dns_failure:        { label: "DNS Failure",                emoji: "🔴", cls: "bg-red-500/10 text-red-600 dark:text-red-400",             dotCls: "bg-red-500",                   severity: "red"    },
+    invalid_credentials:{ label: "Invalid Credentials",        emoji: "🔴", cls: "bg-red-500/10 text-red-600 dark:text-red-400",             dotCls: "bg-red-500",                   severity: "red"    },
+    mailbox_offline:    { label: "Mailbox Offline",            emoji: "🔴", cls: "bg-red-500/10 text-red-600 dark:text-red-400",             dotCls: "bg-red-500",                   severity: "red"    },
+    unknown:            { label: "Unknown",                    emoji: "⚪", cls: "bg-muted text-muted-foreground",                           dotCls: "bg-muted-foreground",           severity: "yellow" },
   };
   return map[state];
 }
@@ -970,6 +998,7 @@ function SmtpEventsDrawer({ mailboxId, mailboxEmail, open, onClose }: {
               <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                 <span>Attempts: <span className="text-foreground font-medium">{item.attempts}</span></span>
                 {item.deferredCount > 0 && <span>Deferred: <span className="text-amber-600 dark:text-amber-400 font-medium">{item.deferredCount}×</span></span>}
+                {item.campaignName && <span>Campaign: <span className="text-foreground font-medium">{item.campaignName}</span></span>}
                 {item.firstAttemptAt && <span>First: {timeAgo(item.firstAttemptAt)}</span>}
               </div>
               {item.lastError && (
@@ -1068,6 +1097,9 @@ function DetailDrawer({ mailbox, open, onClose, onAction, onOpenHistory, onOpenQ
       if (action === "retry-deferred") {
         res = await apiFetch(`mailboxes/${mailbox.id}/retry-deferred`, { method: "POST" });
         toast({ title: `Retried ${res.retried} deferred item(s)` });
+      } else if (action === "retry-failed") {
+        res = await apiFetch(`mailboxes/${mailbox.id}/retry-failed`, { method: "POST" });
+        toast({ title: `Retried ${res.retried} failed item(s)` });
       } else if (action === "clear-queue" && status) {
         res = await apiFetch(`mailboxes/${mailbox.id}/clear-queue`, {
           method: "POST",
@@ -1284,6 +1316,15 @@ function DetailDrawer({ mailbox, open, onClose, onAction, onOpenHistory, onOpenQ
           >
             {actionBusy === "retry-deferred" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
             Retry Deferred ({mailbox.deferredCount})
+          </Button>
+          <Button
+            variant="outline" size="sm"
+            className="w-full rounded-xl h-9 gap-2 text-red-600 dark:text-red-400"
+            onClick={() => handleQuickAction("retry-failed")}
+            disabled={actionBusy === "retry-failed" || mailbox.failedCount === 0}
+          >
+            {actionBusy === "retry-failed" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+            Retry Failed ({mailbox.failedCount})
           </Button>
 
           {/* Clear queue actions */}
@@ -1670,6 +1711,8 @@ export function AdminMailboxes() {
                         <DropdownMenuItem onClick={() => handleAction("test-connection", m.id)}><Wifi className="h-4 w-4 mr-2" /> Test SMTP</DropdownMenuItem>
                         {m.imapHost && <DropdownMenuItem onClick={() => handleAction("test-imap", m.id)}><Inbox className="h-4 w-4 mr-2" /> Test IMAP</DropdownMenuItem>}
                         <DropdownMenuItem onClick={() => handleAction("force-reconnect", m.id)} className="text-blue-600 dark:text-blue-400"><Zap className="h-4 w-4 mr-2" /> Force Reconnect</DropdownMenuItem>
+                        {m.deferredCount > 0 && <DropdownMenuItem onClick={() => handleAction("retry-deferred", m.id)} className="text-amber-600 dark:text-amber-400"><RotateCcw className="h-4 w-4 mr-2" /> Retry Deferred ({m.deferredCount})</DropdownMenuItem>}
+                        {m.failedCount > 0 && <DropdownMenuItem onClick={() => handleAction("retry-failed", m.id)} className="text-red-600 dark:text-red-400"><RotateCcw className="h-4 w-4 mr-2" /> Retry Failed ({m.failedCount})</DropdownMenuItem>}
                         <DropdownMenuSeparator />
                         {m.isActive
                           ? <DropdownMenuItem onClick={() => handleAction("disable", m.id)} className="text-muted-foreground"><Ban className="h-4 w-4 mr-2" /> Disable</DropdownMenuItem>
@@ -1716,6 +1759,8 @@ export function AdminMailboxes() {
                       <DropdownMenuItem onClick={() => setHistoryMailbox(m)}><History className="h-4 w-4 mr-2" /> SMTP Events</DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => handleAction("force-reconnect", m.id)} className="text-blue-600 dark:text-blue-400"><Zap className="h-4 w-4 mr-2" /> Force Reconnect</DropdownMenuItem>
+                      {m.deferredCount > 0 && <DropdownMenuItem onClick={() => handleAction("retry-deferred", m.id)} className="text-amber-600 dark:text-amber-400"><RotateCcw className="h-4 w-4 mr-2" /> Retry Deferred ({m.deferredCount})</DropdownMenuItem>}
+                      {m.failedCount > 0 && <DropdownMenuItem onClick={() => handleAction("retry-failed", m.id)} className="text-red-600 dark:text-red-400"><RotateCcw className="h-4 w-4 mr-2" /> Retry Failed ({m.failedCount})</DropdownMenuItem>}
                       {m.isActive
                         ? <DropdownMenuItem onClick={() => handleAction("disable", m.id)} className="text-muted-foreground"><Ban className="h-4 w-4 mr-2" /> Disable</DropdownMenuItem>
                         : <DropdownMenuItem onClick={() => handleAction("enable",  m.id)} className="text-emerald-600 dark:text-emerald-400"><PlayCircle className="h-4 w-4 mr-2" /> Enable</DropdownMenuItem>}

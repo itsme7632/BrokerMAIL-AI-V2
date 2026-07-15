@@ -818,8 +818,11 @@ router.get("/admin/mailboxes/:id/smtp-history", requireAdmin, async (req, res): 
       sentAt:         emailQueueTable.sentAt,
       firstAttemptAt: emailQueueTable.firstAttemptAt,
       createdAt:      emailQueueTable.createdAt,
+      campaignId:     emailQueueTable.campaignId,
+      campaignName:   campaignsTable.name,
     })
       .from(emailQueueTable)
+      .leftJoin(campaignsTable, eq(emailQueueTable.campaignId, campaignsTable.id))
       .where(where)
       .orderBy(desc(emailQueueTable.id))
       .limit(limit)
@@ -1906,6 +1909,30 @@ router.post("/admin/mailboxes/:id/retry-deferred", requireAdmin, async (req, res
   await db.insert(systemLogsTable).values({
     userId: req.user!.id, type: "monitoring", severity: "info",
     description: `Admin retried ${rows.length} deferred items for mailbox #${id}`,
+  });
+  res.json({ success: true, retried: rows.length });
+});
+
+router.post("/admin/mailboxes/:id/retry-failed", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id as string, 10);
+  if (!id) { res.status(400).json({ error: "Invalid mailbox id" }); return; }
+
+  const rows = await db.select({ id: emailQueueTable.id, campaignId: emailQueueTable.campaignId })
+    .from(emailQueueTable)
+    .where(and(eq(emailQueueTable.mailboxId, id), eq(emailQueueTable.status, "failed")))
+    .limit(500);
+  if (rows.length === 0) { res.json({ success: true, retried: 0 }); return; }
+
+  await db.update(emailQueueTable)
+    .set({ status: "pending", lastError: null, retryAfter: null })
+    .where(inArray(emailQueueTable.id, rows.map(r => r.id)));
+
+  const campaignIds = [...new Set(rows.map(r => r.campaignId).filter((v): v is number => v != null))];
+  campaignIds.forEach(cid => startCampaignProcessor(cid).catch(() => {}));
+
+  await db.insert(systemLogsTable).values({
+    userId: req.user!.id, type: "monitoring", severity: "info",
+    description: `Admin retried ${rows.length} failed items for mailbox #${id}`,
   });
   res.json({ success: true, retried: rows.length });
 });
