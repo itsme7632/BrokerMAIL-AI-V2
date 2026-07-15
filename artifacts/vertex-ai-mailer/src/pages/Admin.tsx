@@ -5,6 +5,7 @@ import { AdminOverview } from "./admin/AdminOverview";
 import { AdminUsers } from "./admin/AdminUsers";
 import { AdminCampaigns } from "./admin/AdminCampaigns";
 import { AdminMailboxes } from "./admin/AdminMailboxes";
+import { AdminAnalytics } from "./admin/AdminAnalytics";
 import { AdminSupport } from "./admin/AdminSupport";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -36,8 +37,6 @@ interface AdminMailbox {
   smtpSecure: string; fromName: string | null;
   isActive: boolean; emailsSent: number; createdAt: string;
 }
-
-interface AnalyticsDay { date: string; sent: number; failed: number; }
 
 interface AdminLog {
   id: number; type: string; severity: string;
@@ -157,60 +156,6 @@ function SeverityBadge({ severity }: { severity: string }) {
   );
 }
 
-// ─── Bar Chart ────────────────────────────────────────────────────────────────
-
-function AnalyticsChart({ data }: { data: AnalyticsDay[] }) {
-  const [hovered, setHovered] = useState<number | null>(null);
-  const maxVal = Math.max(...data.map(d => d.sent + d.failed), 1);
-  const totalSent   = data.reduce((s, d) => s + d.sent, 0);
-  const totalFailed = data.reduce((s, d) => s + d.failed, 0);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-4 text-xs">
-        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-sm bg-blue-500 inline-block" />Sent ({totalSent.toLocaleString()})</span>
-        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-sm bg-red-400 inline-block" />Failed ({totalFailed.toLocaleString()})</span>
-      </div>
-
-      <div className="relative h-44 flex items-end gap-[2px] bg-slate-50/60 rounded-xl px-3 pb-6 pt-3 border border-slate-100">
-        {data.map((d, i) => {
-          const sentH   = maxVal > 0 ? (d.sent   / maxVal) * 100 : 0;
-          const failedH = maxVal > 0 ? (d.failed / maxVal) * 100 : 0;
-          const isHov = hovered === i;
-          return (
-            <div
-              key={i}
-              className="relative flex-1 flex flex-col justify-end gap-[1px] cursor-pointer group"
-              style={{ minWidth: 0, height: "100%" }}
-              onMouseEnter={() => setHovered(i)}
-              onMouseLeave={() => setHovered(null)}
-            >
-              {failedH > 0 && (
-                <div className="w-full rounded-t-[2px] bg-red-400 transition-opacity" style={{ height: `${failedH}%`, minHeight: "2px", opacity: isHov ? 1 : 0.75 }} />
-              )}
-              <div className="w-full rounded-t-[2px] bg-blue-500 transition-opacity" style={{ height: `${sentH}%`, minHeight: d.sent > 0 ? "2px" : "0" , opacity: isHov ? 1 : 0.8 }} />
-
-              {isHov && (
-                <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-10 bg-popover text-popover-foreground border border-border text-xs rounded-lg px-2.5 py-1.5 whitespace-nowrap shadow-xl pointer-events-none">
-                  <p className="font-semibold">{new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</p>
-                  <p>✉ {d.sent} sent</p>
-                  {d.failed > 0 && <p className="text-destructive dark:text-red-300">✗ {d.failed} failed</p>}
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {/* X-axis labels */}
-        <div className="absolute bottom-1 left-3 right-3 flex justify-between text-[10px] text-slate-400 pointer-events-none">
-          {data.length > 0 && <span>{new Date(data[0].date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>}
-          {data.length > 14 && <span>{new Date(data[Math.floor(data.length / 2)].date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>}
-          {data.length > 0 && <span>{new Date(data[data.length - 1].date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main component ───────────────────────────────────────────────────────────
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
@@ -237,11 +182,6 @@ export default function Admin() {
   // Mailboxes
   const [mailboxes, setMailboxes]     = useState<AdminMailbox[]>([]);
   const [mailboxesLoading, setMailboxesLoading] = useState(false);
-
-  // Analytics
-  const [analytics, setAnalytics]     = useState<AnalyticsDay[]>([]);
-  const [analyticsDays, setAnalyticsDays] = useState(30);
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   // Logs
   const [logs, setLogs]               = useState<AdminLog[]>([]);
@@ -288,13 +228,6 @@ export default function Admin() {
     finally { setMailboxesLoading(false); }
   }, []);
 
-  const loadAnalytics = useCallback(async () => {
-    setAnalyticsLoading(true);
-    try { setAnalytics(await apiFetch(`analytics?days=${analyticsDays}`)); }
-    catch { /* silent */ }
-    finally { setAnalyticsLoading(false); }
-  }, [analyticsDays]);
-
   const loadLogs = useCallback(async () => {
     setLogsLoading(true);
     try {
@@ -335,7 +268,6 @@ export default function Admin() {
 
   useEffect(() => { loadStats(); }, [loadStats]);
   useEffect(() => { if (tab === "mailboxes") loadMailboxes();}, [tab, loadMailboxes]);
-  useEffect(() => { if (tab === "analytics") loadAnalytics();}, [tab, loadAnalytics, analyticsDays]);
   useEffect(() => { if (tab === "logs")      loadLogs();     }, [tab, loadLogs]);
   useEffect(() => { if (tab === "settings")  loadSettings(); }, [tab, loadSettings]);
   useEffect(() => { if (tab === "billing")   loadBillingData(); }, [tab, loadBillingData]);
@@ -478,50 +410,7 @@ export default function Admin() {
           {tab === "mailboxes" && <AdminMailboxes />}
 
           {/* ── ANALYTICS ─────────────────────────────────────────────────── */}
-          {tab === "analytics" && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-slate-800">Email Delivery Analytics</p>
-                <div className="flex gap-1.5">
-                  {[7, 14, 30, 90].map(d => (
-                    <button key={d} onClick={() => setAnalyticsDays(d)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                        analyticsDays === d
-                          ? "bg-blue-600 text-white"
-                          : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
-                      }`}>{d}d</button>
-                  ))}
-                </div>
-              </div>
-
-              {analyticsLoading ? (
-                <Skeleton className="h-48 w-full rounded-xl" />
-              ) : (
-                <AnalyticsChart data={analytics} />
-              )}
-
-              {/* Summary grid */}
-              {!analyticsLoading && analytics.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {[
-                    { label: "Total Sent",   value: analytics.reduce((s, d) => s + d.sent, 0), color: "text-blue-700", bg: "bg-blue-50" },
-                    { label: "Total Failed", value: analytics.reduce((s, d) => s + d.failed, 0), color: "text-red-600", bg: "bg-red-50" },
-                    { label: "Success Rate", value: (() => {
-                      const s = analytics.reduce((a, d) => a + d.sent, 0);
-                      const f = analytics.reduce((a, d) => a + d.failed, 0);
-                      return s + f > 0 ? `${Math.round(s / (s + f) * 100)}%` : "—";
-                    })(), color: "text-emerald-700", bg: "bg-emerald-50" },
-                    { label: "Daily Average", value: Math.round(analytics.reduce((s, d) => s + d.sent, 0) / analytics.length), color: "text-slate-700", bg: "bg-slate-50" },
-                  ].map(c => (
-                    <div key={c.label} className={`${c.bg} rounded-xl p-3 border border-slate-100`}>
-                      <p className="text-xs text-slate-500">{c.label}</p>
-                      <p className={`text-xl font-bold mt-0.5 ${c.color}`}>{c.value.toLocaleString()}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          {tab === "analytics" && <AdminAnalytics />}
 
           {/* ── LOGS ──────────────────────────────────────────────────────── */}
           {tab === "logs" && (

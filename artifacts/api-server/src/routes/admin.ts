@@ -1205,6 +1205,299 @@ router.get("/admin/analytics", requireAdmin, async (req, res): Promise<void> => 
   res.json(result);
 });
 
+// ─── Analytics Overview (Phase 11) ────────────────────────────────────────────
+// Full-platform analytics: overview cards, trend charts, and leaderboard tables.
+// Revenue/MRR/ARR are intentionally excluded — no billing processor is wired up
+// yet, so those cards are left as explicit "billing integration required"
+// placeholders on the frontend rather than computed from subscription rows.
+
+function analyticsDateRange(req: import("express").Request): { start: Date; end: Date; label: string } {
+  const range = (req.query.range as string) || "30d";
+  const end = new Date();
+  let start: Date;
+  let label = range;
+
+  if (range === "custom" && req.query.start && req.query.end) {
+    start = new Date(req.query.start as string);
+    const customEnd = new Date(req.query.end as string);
+    if (!isNaN(start.getTime()) && !isNaN(customEnd.getTime())) {
+      start.setHours(0, 0, 0, 0);
+      customEnd.setHours(23, 59, 59, 999);
+      return { start, end: customEnd, label: "custom" };
+    }
+  }
+
+  switch (range) {
+    case "today":
+      start = new Date();
+      start.setHours(0, 0, 0, 0);
+      label = "today";
+      break;
+    case "7d":
+      start = new Date(end.getTime() - 7 * 86_400_000);
+      break;
+    case "90d":
+      start = new Date(end.getTime() - 90 * 86_400_000);
+      break;
+    case "30d":
+    default:
+      start = new Date(end.getTime() - 30 * 86_400_000);
+      label = "30d";
+      break;
+  }
+  return { start, end, label };
+}
+
+/** Buckets a start/end range into per-day labels for time-series charts (capped at 92 points). */
+function dayBuckets(start: Date, end: Date): string[] {
+  const days: string[] = [];
+  const cursor = new Date(start);
+  cursor.setHours(0, 0, 0, 0);
+  const last = new Date(end);
+  last.setHours(0, 0, 0, 0);
+  let guard = 0;
+  while (cursor.getTime() <= last.getTime() && guard < 92) {
+    days.push(cursor.toISOString().split("T")[0]);
+    cursor.setDate(cursor.getDate() + 1);
+    guard++;
+  }
+  return days.length > 0 ? days : [new Date().toISOString().split("T")[0]];
+}
+
+function inferMailboxProvider(host: string): string {
+  const h = (host || "").toLowerCase();
+  if (h.includes("gmail") || h.includes("google")) return "Google";
+  if (h.includes("outlook") || h.includes("office365") || h.includes("hotmail")) return "Microsoft";
+  if (h.includes("secureserver") || h.includes("godaddy")) return "GoDaddy";
+  if (h.includes("titan") || h.includes("hostinger")) return "Hostinger";
+  if (h.includes("privateemail") || h.includes("namecheap")) return "Namecheap";
+  if (h.includes("zoho")) return "Zoho";
+  if (h.includes("sendgrid")) return "SendGrid";
+  if (h.includes("mailgun")) return "Mailgun";
+  if (h.includes("amazonaws")) return "Amazon SES";
+  if (h.includes("yahoo")) return "Yahoo";
+  if (h.includes("fastmail")) return "Fastmail";
+  if (h.includes("protonmail")) return "Proton";
+  return host || "Unknown";
+}
+
+router.get("/admin/analytics/overview", requireAdmin, async (req, res): Promise<void> => {
+  const { start, end, label: rangeLabel } = analyticsDateRange(req);
+  const days = dayBuckets(start, end);
+  const dayCol = (col: any) => sql<string>`(${col} AT TIME ZONE 'UTC')::date::text`;
+
+  const [
+    [totalUsers], [activeUsers], [trialUsers], [payingUsers],
+    [campaignsSent], [gmailSent], [gmailFailed], [smtpSent], [smtpFailed],
+    [openCount], [clickCount], [bounceCount], [unsubscribes], [suppressions],
+    gmailByDay, smtpByDay, userByDay, campaignByDay, subByDay, openByDay, bounceByDay,
+    activeMailboxes, planRows,
+    topCustomers, mostActiveUsers, topCampaigns, largestMailboxes,
+  ] = await Promise.all([
+    db.select({ count: count() }).from(usersTable),
+    db.select({ count: count() }).from(usersTable).where(eq(usersTable.status, "active")),
+    db.select({ count: count() }).from(usersTable).where(and(eq(usersTable.status, "active"), eq(usersTable.plan, "free"))),
+    db.select({ count: count() }).from(usersTable).where(and(eq(usersTable.status, "active"), sql`${usersTable.plan} != 'free'`)),
+    db.select({ count: count() }).from(campaignsTable)
+      .where(and(gt(campaignsTable.sentCount, 0), gte(campaignsTable.createdAt, start), lte(campaignsTable.createdAt, end))),
+    db.select({ count: count() }).from(draftsTable)
+      .where(and(eq(draftsTable.status, "success"), gte(draftsTable.createdAt, start), lte(draftsTable.createdAt, end))),
+    db.select({ count: count() }).from(draftsTable)
+      .where(and(eq(draftsTable.status, "failed"), gte(draftsTable.createdAt, start), lte(draftsTable.createdAt, end))),
+    db.select({ count: count() }).from(emailQueueTable)
+      .where(and(eq(emailQueueTable.status, "success"), gte(emailQueueTable.createdAt, start), lte(emailQueueTable.createdAt, end))),
+    db.select({ count: count() }).from(emailQueueTable)
+      .where(and(eq(emailQueueTable.status, "failed"), gte(emailQueueTable.createdAt, start), lte(emailQueueTable.createdAt, end))),
+    db.select({ count: sql<number>`count(distinct ${emailTrackingEventsTable.draftId})` }).from(emailTrackingEventsTable)
+      .where(and(eq(emailTrackingEventsTable.eventType, "open"), gte(emailTrackingEventsTable.createdAt, start), lte(emailTrackingEventsTable.createdAt, end))),
+    db.select({ count: sql<number>`count(distinct ${emailTrackingEventsTable.draftId})` }).from(emailTrackingEventsTable)
+      .where(and(eq(emailTrackingEventsTable.eventType, "click"), gte(emailTrackingEventsTable.createdAt, start), lte(emailTrackingEventsTable.createdAt, end))),
+    db.select({ count: count() }).from(processedBouncesTable)
+      .where(and(gte(processedBouncesTable.processedAt, start), lte(processedBouncesTable.processedAt, end))),
+    db.select({ count: count() }).from(suppressionListTable)
+      .where(and(eq(suppressionListTable.source, "unsubscribe_link"), gte(suppressionListTable.createdAt, start), lte(suppressionListTable.createdAt, end))),
+    db.select({ count: count() }).from(suppressionListTable)
+      .where(and(gte(suppressionListTable.createdAt, start), lte(suppressionListTable.createdAt, end))),
+
+    db.select({ date: dayCol(draftsTable.createdAt), cnt: count() }).from(draftsTable)
+      .where(and(eq(draftsTable.status, "success"), gte(draftsTable.createdAt, start), lte(draftsTable.createdAt, end)))
+      .groupBy(sql`(${draftsTable.createdAt} AT TIME ZONE 'UTC')::date`),
+    db.select({ date: dayCol(emailQueueTable.createdAt), cnt: count() }).from(emailQueueTable)
+      .where(and(eq(emailQueueTable.status, "success"), gte(emailQueueTable.createdAt, start), lte(emailQueueTable.createdAt, end)))
+      .groupBy(sql`(${emailQueueTable.createdAt} AT TIME ZONE 'UTC')::date`),
+    db.select({ date: dayCol(usersTable.createdAt), cnt: count() }).from(usersTable)
+      .where(and(gte(usersTable.createdAt, start), lte(usersTable.createdAt, end)))
+      .groupBy(sql`(${usersTable.createdAt} AT TIME ZONE 'UTC')::date`),
+    db.select({ date: dayCol(campaignsTable.createdAt), cnt: count() }).from(campaignsTable)
+      .where(and(gte(campaignsTable.createdAt, start), lte(campaignsTable.createdAt, end)))
+      .groupBy(sql`(${campaignsTable.createdAt} AT TIME ZONE 'UTC')::date`),
+    db.select({ date: dayCol(subscriptionsTable.createdAt), cnt: count() }).from(subscriptionsTable)
+      .where(and(gte(subscriptionsTable.createdAt, start), lte(subscriptionsTable.createdAt, end)))
+      .groupBy(sql`(${subscriptionsTable.createdAt} AT TIME ZONE 'UTC')::date`),
+    db.select({ date: dayCol(emailTrackingEventsTable.createdAt), cnt: sql<number>`count(distinct ${emailTrackingEventsTable.draftId})` }).from(emailTrackingEventsTable)
+      .where(and(eq(emailTrackingEventsTable.eventType, "open"), gte(emailTrackingEventsTable.createdAt, start), lte(emailTrackingEventsTable.createdAt, end)))
+      .groupBy(sql`(${emailTrackingEventsTable.createdAt} AT TIME ZONE 'UTC')::date`),
+    db.select({ date: dayCol(processedBouncesTable.processedAt), cnt: count() }).from(processedBouncesTable)
+      .where(and(gte(processedBouncesTable.processedAt, start), lte(processedBouncesTable.processedAt, end)))
+      .groupBy(sql`(${processedBouncesTable.processedAt} AT TIME ZONE 'UTC')::date`),
+
+    db.select({ smtpHost: mailboxesTable.smtpHost }).from(mailboxesTable).where(eq(mailboxesTable.isActive, true)),
+    db.select({ plan: usersTable.plan, cnt: count() }).from(usersTable)
+      .where(eq(usersTable.status, "active")).groupBy(usersTable.plan),
+
+    db.select({
+      userId: usersTable.id, name: usersTable.name, email: usersTable.email, plan: usersTable.plan,
+      gmailSent: sql<number>`(select count(*) from ${draftsTable} where ${draftsTable.userId} = ${usersTable.id} and ${draftsTable.status} = 'success' and ${draftsTable.createdAt} between ${start} and ${end})`,
+      smtpSent: sql<number>`(select count(*) from ${emailQueueTable} where ${emailQueueTable.userId} = ${usersTable.id} and ${emailQueueTable.status} = 'success' and ${emailQueueTable.createdAt} between ${start} and ${end})`,
+    }).from(usersTable)
+      .orderBy(sql`(
+        (select count(*) from ${draftsTable} where ${draftsTable.userId} = ${usersTable.id} and ${draftsTable.status} = 'success' and ${draftsTable.createdAt} between ${start} and ${end}) +
+        (select count(*) from ${emailQueueTable} where ${emailQueueTable.userId} = ${usersTable.id} and ${emailQueueTable.status} = 'success' and ${emailQueueTable.createdAt} between ${start} and ${end})
+      ) desc`)
+      .limit(10),
+
+    db.select({
+      userId: usersTable.id, name: usersTable.name, email: usersTable.email, lastActiveAt: usersTable.lastActiveAt,
+      campaignCount: sql<number>`(select count(*) from ${campaignsTable} where ${campaignsTable.userId} = ${usersTable.id} and ${campaignsTable.createdAt} between ${start} and ${end})`,
+    }).from(usersTable)
+      .where(isNotNull(usersTable.lastActiveAt))
+      .orderBy(desc(usersTable.lastActiveAt))
+      .limit(10),
+
+    db.select({
+      id: campaignsTable.id, name: campaignsTable.name, status: campaignsTable.status,
+      sentCount: campaignsTable.sentCount, totalLeads: campaignsTable.totalLeads,
+      userName: usersTable.name, createdAt: campaignsTable.createdAt,
+    }).from(campaignsTable).leftJoin(usersTable, eq(campaignsTable.userId, usersTable.id))
+      .where(and(gte(campaignsTable.createdAt, start), lte(campaignsTable.createdAt, end)))
+      .orderBy(desc(campaignsTable.sentCount))
+      .limit(10),
+
+    db.select({
+      id: mailboxesTable.id, smtpHost: mailboxesTable.smtpHost, smtpUser: mailboxesTable.smtpUser,
+      userName: usersTable.name,
+      sendCount: sql<number>`(select count(*) from ${emailQueueTable} where ${emailQueueTable.mailboxId} = ${mailboxesTable.id} and ${emailQueueTable.status} = 'success')`,
+    }).from(mailboxesTable).leftJoin(usersTable, eq(mailboxesTable.userId, usersTable.id))
+      .orderBy(sql`(select count(*) from ${emailQueueTable} where ${emailQueueTable.mailboxId} = ${mailboxesTable.id} and ${emailQueueTable.status} = 'success') desc`)
+      .limit(10),
+  ]);
+
+  const gmailMap = Object.fromEntries(gmailByDay.map((r: any) => [r.date, Number(r.cnt)]));
+  const smtpMap  = Object.fromEntries(smtpByDay.map((r: any) => [r.date, Number(r.cnt)]));
+  const userMap  = Object.fromEntries(userByDay.map((r: any) => [r.date, Number(r.cnt)]));
+  const campMap  = Object.fromEntries(campaignByDay.map((r: any) => [r.date, Number(r.cnt)]));
+  const subMap   = Object.fromEntries(subByDay.map((r: any) => [r.date, Number(r.cnt)]));
+  const openMap  = Object.fromEntries(openByDay.map((r: any) => [r.date, Number(r.cnt)]));
+  const bounceMap = Object.fromEntries(bounceByDay.map((r: any) => [r.date, Number(r.cnt)]));
+
+  const emailByDay      = days.map(d => ({ date: d, gmail: gmailMap[d] ?? 0, smtp: smtpMap[d] ?? 0, total: (gmailMap[d] ?? 0) + (smtpMap[d] ?? 0) }));
+  const userByDayOut     = days.map(d => ({ date: d, new: userMap[d] ?? 0 }));
+  const campaignByDayOut = days.map(d => ({ date: d, new: campMap[d] ?? 0 }));
+  const subscriptionByDayOut = days.map(d => ({ date: d, new: subMap[d] ?? 0 }));
+  const openRateByDayOut = days.map(d => {
+    const sent = (gmailMap[d] ?? 0) + (smtpMap[d] ?? 0);
+    return { date: d, rate: sent > 0 ? Math.round(((openMap[d] ?? 0) / sent) * 1000) / 10 : 0 };
+  });
+  const bounceRateByDayOut = days.map(d => {
+    const sent = (gmailMap[d] ?? 0) + (smtpMap[d] ?? 0);
+    return { date: d, rate: sent > 0 ? Math.round(((bounceMap[d] ?? 0) / sent) * 1000) / 10 : 0 };
+  });
+
+  const providerCounts: Record<string, number> = {};
+  for (const mb of activeMailboxes) {
+    const p = inferMailboxProvider(mb.smtpHost);
+    providerCounts[p] = (providerCounts[p] ?? 0) + 1;
+  }
+
+  const emailsSent = gmailSent.count + smtpSent.count;
+  const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 1000) / 10 : 0);
+
+  res.json({
+    range: { label: rangeLabel, start: start.toISOString(), end: end.toISOString() },
+    cards: {
+      totalUsers: totalUsers.count,
+      activeUsers: activeUsers.count,
+      trialUsers: trialUsers.count,
+      payingUsers: payingUsers.count,
+      campaignsSent: campaignsSent.count,
+      emailsSent,
+      smtpSuccessRate: pct(smtpSent.count, smtpSent.count + smtpFailed.count),
+      gmailSuccessRate: pct(gmailSent.count, gmailSent.count + gmailFailed.count),
+      openRate: pct(openCount.count, emailsSent),
+      bounceRate: pct(bounceCount.count, emailsSent),
+      clickRate: pct(clickCount.count, emailsSent),
+      unsubscribes: unsubscribes.count,
+      suppressions: suppressions.count,
+      // Revenue metrics require the billing processor (Lemon Squeezy) to be connected.
+      revenue: null, mrr: null, arr: null,
+    },
+    charts: {
+      emailVolume: emailByDay,
+      userGrowth: userByDayOut,
+      campaignActivity: campaignByDayOut,
+      subscriptionGrowth: subscriptionByDayOut,
+      openRateTrend: openRateByDayOut,
+      bounceTrend: bounceRateByDayOut,
+      smtpVsGmail: { smtp: smtpSent.count, gmail: gmailSent.count },
+      mailboxProviders: Object.entries(providerCounts).map(([provider, cnt]) => ({ provider, count: cnt })),
+      planDistribution: planRows.map(p => ({ plan: p.plan, count: p.cnt })),
+      revenueGrowth: null,
+    },
+    tables: {
+      topCustomers: topCustomers.map((c: any) => ({ ...c, totalSent: Number(c.gmailSent) + Number(c.smtpSent) })),
+      mostActiveUsers: mostActiveUsers.map((u: any) => ({ ...u, lastActiveAt: u.lastActiveAt?.toISOString() ?? null })),
+      topCampaigns: topCampaigns.map((c: any) => ({ ...c, createdAt: c.createdAt.toISOString() })),
+      largestMailboxes: largestMailboxes.map((m: any) => ({ ...m, provider: inferMailboxProvider(m.smtpHost) })),
+    },
+  });
+});
+
+router.get("/admin/analytics/export", requireAdmin, async (req, res): Promise<void> => {
+  const format = ((req.query.format as string) || "csv").toLowerCase();
+  const { start, end, label: rangeLabel } = analyticsDateRange(req);
+
+  // Re-fetch the same overview payload so export always matches what's on screen.
+  const overviewReq = { query: req.query } as any;
+  const { start: s, end: e } = analyticsDateRange(overviewReq);
+
+  const [gmailSent, smtpSent, totalUsers, campaignsSent] = await Promise.all([
+    db.select({ count: count() }).from(draftsTable).where(and(eq(draftsTable.status, "success"), gte(draftsTable.createdAt, s), lte(draftsTable.createdAt, e))),
+    db.select({ count: count() }).from(emailQueueTable).where(and(eq(emailQueueTable.status, "success"), gte(emailQueueTable.createdAt, s), lte(emailQueueTable.createdAt, e))),
+    db.select({ count: count() }).from(usersTable),
+    db.select({ count: count() }).from(campaignsTable).where(and(gt(campaignsTable.sentCount, 0), gte(campaignsTable.createdAt, s), lte(campaignsTable.createdAt, e))),
+  ]);
+
+  const rows: [string, string | number][] = [
+    ["Range", rangeLabel],
+    ["Start", s.toISOString()],
+    ["End", e.toISOString()],
+    ["Total Users", totalUsers[0].count],
+    ["Campaigns Sent", campaignsSent[0].count],
+    ["Emails Sent (Gmail)", gmailSent[0].count],
+    ["Emails Sent (SMTP)", smtpSent[0].count],
+    ["Emails Sent (Total)", gmailSent[0].count + smtpSent[0].count],
+  ];
+
+  const filename = `analytics_${rangeLabel}_${new Date().toISOString().split("T")[0]}`;
+
+  if (format === "xlsx") {
+    const XLSX = await import("xlsx");
+    const ws = XLSX.utils.aoa_to_sheet([["Metric", "Value"], ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Analytics");
+    const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}.xlsx"`);
+    res.send(buf);
+    return;
+  }
+
+  const csv = ["Metric,Value", ...rows.map(([k, v]) => `"${k}",${v}`)].join("\n");
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}.csv"`);
+  res.send(csv);
+});
+
 // ─── Logs ─────────────────────────────────────────────────────────────────────
 
 router.get("/admin/logs", requireAdmin, async (req, res): Promise<void> => {

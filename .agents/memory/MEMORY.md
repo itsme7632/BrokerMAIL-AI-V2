@@ -19,3 +19,4 @@
 - [Production schema sync (DigitalOcean)](prod-schema-sync-digitalocean.md) — prod DB is self-hosted DigitalOcean, not Replit-managed; hand-written SQL migrations are correct here, skip "just re-publish" advice
 - [Mailbox stabilization pass](mailbox-stabilization-pass.md) — cancel/finalize race fix, retry queue scoping, EAUTH healthState (text ILIKE, not ::jsonb; success='success' not 'sent'), widget redesign
 - [Unwired admin dead-code pattern](unwired-admin-dead-code.md) — always grep for imports before building a "new" admin page; audit dead code for base-path/method/field-name wiring bugs
+- [Admin Analytics (Phase 11) data conventions](admin-analytics-phase11.md) — trial/paying-user derivation, provider inference, revenue placeholder, gmail+smtp dual-pipeline summing
