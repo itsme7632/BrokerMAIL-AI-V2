@@ -1851,6 +1851,45 @@ router.post("/admin/queue/retry-deferred", requireAdmin, async (req, res): Promi
   res.json({ success: true, retried: rows.length });
 });
 
+router.post("/admin/queue/retry-failed", requireAdmin, async (req, res): Promise<void> => {
+  const rows = await db.select({ id: emailQueueTable.id, campaignId: emailQueueTable.campaignId })
+    .from(emailQueueTable).where(eq(emailQueueTable.status, "failed")).limit(500);
+  if (rows.length === 0) { res.json({ success: true, retried: 0 }); return; }
+
+  await db.update(emailQueueTable)
+    .set({ status: "pending", lastError: null, retryAfter: null })
+    .where(inArray(emailQueueTable.id, rows.map(r => r.id)));
+
+  const campaignIds = [...new Set(rows.map(r => r.campaignId).filter((v): v is number => v != null))];
+  campaignIds.forEach(cid => startCampaignProcessor(cid).catch(() => {}));
+
+  await db.insert(systemLogsTable).values({
+    userId: req.user!.id, type: "monitoring", severity: "info",
+    description: `Admin retried ${rows.length} failed queue item(s) (global)`,
+  });
+  res.json({ success: true, retried: rows.length });
+});
+
+router.post("/admin/queue/clear-selected", requireAdmin, async (req, res): Promise<void> => {
+  const ids: number[] = Array.isArray(req.body?.ids)
+    ? req.body.ids.filter((id: unknown) => typeof id === "number")
+    : [];
+  if (ids.length === 0) { res.status(400).json({ error: "No IDs provided" }); return; }
+
+  // Only delete from emailQueueTable — does NOT touch campaigns, sent email history, or statistics
+  const [{ removed }] = await db.select({ removed: sql<number>`count(*)::int` })
+    .from(emailQueueTable)
+    .where(inArray(emailQueueTable.id, ids));
+
+  await db.delete(emailQueueTable).where(inArray(emailQueueTable.id, ids));
+
+  await db.insert(systemLogsTable).values({
+    userId: req.user!.id, type: "monitoring", severity: "warn",
+    description: `Admin cleared ${removed} selected queue item(s) by ID`,
+  });
+  res.json({ success: true, removed });
+});
+
 router.post("/admin/queue/clear", requireAdmin, async (req, res): Promise<void> => {
   const status = (req.body?.status as string) ?? "";
   const CLEARABLE = ["pending", "deferred", "failed", "success", "cancelled", "all"];
@@ -1858,6 +1897,7 @@ router.post("/admin/queue/clear", requireAdmin, async (req, res): Promise<void> 
     res.status(400).json({ error: `status must be one of: ${CLEARABLE.join(", ")}` }); return;
   }
 
+  // Only deletes from emailQueueTable — does NOT modify campaigns, sent email history, or statistics
   const where = status === "all" ? undefined : eq(emailQueueTable.status, status);
   const [{ total }] = await db.select({ total: sql<number>`count(*)::int` }).from(emailQueueTable).where(where);
 

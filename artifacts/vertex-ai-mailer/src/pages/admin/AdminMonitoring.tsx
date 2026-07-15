@@ -322,6 +322,41 @@ function ErrorDetailModal({ raw, open, onClose }: { raw: string | null; open: bo
   );
 }
 
+// ─── Confirm Dialog ───────────────────────────────────────────────────────────
+
+function ConfirmDialog({
+  open, onClose, onConfirm, label, description, busy,
+}: {
+  open: boolean; onClose: () => void; onConfirm: () => void;
+  label: string; description: string; busy: boolean;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-red-500" />
+            Confirm {label}
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">{description}</p>
+        <div className="flex gap-2 justify-end pt-2">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button
+            size="sm"
+            className="bg-red-600 hover:bg-red-700 text-white"
+            onClick={onConfirm}
+            disabled={busy}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+            {label}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Queue Management Section (Part 1) ───────────────────────────────────────
 
 const STATUS_CLS: Record<string, string> = {
@@ -342,8 +377,12 @@ function QueueManagement({ onQueuesChanged }: { onQueuesChanged: () => void }) {
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [actionBusy, setActionBusy] = useState<string | null>(null);
-  const [confirmClear, setConfirmClear] = useState<string | null>(null);
   const [errorModal, setErrorModal] = useState<string | null>(null);
+
+  // Confirmation dialog for destructive actions
+  const [pendingAction, setPendingAction] = useState<{
+    action: string; label: string; description: string; body?: unknown;
+  } | null>(null);
 
   // Filters
   const [statusFilter,   setStatusFilter]   = useState("all");
@@ -354,35 +393,60 @@ function QueueManagement({ onQueuesChanged }: { onQueuesChanged: () => void }) {
   const [dateTo,         setDateTo]         = useState("");
   const [showFilters,    setShowFilters]    = useState(false);
 
+  // Manual reload trigger
+  const [refreshTick, setRefreshTick] = useState(0);
+  const reload = useCallback(() => setRefreshTick(t => t + 1), []);
+
   const LIMIT = 50;
   const pageCount = Math.max(Math.ceil(total / LIMIT), 1);
 
-  const buildParams = useCallback(() => {
-    const p = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
-    if (statusFilter !== "all") p.set("status", statusFilter);
-    if (userFilter)     p.set("userId",     userFilter);
-    if (mailboxFilter)  p.set("mailboxId",  mailboxFilter);
-    if (campaignFilter) p.set("campaignId", campaignFilter);
-    if (dateFrom)       p.set("dateFrom",   dateFrom);
-    if (dateTo)         p.set("dateTo",     dateTo);
-    return p.toString();
-  }, [page, statusFilter, userFilter, mailboxFilter, campaignFilter, dateFrom, dateTo]);
-
-  const load = useCallback(async () => {
+  // Single effect: build params inline so there is no stale-closure race.
+  // A version counter discards responses from superseded requests.
+  const loadVersion = useRef(0);
+  useEffect(() => {
+    const v = ++loadVersion.current;
     setLoading(true);
-    try {
-      const data = await apiFetch(`queue?${buildParams()}`);
-      setItems(data.data);
-      setTotal(data.total);
-      setSelected(new Set());
-    } catch { /* silent */ }
-    finally { setLoading(false); }
-  }, [buildParams]);
 
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); }, [statusFilter, userFilter, mailboxFilter, campaignFilter, dateFrom, dateTo]);
+    const p = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
+    if (statusFilter !== "all")    p.set("status",     statusFilter);
+    if (userFilter.trim())         p.set("userId",     userFilter.trim());
+    if (mailboxFilter.trim())      p.set("mailboxId",  mailboxFilter.trim());
+    if (campaignFilter.trim())     p.set("campaignId", campaignFilter.trim());
+    if (dateFrom)                  p.set("dateFrom",   dateFrom);
+    if (dateTo)                    p.set("dateTo",     dateTo);
 
-  const doAction = async (action: string, body?: unknown) => {
+    fetch(`/api/admin/queue?${p.toString()}`, {
+      headers: { Authorization: `Bearer ${token()}` },
+    })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`Error ${r.status}`)))
+      .then(data => {
+        if (v !== loadVersion.current) return; // discard stale response
+        setItems(data.data);
+        setTotal(data.total);
+        setSelected(new Set());
+      })
+      .catch(() => {})
+      .finally(() => { if (v === loadVersion.current) setLoading(false); });
+  }, [page, statusFilter, userFilter, mailboxFilter, campaignFilter, dateFrom, dateTo, refreshTick]);
+
+  // Reset to page 1 whenever a filter changes (not when page itself changes)
+  const prevFiltersRef = useRef({ statusFilter, userFilter, mailboxFilter, campaignFilter, dateFrom, dateTo });
+  useEffect(() => {
+    const prev = prevFiltersRef.current;
+    const changed =
+      prev.statusFilter   !== statusFilter   ||
+      prev.userFilter     !== userFilter     ||
+      prev.mailboxFilter  !== mailboxFilter  ||
+      prev.campaignFilter !== campaignFilter ||
+      prev.dateFrom       !== dateFrom       ||
+      prev.dateTo         !== dateTo;
+    prevFiltersRef.current = { statusFilter, userFilter, mailboxFilter, campaignFilter, dateFrom, dateTo };
+    if (changed && page !== 1) setPage(1);
+  }, [statusFilter, userFilter, mailboxFilter, campaignFilter, dateFrom, dateTo, page]);
+
+  // Execute a confirmed (or non-destructive) action
+  const execAction = async (action: string, body?: unknown) => {
+    setPendingAction(null);
     setActionBusy(action);
     try {
       let res: any;
@@ -396,21 +460,29 @@ function QueueManagement({ onQueuesChanged }: { onQueuesChanged: () => void }) {
           toast({ title: `Retried ${res.retried} deferred item(s)` });
           break;
         case "retry-failed":
-          res = await apiPost("monitoring/queue/retry-all");
+          res = await apiPost("queue/retry-failed");
           toast({ title: `Retried ${res.retried} failed item(s)` });
+          break;
+        case "clear-selected":
+          res = await apiPost("queue/clear-selected", { ids: [...selected] });
+          toast({ title: `Removed ${res.removed} queue item(s)` });
           break;
         case "clear":
           res = await apiPost("queue/clear", body);
-          toast({ title: `Removed ${res.removed} item(s)` });
-          setConfirmClear(null);
+          toast({ title: `Removed ${res.removed} queue item(s)` });
           break;
       }
-      await load();
+      reload();
       onQueuesChanged();
     } catch (err) {
       toast({ title: "Action failed", description: (err as Error).message, variant: "destructive" });
     } finally { setActionBusy(null); }
   };
+
+  // Request confirmation before destructive actions
+  const requestConfirm = (
+    action: string, label: string, description: string, body?: unknown,
+  ) => setPendingAction({ action, label, description, body });
 
   const toggleSelect = (id: number) => {
     setSelected(s => {
@@ -433,15 +505,6 @@ function QueueManagement({ onQueuesChanged }: { onQueuesChanged: () => void }) {
     setCampaignFilter(""); setDateFrom(""); setDateTo("");
   };
   const hasFilters = statusFilter !== "all" || userFilter || mailboxFilter || campaignFilter || dateFrom || dateTo;
-
-  const CLEAR_OPTIONS = [
-    { status: "pending",   label: "Clear Pending" },
-    { status: "deferred",  label: "Clear Deferred" },
-    { status: "failed",    label: "Clear Failed" },
-    { status: "success",   label: "Clear Completed" },
-    { status: "cancelled", label: "Clear Cancelled" },
-    { status: "all",       label: "Clear Entire Queue" },
-  ];
 
   return (
     <div className="space-y-4">
@@ -469,7 +532,7 @@ function QueueManagement({ onQueuesChanged }: { onQueuesChanged: () => void }) {
             Filters
             {hasFilters && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
           </Button>
-          <Button variant="outline" size="sm" className="h-8 rounded-xl gap-1.5 text-xs" onClick={load} disabled={loading}>
+          <Button variant="outline" size="sm" className="h-8 rounded-xl gap-1.5 text-xs" onClick={reload} disabled={loading}>
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </div>
@@ -493,19 +556,46 @@ function QueueManagement({ onQueuesChanged }: { onQueuesChanged: () => void }) {
 
       {/* Action bar */}
       <div className="flex flex-wrap items-center gap-2">
+        {/* Selection-scoped actions — visible only when rows are checked */}
         {selected.size > 0 && (
-          <Button
-            variant="outline" size="sm" className="h-8 rounded-xl gap-1.5 text-xs text-amber-600 dark:text-amber-400"
-            onClick={() => doAction("retry-selected")}
-            disabled={!!actionBusy}
-          >
-            {actionBusy === "retry-selected" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-            Retry Selected ({selected.size})
-          </Button>
+          <>
+            <Button
+              variant="outline" size="sm"
+              className="h-8 rounded-xl gap-1.5 text-xs text-amber-600 dark:text-amber-400"
+              onClick={() => requestConfirm(
+                "retry-selected",
+                `Retry Selected (${selected.size})`,
+                `Re-queue ${selected.size} selected item(s) for sending. Only failed and deferred items will actually be retried; others are skipped.`,
+              )}
+              disabled={!!actionBusy}
+            >
+              {actionBusy === "retry-selected" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+              Retry Selected ({selected.size})
+            </Button>
+            <Button
+              variant="outline" size="sm"
+              className="h-8 rounded-xl gap-1.5 text-xs text-red-600 dark:text-red-400"
+              onClick={() => requestConfirm(
+                "clear-selected",
+                `Clear Selected (${selected.size})`,
+                `Permanently delete ${selected.size} selected queue row(s). This only removes queue entries — campaign history, sent email records, and statistics are not affected.`,
+              )}
+              disabled={!!actionBusy}
+            >
+              {actionBusy === "clear-selected" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              Clear Selected ({selected.size})
+            </Button>
+          </>
         )}
+
+        {/* Global retry actions */}
         <Button
           variant="outline" size="sm" className="h-8 rounded-xl gap-1.5 text-xs"
-          onClick={() => doAction("retry-deferred")}
+          onClick={() => requestConfirm(
+            "retry-deferred",
+            "Retry All Deferred",
+            "Re-queue all deferred items across the entire queue for immediate re-attempt.",
+          )}
           disabled={!!actionBusy}
         >
           {actionBusy === "retry-deferred" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
@@ -513,7 +603,11 @@ function QueueManagement({ onQueuesChanged }: { onQueuesChanged: () => void }) {
         </Button>
         <Button
           variant="outline" size="sm" className="h-8 rounded-xl gap-1.5 text-xs"
-          onClick={() => doAction("retry-failed")}
+          onClick={() => requestConfirm(
+            "retry-failed",
+            "Retry All Failed",
+            "Re-queue all failed items across the entire queue. Only items with status 'failed' are affected.",
+          )}
           disabled={!!actionBusy}
         >
           {actionBusy === "retry-failed" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
@@ -522,33 +616,31 @@ function QueueManagement({ onQueuesChanged }: { onQueuesChanged: () => void }) {
 
         <div className="flex-1" />
 
-        {/* Clear queue dropdown */}
-        {CLEAR_OPTIONS.map(opt => {
-          if (confirmClear === opt.status) {
-            return (
-              <div key={opt.status} className="flex items-center gap-1.5 rounded-xl border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/10 px-3 py-1.5">
-                <span className="text-xs text-red-600 dark:text-red-400 font-semibold">Confirm?</span>
-                <Button
-                  size="sm" className="h-6 px-2 rounded-lg text-[10px] bg-red-600 hover:bg-red-700 text-white"
-                  onClick={() => doAction("clear", { status: opt.status })}
-                  disabled={!!actionBusy}
-                >
-                  {actionBusy === "clear" ? <Loader2 className="h-3 w-3 animate-spin" /> : "Yes, Clear"}
-                </Button>
-                <Button variant="ghost" size="sm" className="h-6 px-2 rounded-lg text-[10px]" onClick={() => setConfirmClear(null)}>No</Button>
-              </div>
-            );
-          }
-          return null;
-        })}
-
+        {/* Clear queue dropdown — all options require confirmation */}
         <Select
           value=""
           onValueChange={v => {
-            if (v === "all") {
-              setConfirmClear("all");
+            if (v === "clear-selected") {
+              requestConfirm(
+                "clear-selected",
+                `Clear Selected (${selected.size})`,
+                `Permanently delete ${selected.size} selected queue row(s). Campaign history, sent email records, and statistics are not affected.`,
+              );
+            } else if (v === "all") {
+              requestConfirm(
+                "clear",
+                "Clear Entire Queue",
+                "⚠️ This will permanently delete ALL items from the email queue regardless of status. Campaign history, sent email records, and statistics are not affected. This action cannot be undone.",
+                { status: "all" },
+              );
             } else {
-              setConfirmClear(v);
+              const label = { pending: "Clear Pending", deferred: "Clear Deferred", failed: "Clear Failed", success: "Clear Completed", cancelled: "Clear Cancelled" }[v] ?? `Clear ${v}`;
+              requestConfirm(
+                "clear",
+                label,
+                `Permanently delete all ${v} items from the queue. Campaign history, sent email records, and statistics are not affected.`,
+                { status: v },
+              );
             }
           }}
         >
@@ -557,11 +649,19 @@ function QueueManagement({ onQueuesChanged }: { onQueuesChanged: () => void }) {
             <span>Clear Queue…</span>
           </SelectTrigger>
           <SelectContent>
-            {CLEAR_OPTIONS.map(opt => (
-              <SelectItem key={opt.status} value={opt.status} className={opt.status === "all" ? "text-red-600 dark:text-red-400 font-semibold" : ""}>
-                {opt.label}
+            {selected.size > 0 && (
+              <SelectItem value="clear-selected" className="text-red-600 dark:text-red-400">
+                Clear Selected ({selected.size})
               </SelectItem>
-            ))}
+            )}
+            <SelectItem value="pending">Clear Pending</SelectItem>
+            <SelectItem value="deferred">Clear Deferred</SelectItem>
+            <SelectItem value="failed">Clear Failed</SelectItem>
+            <SelectItem value="success">Clear Completed</SelectItem>
+            <SelectItem value="cancelled">Clear Cancelled</SelectItem>
+            <SelectItem value="all" className="text-red-600 dark:text-red-400 font-semibold">
+              Clear Entire Queue
+            </SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -669,8 +769,16 @@ function QueueManagement({ onQueuesChanged }: { onQueuesChanged: () => void }) {
                   {(item.status === "failed" || item.status === "deferred") && (
                     <Button
                       variant="ghost" size="sm" className="h-6 px-2 rounded-lg text-[10px]"
-                      onClick={() => doAction("retry-selected") /* handled via selection */}
-                      title="Select and use Retry Selected"
+                      onClick={() => {
+                        // Select this row then confirm retry
+                        setSelected(new Set([item.id]));
+                        requestConfirm(
+                          "retry-selected",
+                          "Retry This Item",
+                          `Re-queue item #${item.id} (${item.email}) for sending.`,
+                        );
+                      }}
+                      title="Retry this item"
                     >
                       <RotateCcw className="h-3 w-3" />
                     </Button>
@@ -694,6 +802,16 @@ function QueueManagement({ onQueuesChanged }: { onQueuesChanged: () => void }) {
       )}
 
       <ErrorDetailModal raw={errorModal} open={!!errorModal} onClose={() => setErrorModal(null)} />
+
+      {/* Confirmation dialog for all destructive actions */}
+      <ConfirmDialog
+        open={!!pendingAction}
+        onClose={() => setPendingAction(null)}
+        onConfirm={() => pendingAction && execAction(pendingAction.action, pendingAction.body)}
+        label={pendingAction?.label ?? ""}
+        description={pendingAction?.description ?? ""}
+        busy={!!actionBusy}
+      />
     </div>
   );
 }
