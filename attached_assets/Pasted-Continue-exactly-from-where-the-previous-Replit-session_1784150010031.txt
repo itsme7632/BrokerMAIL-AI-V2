@@ -1,0 +1,274 @@
+Continue exactly from where the previous Replit session stopped.
+
+IMPORTANT:
+- DO NOT audit the project again.
+- DO NOT reread the whole codebase.
+- DO NOT rebuild existing functionality.
+- First inspect the latest git commits and current modified files, then continue only the unfinished work.
+- Reuse all existing backend routes, database schema, and UI components.
+- Keep the existing architecture and dark theme.
+- No placeholder or fake data.
+- No schema changes unless absolutely required.
+- Do not touch unrelated modules.
+
+=========================================================
+PROJECT STATUS (ALREADY COMPLETED)
+=========================================================
+
+User Panel:
+✅ Complete
+
+Admin Panel:
+✅ Dashboard
+✅ User Management
+✅ Campaign Monitor
+✅ Billing
+✅ Mailboxes
+✅ Support
+✅ Product Hub
+✅ Analytics
+✅ Monitoring
+
+Recently implemented:
+- AdminMonitoring.tsx improvements
+- AdminMailboxes.tsx improvements
+- admin.ts backend extensions
+
+The previous session ran out of credits before fully finishing and verifying the Monitoring/Mailboxes improvements.
+
+=========================================================
+CURRENT TASK
+=========================================================
+
+Complete ONLY the remaining Admin Monitoring & Mailbox Diagnostics improvements.
+
+=========================================================
+1. EMAIL QUEUE MANAGEMENT
+=========================================================
+
+Replace simple queue counters with a real Queue Manager.
+
+Display:
+
+- Queue ID
+- Campaign
+- User
+- Mailbox
+- Recipient
+- Status
+- Attempts
+- Deferred Count
+- Retry Time
+- Created
+- Updated
+- Full SMTP Error
+
+Filters:
+
+- User
+- Campaign
+- Mailbox
+- Status
+- Date
+
+Admin actions:
+
+- Retry selected
+- Retry deferred
+- Retry failed
+- Clear pending
+- Clear deferred
+- Clear failed
+- Clear completed
+- Clear queue
+
+Require confirmation before destructive actions.
+
+=========================================================
+2. MAILBOX HEALTH
+=========================================================
+
+Remove generic states like
+
+Connected
+Warning
+
+Instead derive health from real SMTP state.
+
+Possible states:
+
+Healthy
+Authentication Failed
+Invalid Credentials
+SMTP Authentication Failed
+Quota Reached
+Cooling Down
+Recovering
+Mailbox Disabled
+Provider Error
+Timeout
+Connection Failed
+SMTP Unreachable
+Network Error
+DNS Failure
+Unknown
+
+=========================================================
+3. WARNING REASON
+=========================================================
+
+Every warning must include the actual reason.
+
+Examples:
+
+535 Authentication failed
+451 Mailbox unavailable
+554 Daily quota exceeded
+TLS handshake failed
+Connection timeout
+DNS lookup failed
+
+Never display a generic "Warning".
+
+=========================================================
+4. LAST ERROR
+=========================================================
+
+Improve the Last Error column.
+
+Table:
+
+- show first ~60 characters
+
+Hover:
+
+- tooltip with full error
+
+Click:
+
+Open modal containing:
+
+- Full SMTP response
+- Timestamp
+- Campaign
+- Recipient
+- Provider response
+- Copy Error button
+
+=========================================================
+5. MAILBOX DETAILS
+=========================================================
+
+For every mailbox show:
+
+Owner
+Owner Email
+Company
+Current Plan
+Campaign Count
+Pending Queue
+Deferred Queue
+Failed Queue
+Success Count
+
+=========================================================
+6. SMTP EVENT HISTORY
+=========================================================
+
+Drawer:
+
+Newest first
+
+Events:
+
+Connection
+Reconnect
+Authentication
+Bounce
+Quota
+Retry
+Deferred
+Failure
+Success
+
+Each event contains:
+
+Time
+Action
+Campaign
+Recipient
+SMTP Response
+
+=========================================================
+7. LIVE QUEUE MONITOR
+=========================================================
+
+Replace simple counters with live bars.
+
+Pending
+Sending
+Deferred
+Failed
+Success
+
+Auto refresh every 10 seconds.
+
+=========================================================
+8. ADMIN QUICK ACTIONS
+=========================================================
+
+Each mailbox should have:
+
+Test SMTP
+Test IMAP
+Force Reconnect
+Retry Deferred
+Retry Failed
+Clear Deferred
+Clear Pending
+Clear Failed
+Copy SMTP Error
+View SMTP History
+
+=========================================================
+9. PRODUCTION DATA ONLY
+=========================================================
+
+Everything must come from real backend data.
+
+No placeholders.
+
+No mocked queue.
+
+No fake health states.
+
+=========================================================
+10. VERIFY
+=========================================================
+
+When finished:
+
+- Run typecheck
+- Verify frontend builds
+- Verify backend builds
+- Fix any TypeScript errors introduced by this work
+- Verify the UI renders correctly
+- Take screenshots if possible
+
+=========================================================
+11. COMMIT
+=========================================================
+
+After everything is verified and builds cleanly:
+
+Commit ONLY these changes.
+
+Commit message:
+
+Admin monitoring improvements with queue management and mailbox diagnostics
+
+Push to GitHub.
+
+Stop after the push.
+
+Do not start another phase automatically.
