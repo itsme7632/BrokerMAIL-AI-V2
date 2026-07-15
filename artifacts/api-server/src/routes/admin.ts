@@ -621,7 +621,7 @@ router.get("/admin/mailboxes", requireAdmin, async (req, res): Promise<void> => 
 // ─── Mailbox Actions ──────────────────────────────────────────────────────────
 
 router.post("/admin/mailboxes/:id/disable", requireAdmin, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   const [mb] = await db.select({ id: mailboxesTable.id }).from(mailboxesTable).where(eq(mailboxesTable.id, id));
   if (!mb) { res.status(404).json({ error: "Mailbox not found" }); return; }
   await db.update(mailboxesTable).set({ isActive: false, updatedAt: new Date() }).where(eq(mailboxesTable.id, id));
@@ -629,7 +629,7 @@ router.post("/admin/mailboxes/:id/disable", requireAdmin, async (req, res): Prom
 });
 
 router.post("/admin/mailboxes/:id/enable", requireAdmin, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   const [mb] = await db.select({ id: mailboxesTable.id }).from(mailboxesTable).where(eq(mailboxesTable.id, id));
   if (!mb) { res.status(404).json({ error: "Mailbox not found" }); return; }
   await db.update(mailboxesTable).set({ isActive: true, updatedAt: new Date() }).where(eq(mailboxesTable.id, id));
@@ -637,7 +637,7 @@ router.post("/admin/mailboxes/:id/enable", requireAdmin, async (req, res): Promi
 });
 
 router.post("/admin/mailboxes/:id/force-quota-reset", requireAdmin, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   const [mb] = await db.select({ id: mailboxesTable.id }).from(mailboxesTable).where(eq(mailboxesTable.id, id));
   if (!mb) { res.status(404).json({ error: "Mailbox not found" }); return; }
   await db.update(mailboxesTable).set({
@@ -656,7 +656,7 @@ router.post("/admin/mailboxes/:id/force-quota-reset", requireAdmin, async (req, 
 });
 
 router.post("/admin/mailboxes/:id/test-connection", requireAdmin, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   const [mailbox] = await db.select().from(mailboxesTable).where(eq(mailboxesTable.id, id));
   if (!mailbox) { res.status(404).json({ error: "Mailbox not found" }); return; }
   const decryptedPass = decrypt(mailbox.smtpPassEncrypted);
@@ -672,7 +672,7 @@ router.post("/admin/mailboxes/:id/test-connection", requireAdmin, async (req, re
 });
 
 router.get("/admin/mailboxes/:id/queue", requireAdmin, async (req, res): Promise<void> => {
-  const id     = parseInt(req.params.id, 10);
+  const id     = parseInt(req.params.id as string, 10);
   const page   = Math.max(1, parseInt((req.query.page  as string) ?? "1",  10));
   const limit  = Math.min(100, parseInt((req.query.limit as string) ?? "50", 10));
   const view   = (req.query.view as string) ?? "all"; // all | retry | deferred
@@ -718,7 +718,7 @@ router.get("/admin/mailboxes/:id/queue", requireAdmin, async (req, res): Promise
 });
 
 router.get("/admin/mailboxes/:id/smtp-usage", requireAdmin, async (req, res): Promise<void> => {
-  const id    = parseInt(req.params.id, 10);
+  const id    = parseInt(req.params.id as string, 10);
   const since = new Date(Date.now() - 24 * 3_600_000);
 
   const rows = await db
@@ -746,7 +746,7 @@ router.get("/admin/mailboxes/:id/smtp-usage", requireAdmin, async (req, res): Pr
 // ─── POST /admin/mailboxes/:id/test-imap ─────────────────────────────────────
 
 router.post("/admin/mailboxes/:id/test-imap", requireAdmin, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   const [mailbox] = await db.select().from(mailboxesTable).where(eq(mailboxesTable.id, id));
   if (!mailbox) { res.status(404).json({ error: "Mailbox not found" }); return; }
   if (!mailbox.imapHost || !mailbox.imapUser || !mailbox.imapPassEncrypted) {
@@ -769,7 +769,7 @@ router.post("/admin/mailboxes/:id/test-imap", requireAdmin, async (req, res): Pr
 // ─── POST /admin/mailboxes/:id/force-reconnect ────────────────────────────────
 
 router.post("/admin/mailboxes/:id/force-reconnect", requireAdmin, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   const [mb] = await db.select({ id: mailboxesTable.id }).from(mailboxesTable).where(eq(mailboxesTable.id, id));
   if (!mb) { res.status(404).json({ error: "Mailbox not found" }); return; }
   await db.update(mailboxesTable).set({
@@ -791,7 +791,7 @@ router.post("/admin/mailboxes/:id/force-reconnect", requireAdmin, async (req, re
 // ─── GET /admin/mailboxes/:id/smtp-history ────────────────────────────────────
 
 router.get("/admin/mailboxes/:id/smtp-history", requireAdmin, async (req, res): Promise<void> => {
-  const id     = parseInt(req.params.id, 10);
+  const id     = parseInt(req.params.id as string, 10);
   const page   = Math.max(1, parseInt((req.query.page  as string) ?? "1",  10));
   const limit  = Math.min(100, parseInt((req.query.limit as string) ?? "50", 10));
   const status = (req.query.status as string) ?? "all";

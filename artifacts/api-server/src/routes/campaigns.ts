@@ -547,7 +547,7 @@ export async function processCampaignJobQueue(
           .where(eq(campaignsTable.id, campaignId));
       }
     } else {
-      logger.info({ jobId, campaignId, status: campFinal?.status }, "[QUEUE] Campaign already in terminal/hold status — not overriding");
+      logger.info({ jobId, campaignId }, "[QUEUE] Campaign already in terminal/hold status — not overriding");
     }
   }
 }
