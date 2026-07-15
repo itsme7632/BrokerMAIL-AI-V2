@@ -1,0 +1,222 @@
+We are continuing development of BrokerMAIL AI.
+
+IMPORTANT
+
+Before writing ANY code:
+
+1. Audit the entire repository.
+2. Read all existing Admin components and backend admin routes.
+3. Determine exactly what has already been completed.
+4. Do NOT rebuild or duplicate existing functionality.
+5. Reuse existing APIs and components wherever possible.
+6. Extend existing endpoints instead of creating duplicate ones.
+7. No database schema changes unless absolutely necessary.
+8. Use theme tokens only (support both Light and Dark mode).
+9. Keep desktop and mobile responsive.
+10. Build one phase at a time and STOP after each phase for review.
+
+========================================
+CURRENT PROJECT STATUS
+========================================
+
+USER PANEL
+✅ Complete
+
+ADMIN PANEL
+
+✅ Phase 1 — Audit
+✅ Phase 2 — Dashboard
+✅ Phase 3 — User Management
+✅ Phase 4 — Billing / Subscriptions
+✅ Phase 5 — Campaign Monitor
+✅ Phase 6 — Mailboxes
+✅ Phase 7 — Support Center
+✅ Phase 8 — Product Hub
+✅ Phase 9 — Bug Reports
+✅ Phase 10 — Feature Requests
+
+Start from Phase 11 only.
+
+========================================
+PHASE 11
+ADMIN ANALYTICS
+========================================
+
+Build a professional Analytics dashboard.
+
+Overview Cards
+
+• Total Revenue
+• MRR
+• ARR
+• Active Users
+• Trial Users
+• Paying Users
+• Campaigns Sent
+• Emails Sent
+• SMTP Success Rate
+• Gmail Success Rate
+• Open Rate
+• Bounce Rate
+• Click Rate
+• Unsubscribes
+• Suppressions
+
+Charts
+
+• Revenue Growth
+• User Growth
+• Campaign Activity
+• Email Volume
+• Open Rate Trend
+• Bounce Trend
+• Subscription Growth
+• Mailbox Providers
+• SMTP vs Gmail Usage
+• Plan Distribution
+
+Tables
+
+• Top Customers
+• Most Active Users
+• Top Campaigns
+• Largest Mailboxes
+
+Filters
+
+• Today
+• 7 Days
+• 30 Days
+• 90 Days
+• Custom Date
+
+Export
+
+CSV
+Excel
+PDF
+
+STOP when finished.
+
+========================================
+PHASE 12
+SYSTEM MONITORING
+========================================
+
+Professional monitoring dashboard.
+
+Show:
+
+API
+
+Database
+
+Redis / Queue
+
+Workers
+
+SMTP
+
+IMAP
+
+Cron Jobs
+
+Memory
+
+CPU
+
+Disk
+
+Node uptime
+
+Running Jobs
+
+Failed Jobs
+
+Recent Errors
+
+Restart Actions
+
+Health Indicators
+
+Auto Refresh
+
+STOP for review.
+
+========================================
+PHASE 13
+AUDIT LOGS
+========================================
+
+Professional audit center.
+
+Show
+
+Admin Activity
+
+User Activity
+
+Authentication
+
+Subscription Changes
+
+Campaign Actions
+
+Mailbox Changes
+
+Support Actions
+
+Feature/Bug Changes
+
+Security Events
+
+Search
+
+Filters
+
+Export
+
+Timeline
+
+STOP for review.
+
+========================================
+PHASE 14
+FINAL POLISH
+========================================
+
+Final production polish.
+
+• Theme consistency
+• Light/Dark mode audit
+• Mobile responsiveness
+• Empty states
+• Loading states
+• Error states
+• Skeleton loaders
+• Better spacing
+• Better typography
+• Performance optimization
+• Accessibility
+• Keyboard navigation
+• Final UI consistency review
+
+When complete:
+
+Run a full production audit.
+
+Check for:
+
+• TypeScript errors
+• Console errors
+• Broken imports
+• Duplicate components
+• Dead code
+• Unused state
+• Unused APIs
+
+Fix everything found.
+
+STOP.
+
+Do not continue beyond Phase 14.
