@@ -20,3 +20,4 @@
 - [Mailbox stabilization pass](mailbox-stabilization-pass.md) — cancel/finalize race fix, retry queue scoping, EAUTH healthState (text ILIKE, not ::jsonb; success='success' not 'sent'), widget redesign
 - [Unwired admin dead-code pattern](unwired-admin-dead-code.md) — always grep for imports before building a "new" admin page; audit dead code for base-path/method/field-name wiring bugs
 - [Admin Analytics (Phase 11) data conventions](admin-analytics-phase11.md) — trial/paying-user derivation, provider inference, revenue placeholder, gmail+smtp dual-pipeline summing
+- [System Monitoring (Phase 12) architecture](system-monitoring-phase12.md) — platform-health data sources, cron last-run tracking, IMAP status inference, container disk-usage gotcha

@@ -6,6 +6,7 @@ import { AdminUsers } from "./admin/AdminUsers";
 import { AdminCampaigns } from "./admin/AdminCampaigns";
 import { AdminMailboxes } from "./admin/AdminMailboxes";
 import { AdminAnalytics } from "./admin/AdminAnalytics";
+import { AdminMonitoring } from "./admin/AdminMonitoring";
 import { AdminSupport } from "./admin/AdminSupport";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import {
   CreditCard, ArrowUpCircle, CheckCheck, X as XIcon, TicketCheck,
   Sparkles,
   Megaphone,
+  Gauge,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -78,7 +80,7 @@ interface AdminSub {
   stripeCustomerId: string | null; stripeSubscriptionId: string | null;
 }
 
-type Tab = "overview" | "users" | "campaigns" | "mailboxes" | "analytics" | "logs" | "settings" | "billing" | "support" | "product_hub";
+type Tab = "overview" | "users" | "campaigns" | "mailboxes" | "analytics" | "monitoring" | "logs" | "settings" | "billing" | "support" | "product_hub";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -164,6 +166,7 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "campaigns",   label: "Campaigns",   icon: Megaphone },
   { id: "mailboxes",   label: "Mailboxes",   icon: Server },
   { id: "analytics",   label: "Analytics",   icon: TrendingUp },
+  { id: "monitoring",  label: "Monitoring",  icon: Gauge },
   { id: "logs",        label: "Logs",        icon: Activity },
   { id: "settings",    label: "Settings",    icon: Settings },
   { id: "billing",     label: "Billing",     icon: CreditCard },
@@ -411,6 +414,9 @@ export default function Admin() {
 
           {/* ── ANALYTICS ─────────────────────────────────────────────────── */}
           {tab === "analytics" && <AdminAnalytics />}
+
+          {/* ── MONITORING ────────────────────────────────────────────────── */}
+          {tab === "monitoring" && <AdminMonitoring />}
 
           {/* ── LOGS ──────────────────────────────────────────────────────── */}
           {tab === "logs" && (

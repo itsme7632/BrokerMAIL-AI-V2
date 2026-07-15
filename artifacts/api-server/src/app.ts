@@ -12,6 +12,7 @@ import { runBounceScanner } from "./lib/bounce-scanner";
 import { runGmailDraftSync } from "./lib/gmail-draft-sync";
 import { hashPassword } from "./lib/auth";
 import { maintenanceMiddleware } from "./lib/maintenance";
+import { touchCronStart, touchCronSuccess, touchCronError } from "./lib/monitoring-state";
 
 const app: Express = express();
 
@@ -246,6 +247,7 @@ setTimeout(() => {
 // Prevents campaigns from appearing active when nothing is actually running.
 // ---------------------------------------------------------------------------
 async function runWatchdog(): Promise<void> {
+  touchCronStart("campaignWatchdog");
   try {
     const activeCampaigns = await db
       .select({ id: campaignsTable.id, status: campaignsTable.status, cooldownUntil: campaignsTable.cooldownUntil })
@@ -265,19 +267,35 @@ async function runWatchdog(): Promise<void> {
         logger.error({ err, campaignId: c.id }, "[WATCHDOG] Processor restart failed"),
       );
     }
+    touchCronSuccess("campaignWatchdog");
   } catch (err) {
     logger.warn({ err }, "[WATCHDOG] Periodic check skipped (non-fatal)");
+    touchCronError("campaignWatchdog", err);
   }
+}
+
+function trackedBounceScan(): Promise<void> {
+  touchCronStart("bounceScanner");
+  return runBounceScanner(startCampaignProcessor)
+    .then(() => touchCronSuccess("bounceScanner"))
+    .catch(err => { touchCronError("bounceScanner", err); throw err; });
+}
+
+function trackedGmailSync(): Promise<void> {
+  touchCronStart("gmailSync");
+  return runGmailDraftSync()
+    .then(() => touchCronSuccess("gmailSync"))
+    .catch(err => { touchCronError("gmailSync", err); throw err; });
 }
 
 // Start watchdog 10 s after boot, then every 60 s
 // Also runs bounce scanner and Gmail draft sync on each cycle
 setTimeout(() => {
   runWatchdog().catch(() => {});
-  runBounceScanner(startCampaignProcessor).catch(() => {});
+  trackedBounceScan().catch(() => {});
   setInterval(() => {
     runWatchdog().catch(() => {});
-    runBounceScanner(startCampaignProcessor).catch(() => {});
+    trackedBounceScan().catch(() => {});
   }, 60_000);
 }, 10_000);
 
@@ -285,9 +303,9 @@ setTimeout(() => {
 // Detects drafts the broker sent from Gmail and auto-activates their tracking.
 // Starts 30 s after boot (after the watchdog has settled).
 setTimeout(() => {
-  runGmailDraftSync().catch(() => {});
+  trackedGmailSync().catch(() => {});
   setInterval(() => {
-    runGmailDraftSync().catch(() => {});
+    trackedGmailSync().catch(() => {});
   }, 5 * 60_000);
 }, 30_000);
 

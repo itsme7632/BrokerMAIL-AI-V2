@@ -18,6 +18,10 @@ import { decrypt } from "../lib/crypto";
 import { buildTransportOptions } from "../lib/smtp";
 import { testImap } from "../lib/imap";
 import os from "os";
+import fs from "fs";
+import { startCampaignProcessor } from "./campaigns";
+import { runBounceScanner } from "../lib/bounce-scanner";
+import { getCronJobStates } from "../lib/monitoring-state";
 
 const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -1496,6 +1500,203 @@ router.get("/admin/analytics/export", requireAdmin, async (req, res): Promise<vo
   res.setHeader("Content-Type", "text/csv");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}.csv"`);
   res.send(csv);
+});
+
+// ─── Platform Monitoring (Phase 12) ───────────────────────────────────────────
+// Real-time operational status for the admin "System Monitoring" page.
+// Read-only aggregation over existing tables/process metrics — no new schema.
+
+function diskUsage(): { totalGb: number; usedGb: number; freeGb: number; usedPct: number } | null {
+  try {
+    const stats = fs.statfsSync("/");
+    const totalBytes = stats.blocks * stats.bsize;
+    const freeBytes  = stats.bfree  * stats.bsize;
+    const usedBytes  = totalBytes - freeBytes;
+    return {
+      totalGb: Math.round((totalBytes / 1024 ** 3) * 10) / 10,
+      freeGb:  Math.round((freeBytes  / 1024 ** 3) * 10) / 10,
+      usedGb:  Math.round((usedBytes  / 1024 ** 3) * 10) / 10,
+      usedPct: totalBytes > 0 ? Math.round((usedBytes / totalBytes) * 100) : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+router.get("/admin/platform-health", requireAdmin, async (_req, res): Promise<void> => {
+  const startedAt = Date.now();
+  const since1h  = new Date(Date.now() - 3_600_000);
+  const since24h = new Date(Date.now() - 86_400_000);
+
+  // Database round-trip latency, measured with a trivial query
+  let dbStatus = "operational";
+  let dbLatencyMs = 0;
+  try {
+    const t0 = Date.now();
+    await db.execute(sql`select 1`);
+    dbLatencyMs = Date.now() - t0;
+    if (dbLatencyMs > 1000) dbStatus = "degraded";
+  } catch {
+    dbStatus = "down";
+  }
+
+  const [
+    [queuePending], [queueSending], [queueDeferred], [queueFailed], [queueSuccess],
+    [sessions1h], [sessions24h], [errors1h], [errors24h],
+    runningCampaigns, failedQueueRows, recentErrorLogs,
+    [smtpActiveRow], [gmailActiveRow], [bounceRecentRow],
+  ] = await Promise.all([
+    db.select({ count: count() }).from(emailQueueTable).where(eq(emailQueueTable.status, "pending")),
+    db.select({ count: count() }).from(emailQueueTable).where(eq(emailQueueTable.status, "sending")),
+    db.select({ count: count() }).from(emailQueueTable).where(eq(emailQueueTable.status, "deferred")),
+    db.select({ count: count() }).from(emailQueueTable).where(eq(emailQueueTable.status, "failed")),
+    db.select({ count: count() }).from(emailQueueTable).where(eq(emailQueueTable.status, "success")),
+    db.select({ count: count() }).from(usersTable).where(gte(usersTable.lastActiveAt, since1h)),
+    db.select({ count: count() }).from(usersTable).where(gte(usersTable.lastActiveAt, since24h)),
+    db.select({ count: count() }).from(systemLogsTable).where(and(eq(systemLogsTable.severity, "error"), gte(systemLogsTable.createdAt, since1h))),
+    db.select({ count: count() }).from(systemLogsTable).where(and(eq(systemLogsTable.severity, "error"), gte(systemLogsTable.createdAt, since24h))),
+    db.select({
+      id: campaignsTable.id, name: campaignsTable.name, status: campaignsTable.status,
+      sentCount: campaignsTable.sentCount, totalLeads: campaignsTable.totalLeads,
+      updatedAt: campaignsTable.updatedAt,
+    }).from(campaignsTable).where(inArray(campaignsTable.status, ["sending", "cooling_down"]))
+      .orderBy(desc(campaignsTable.updatedAt)).limit(10),
+    db.select({
+      id: emailQueueTable.id, email: emailQueueTable.email, campaignId: emailQueueTable.campaignId,
+      lastError: emailQueueTable.lastError, attempts: emailQueueTable.attempts, createdAt: emailQueueTable.createdAt,
+    }).from(emailQueueTable).where(eq(emailQueueTable.status, "failed"))
+      .orderBy(desc(emailQueueTable.id)).limit(10),
+    db.select({
+      id: systemLogsTable.id, type: systemLogsTable.type, description: systemLogsTable.description, createdAt: systemLogsTable.createdAt,
+    }).from(systemLogsTable).where(eq(systemLogsTable.severity, "error"))
+      .orderBy(desc(systemLogsTable.createdAt)).limit(10),
+    db.select({ count: count() }).from(emailQueueTable).where(eq(emailQueueTable.status, "sending")),
+    db.select({ count: count() }).from(draftsTable).where(and(eq(draftsTable.status, "pending"), gte(draftsTable.createdAt, since1h))),
+    db.select({ count: count() }).from(processedBouncesTable).where(gte(processedBouncesTable.processedAt, since1h)),
+  ]);
+
+  const mem = process.memoryUsage();
+  const loadAvg = os.loadavg();
+  const totalMemMb = Math.round(os.totalmem() / 1024 / 1024);
+  const freeMemMb  = Math.round(os.freemem()  / 1024 / 1024);
+  const usedMemMb  = totalMemMb - freeMemMb;
+
+  const cronStates = getCronJobStates();
+  const bounceCron = cronStates.find(c => c.name === "Bounce Scanner");
+  const bounceLastSuccessMs = bounceCron?.lastSuccessAt ? Date.now() - new Date(bounceCron.lastSuccessAt).getTime() : null;
+  const imapStatus = bounceCron?.lastError
+    ? "down"
+    : bounceLastSuccessMs === null
+      ? "checking"
+      : bounceLastSuccessMs < 180_000 ? "operational" : "degraded";
+
+  res.json({
+    api: {
+      status: "operational",
+      uptimeSeconds: Math.round(process.uptime()),
+      memUsedMb: Math.round(mem.heapUsed / 1024 / 1024),
+      memTotalMb: Math.round(mem.heapTotal / 1024 / 1024),
+      rssMemMb: Math.round(mem.rss / 1024 / 1024),
+      nodeVersion: process.version,
+      pid: process.pid,
+    },
+    system: {
+      cpuLoad1m: Math.round(loadAvg[0] * 100) / 100,
+      cpuLoad5m: Math.round(loadAvg[1] * 100) / 100,
+      cpuLoad15m: Math.round(loadAvg[2] * 100) / 100,
+      totalMemMb, freeMemMb, usedMemMb,
+      memPct: totalMemMb > 0 ? Math.round((usedMemMb / totalMemMb) * 100) : 0,
+      cpuCount: os.cpus().length,
+      platform: `${os.platform()} ${os.arch()}`,
+    },
+    disk: diskUsage(),
+    database: { status: dbStatus, latencyMs: dbLatencyMs },
+    queue: {
+      pending: queuePending.count, sending: queueSending.count, deferred: queueDeferred.count,
+      failed: queueFailed.count, success: queueSuccess.count,
+    },
+    workers: {
+      smtpActive: smtpActiveRow.count > 0,
+      gmailActive: gmailActiveRow.count > 0,
+      bounceScanner: bounceRecentRow.count > 0 || (bounceLastSuccessMs !== null && bounceLastSuccessMs < 180_000),
+    },
+    imap: {
+      status: imapStatus,
+      lastScanAt: bounceCron?.lastSuccessAt ?? null,
+      detail: bounceCron?.lastError ? bounceCron.lastError : "Bounce scanner IMAP connection",
+    },
+    cronJobs: cronStates,
+    runningJobs: runningCampaigns.map(c => ({
+      id: c.id, name: c.name, status: c.status,
+      progress: c.totalLeads > 0 ? Math.round((c.sentCount / c.totalLeads) * 100) : 0,
+      sentCount: c.sentCount, totalLeads: c.totalLeads,
+      updatedAt: c.updatedAt.toISOString(),
+    })),
+    failedJobs: failedQueueRows.map(f => ({
+      id: f.id, email: f.email, campaignId: f.campaignId,
+      lastError: f.lastError, attempts: f.attempts, createdAt: f.createdAt.toISOString(),
+    })),
+    recentErrors: recentErrorLogs.map(e => ({
+      id: e.id, type: e.type, description: e.description, createdAt: e.createdAt.toISOString(),
+    })),
+    sessions: { active24h: sessions24h.count, active1h: sessions1h.count },
+    errors: { last24h: errors24h.count, last1h: errors1h.count },
+    checkedAt: new Date().toISOString(),
+    responseMs: Date.now() - startedAt,
+  });
+});
+
+// ─── Platform Monitoring — Restart Actions ────────────────────────────────────
+
+router.post("/admin/monitoring/run-bounce-scan", requireAdmin, async (_req, res): Promise<void> => {
+  try {
+    runBounceScanner(startCampaignProcessor).catch(err => logger.error({ err }, "[MONITORING] Manual bounce scan failed"));
+    await db.insert(systemLogsTable).values({
+      type: "monitoring", severity: "info", description: "Admin manually triggered a bounce scan",
+    });
+    res.json({ success: true, message: "Bounce scan started" });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to start bounce scan" });
+  }
+});
+
+router.post("/admin/monitoring/queue/:id/retry", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id as string, 10);
+  if (!id) { res.status(400).json({ error: "Invalid queue id" }); return; }
+
+  const [row] = await db.select().from(emailQueueTable).where(eq(emailQueueTable.id, id));
+  if (!row) { res.status(404).json({ error: "Queue item not found" }); return; }
+  if (row.status !== "failed") { res.status(400).json({ error: "Only failed items can be retried" }); return; }
+
+  await db.update(emailQueueTable)
+    .set({ status: "pending", lastError: null, retryAfter: null })
+    .where(eq(emailQueueTable.id, id));
+
+  if (row.campaignId) startCampaignProcessor(row.campaignId).catch(() => {});
+
+  await db.insert(systemLogsTable).values({
+    type: "monitoring", severity: "info", description: `Admin retried failed queue item #${id} (${row.email})`,
+  });
+  res.json({ success: true });
+});
+
+router.post("/admin/monitoring/queue/retry-all", requireAdmin, async (_req, res): Promise<void> => {
+  const failedRows = await db.select({ id: emailQueueTable.id, campaignId: emailQueueTable.campaignId })
+    .from(emailQueueTable).where(eq(emailQueueTable.status, "failed")).limit(200);
+
+  if (failedRows.length === 0) { res.json({ success: true, retried: 0 }); return; }
+
+  await db.update(emailQueueTable)
+    .set({ status: "pending", lastError: null, retryAfter: null })
+    .where(inArray(emailQueueTable.id, failedRows.map(r => r.id)));
+
+  const campaignIds = [...new Set(failedRows.map(r => r.campaignId).filter((v): v is number => v != null))];
+  campaignIds.forEach(cid => startCampaignProcessor(cid).catch(() => {}));
+
+  await db.insert(systemLogsTable).values({
+    type: "monitoring", severity: "info", description: `Admin bulk-retried ${failedRows.length} failed queue item(s)`,
+  });
+  res.json({ success: true, retried: failedRows.length });
 });
 
 // ─── Logs ─────────────────────────────────────────────────────────────────────
