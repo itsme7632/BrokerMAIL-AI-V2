@@ -1,0 +1,385 @@
+Implement the following improvements to the Admin Monitoring and Admin Mailboxes pages.
+
+IMPORTANT:
+- Reuse existing backend logic wherever possible.
+- Do NOT break the SMTP sending system.
+- Do NOT change campaign processing.
+- Do NOT delete production data automatically.
+- Build production-ready admin tools only.
+- Follow the existing dark theme and design system.
+- Keep all changes fully responsive.
+
+====================================================
+PART 1 — EMAIL QUEUE MANAGEMENT
+====================================================
+
+The Email Queue section currently only shows counts.
+
+Build a proper Queue Management page.
+
+For every queued email show:
+
+• Queue ID
+• Campaign
+• User
+• Mailbox
+• Recipient
+• Current Status
+• Attempts
+• Deferred Count
+• Retry Time
+• Created Time
+• Last Updated
+• Full Last Error
+
+Allow filtering by:
+
+• User
+• Mailbox
+• Campaign
+• Status
+• Date
+
+Admin Actions:
+
+✓ Retry selected
+✓ Retry all deferred
+✓ Retry failed
+✓ Remove pending queue
+✓ Remove deferred queue
+✓ Remove failed queue
+✓ Clear completed queue
+✓ Clear entire queue (confirmation required)
+
+Before deleting anything always show:
+
+"You are about to remove X queue items."
+
+====================================================
+PART 2 — MAILBOX HEALTH
+====================================================
+
+The Health column should NEVER only say:
+
+Connected
+Warning
+
+Instead show meaningful health.
+
+Possible health:
+
+🟢 Healthy
+
+🟡 Authentication Failed
+
+🟡 Connection Timeout
+
+🟡 SMTP Authentication Error
+
+🟡 Provider Rejected Login
+
+🟡 Mailbox Disabled
+
+🟡 TLS/SSL Error
+
+🟠 Cooling Down
+
+🟠 Recovering
+
+🔴 SMTP Unreachable
+
+🔴 Invalid Credentials
+
+🔴 Mailbox Offline
+
+The badge must be derived from the actual SMTP error.
+
+====================================================
+PART 3 — WARNING REASON
+====================================================
+
+Whenever Health = Warning
+
+show a tooltip
+
+or expandable row
+
+containing
+
+Reason:
+Full SMTP error
+
+Example
+
+Authentication failed (535 Incorrect authentication data)
+
+or
+
+Connection timed out after 30 seconds
+
+or
+
+Daily sending limit reached
+
+Never hide the reason.
+
+====================================================
+PART 4 — FULL LAST ERROR
+====================================================
+
+The Last Error column currently truncates text.
+
+Instead:
+
+Show first 60 characters.
+
+Hover → tooltip with full error.
+
+Click → opens modal containing
+
+Full error
+Timestamp
+SMTP Response
+Stack trace (if available)
+
+Add one-click Copy Error button.
+
+====================================================
+PART 5 — MAILBOX OWNER
+====================================================
+
+Every mailbox card/table row must clearly show
+
+Owner Name
+
+Owner Email
+
+Company
+
+Current Plan
+
+Campaigns using this mailbox
+
+Emails currently queued
+
+Deferred Emails
+
+Failed Emails
+
+====================================================
+PART 6 — WHY IS THIS MAILBOX IN WARNING?
+====================================================
+
+Add a new column
+
+Reason
+
+Examples
+
+Authentication Failed
+
+Mailbox Quota
+
+SMTP Timeout
+
+Network Error
+
+DNS Failure
+
+Provider Error
+
+Unknown
+
+No more generic Warning.
+
+====================================================
+PART 7 — QUEUE DETAILS
+====================================================
+
+For each mailbox show
+
+Pending
+
+Sending
+
+Deferred
+
+Failed
+
+Success
+
+Cancelled
+
+This should update automatically every 30 seconds.
+
+====================================================
+PART 8 — QUICK FIX ACTIONS
+====================================================
+
+Inside each mailbox add
+
+✓ Test SMTP
+
+✓ Test IMAP
+
+✓ Force Reconnect
+
+✓ Retry Deferred
+
+✓ Clear Deferred Queue
+
+✓ Clear Pending Queue
+
+✓ Clear Failed Queue
+
+✓ Copy SMTP Error
+
+✓ View Event History
+
+====================================================
+PART 9 — SMTP EVENT HISTORY
+====================================================
+
+Create a drawer
+
+SMTP Event History
+
+Show
+
+Connection
+
+Authentication
+
+Quota
+
+Bounce
+
+Retry
+
+Reconnect
+
+Deferred
+
+Failure
+
+Success
+
+Newest first
+
+Each event contains
+
+Time
+
+Action
+
+SMTP response
+
+Provider response
+
+Campaign
+
+Recipient
+
+====================================================
+PART 10 — LIVE QUEUE MONITOR
+====================================================
+
+Replace simple counters with
+
+Pending ███
+
+Sending ███
+
+Deferred ███
+
+Failed ███
+
+Success ███
+
+Refresh every 10 seconds while page is open.
+
+====================================================
+PART 11 — ADMIN SHOULD BE ABLE TO FIX THE SYSTEM
+====================================================
+
+If the admin clears the Deferred Queue,
+
+the Monitoring page,
+
+Mailbox page,
+
+Queue page,
+
+Dashboard,
+
+and all counters
+
+must refresh automatically.
+
+No stale values.
+
+====================================================
+PART 12 — ERROR TRANSPARENCY
+====================================================
+
+Never show
+
+"Can't send mail..."
+
+Instead always show the actual SMTP provider response.
+
+Examples
+
+535 Authentication failed
+
+421 Too many connections
+
+451 Mailbox unavailable
+
+550 User unknown
+
+554 Daily quota exceeded
+
+Timeout
+
+ECONNRESET
+
+ECONNREFUSED
+
+ETIMEDOUT
+
+DNS lookup failed
+
+Display the exact error.
+
+====================================================
+PART 13 — SAFETY
+====================================================
+
+Only admin can
+
+Clear queues
+
+Retry queues
+
+Reconnect mailboxes
+
+Delete queue items
+
+Never allow normal users to perform these actions.
+
+====================================================
+PART 14 — PRODUCTION SAFETY
+====================================================
+
+Do NOT fake any numbers.
+
+Everything must come directly from production database.
+
+No placeholder data.
+
+No mock queue.
+
+No generated health.
+
+Everything should reflect real SMTP state.

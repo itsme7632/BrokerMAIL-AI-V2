@@ -586,11 +586,15 @@ router.get("/admin/mailboxes", requireAdmin, async (req, res): Promise<void> => 
       emailsSent:   sql<number>`(SELECT COUNT(*)::int FROM email_queue WHERE email_queue.mailbox_id = ${mailboxesTable.id} AND email_queue.status = 'success')`,
       usedThisHour: sql<number>`(SELECT COUNT(*)::int FROM email_queue WHERE email_queue.mailbox_id = ${mailboxesTable.id} AND email_queue.first_attempt_at >= ${hourAgo})`,
       deferredCount: sql<number>`(SELECT COUNT(*)::int FROM email_queue WHERE email_queue.mailbox_id = ${mailboxesTable.id} AND email_queue.status = 'deferred')`,
+      pendingCount:  sql<number>`(SELECT COUNT(*)::int FROM email_queue WHERE email_queue.mailbox_id = ${mailboxesTable.id} AND email_queue.status = 'pending')`,
+      failedCount:   sql<number>`(SELECT COUNT(*)::int FROM email_queue WHERE email_queue.mailbox_id = ${mailboxesTable.id} AND email_queue.status = 'failed')`,
       lastSuccessAt: sql<string | null>`(SELECT MAX(sent_at)::text FROM email_queue WHERE email_queue.mailbox_id = ${mailboxesTable.id} AND email_queue.status = 'success')`,
       lastError:     sql<string | null>`(SELECT last_error FROM email_queue WHERE email_queue.mailbox_id = ${mailboxesTable.id} AND email_queue.status IN ('failed','deferred') ORDER BY id DESC LIMIT 1)`,
       activeCampaigns: sql<number>`(SELECT COUNT(*)::int FROM campaigns WHERE campaigns.user_id = ${mailboxesTable.userId} AND campaigns.status IN ('pending','sending','paused','queued','cooling_down'))`,
       openCount:    sql<number>`(SELECT COUNT(*)::int FROM email_tracking_events ete JOIN drafts d ON d.id = ete.draft_id WHERE d.user_id = ${mailboxesTable.userId} AND ete.event_type = 'open')`,
       suppressed:   sql<number>`(SELECT COUNT(*)::int FROM suppression_list WHERE suppression_list.user_id = ${mailboxesTable.userId})`,
+      userPlan:     usersTable.plan,
+      userCompany:  usersTable.companyName,
     })
       .from(mailboxesTable)
       .leftJoin(usersTable, eq(mailboxesTable.userId, usersTable.id))
@@ -1720,6 +1724,210 @@ router.post("/admin/monitoring/queue/retry-all", requireAdmin, async (_req, res)
     type: "monitoring", severity: "info", description: `Admin bulk-retried ${failedRows.length} failed queue item(s)`,
   });
   res.json({ success: true, retried: failedRows.length });
+});
+
+// ─── Global Queue Management ──────────────────────────────────────────────────
+// Full queue visibility + bulk actions. Admin-only, real production data only.
+
+router.get("/admin/queue", requireAdmin, async (req, res): Promise<void> => {
+  const page       = Math.max(parseInt(req.query.page       as string, 10) || 1, 1);
+  const limit      = Math.min(parseInt(req.query.limit      as string, 10) || 50, 100);
+  const userId     = (req.query.userId     as string) ?? "";
+  const mailboxId  = (req.query.mailboxId  as string) ?? "";
+  const campaignId = (req.query.campaignId as string) ?? "";
+  const status     = (req.query.status     as string) ?? "all";
+  const dateFrom   = (req.query.dateFrom   as string) ?? "";
+  const dateTo     = (req.query.dateTo     as string) ?? "";
+
+  const conditions: ReturnType<typeof eq>[] = [];
+  if (userId)     { const uid = parseInt(userId,     10); if (!isNaN(uid)) conditions.push(eq(emailQueueTable.userId,     uid) as any); }
+  if (mailboxId)  { const mid = parseInt(mailboxId,  10); if (!isNaN(mid)) conditions.push(eq(emailQueueTable.mailboxId,  mid) as any); }
+  if (campaignId) { const cid = parseInt(campaignId, 10); if (!isNaN(cid)) conditions.push(eq(emailQueueTable.campaignId, cid) as any); }
+  if (status !== "all") conditions.push(eq(emailQueueTable.status, status) as any);
+  if (dateFrom) { const d = new Date(dateFrom); if (!isNaN(d.getTime())) conditions.push(gte(emailQueueTable.createdAt, d) as any); }
+  if (dateTo)   { const d = new Date(dateTo); d.setHours(23,59,59,999); if (!isNaN(d.getTime())) conditions.push(lte(emailQueueTable.createdAt, d) as any); }
+
+  const where = conditions.length > 0 ? and(...(conditions as any[])) : undefined;
+
+  const [rows, [{ total }]] = await Promise.all([
+    db.select({
+      id:            emailQueueTable.id,
+      jobId:         emailQueueTable.jobId,
+      userId:        emailQueueTable.userId,
+      userName:      usersTable.name,
+      userEmail:     usersTable.email,
+      mailboxId:     emailQueueTable.mailboxId,
+      mailboxEmail:  mailboxesTable.smtpUser,
+      campaignId:    emailQueueTable.campaignId,
+      campaignName:  campaignsTable.name,
+      email:         emailQueueTable.email,
+      subject:       emailQueueTable.subject,
+      status:        emailQueueTable.status,
+      attempts:      emailQueueTable.attempts,
+      deferredCount: emailQueueTable.deferredCount,
+      lastError:     emailQueueTable.lastError,
+      retryAfter:    emailQueueTable.retryAfter,
+      sentAt:        emailQueueTable.sentAt,
+      firstAttemptAt: emailQueueTable.firstAttemptAt,
+      createdAt:     emailQueueTable.createdAt,
+    })
+      .from(emailQueueTable)
+      .leftJoin(usersTable,     eq(emailQueueTable.userId,    usersTable.id))
+      .leftJoin(mailboxesTable, eq(emailQueueTable.mailboxId, mailboxesTable.id))
+      .leftJoin(campaignsTable, eq(emailQueueTable.campaignId, campaignsTable.id))
+      .where(where)
+      .orderBy(desc(emailQueueTable.id))
+      .limit(limit)
+      .offset((page - 1) * limit),
+    db.select({ total: count() }).from(emailQueueTable).where(where),
+  ]);
+
+  res.json({
+    data: rows.map(r => ({
+      ...r,
+      retryAfter:     r.retryAfter?.toISOString()     ?? null,
+      sentAt:         r.sentAt?.toISOString()         ?? null,
+      firstAttemptAt: r.firstAttemptAt?.toISOString() ?? null,
+      createdAt:      r.createdAt.toISOString(),
+    })),
+    total, page, limit,
+  });
+});
+
+router.get("/admin/queue/counts", requireAdmin, async (_req, res): Promise<void> => {
+  const rows = await db
+    .select({ status: emailQueueTable.status, count: sql<number>`count(*)::int` })
+    .from(emailQueueTable)
+    .groupBy(emailQueueTable.status);
+  const counts: Record<string, number> = {};
+  for (const r of rows) counts[r.status] = r.count;
+  res.json(counts);
+});
+
+router.post("/admin/queue/retry-selected", requireAdmin, async (req, res): Promise<void> => {
+  const ids: number[] = Array.isArray(req.body?.ids)
+    ? req.body.ids.filter((id: unknown) => typeof id === "number")
+    : [];
+  if (ids.length === 0) { res.status(400).json({ error: "No IDs provided" }); return; }
+
+  const rows = await db.select({ id: emailQueueTable.id, campaignId: emailQueueTable.campaignId })
+    .from(emailQueueTable)
+    .where(and(inArray(emailQueueTable.id, ids), inArray(emailQueueTable.status, ["failed", "deferred"])));
+  if (rows.length === 0) { res.json({ success: true, retried: 0 }); return; }
+
+  await db.update(emailQueueTable)
+    .set({ status: "pending", lastError: null, retryAfter: null })
+    .where(inArray(emailQueueTable.id, rows.map(r => r.id)));
+
+  const campaignIds = [...new Set(rows.map(r => r.campaignId).filter((v): v is number => v != null))];
+  campaignIds.forEach(cid => startCampaignProcessor(cid).catch(() => {}));
+
+  await db.insert(systemLogsTable).values({
+    userId: req.user!.id, type: "monitoring", severity: "info",
+    description: `Admin retried ${rows.length} selected queue item(s)`,
+  });
+  res.json({ success: true, retried: rows.length });
+});
+
+router.post("/admin/queue/retry-deferred", requireAdmin, async (req, res): Promise<void> => {
+  const rows = await db.select({ id: emailQueueTable.id, campaignId: emailQueueTable.campaignId })
+    .from(emailQueueTable).where(eq(emailQueueTable.status, "deferred")).limit(500);
+  if (rows.length === 0) { res.json({ success: true, retried: 0 }); return; }
+
+  await db.update(emailQueueTable)
+    .set({ status: "pending", retryAfter: null })
+    .where(inArray(emailQueueTable.id, rows.map(r => r.id)));
+
+  const campaignIds = [...new Set(rows.map(r => r.campaignId).filter((v): v is number => v != null))];
+  campaignIds.forEach(cid => startCampaignProcessor(cid).catch(() => {}));
+
+  await db.insert(systemLogsTable).values({
+    userId: req.user!.id, type: "monitoring", severity: "info",
+    description: `Admin retried ${rows.length} deferred queue item(s)`,
+  });
+  res.json({ success: true, retried: rows.length });
+});
+
+router.post("/admin/queue/clear", requireAdmin, async (req, res): Promise<void> => {
+  const status = (req.body?.status as string) ?? "";
+  const CLEARABLE = ["pending", "deferred", "failed", "success", "cancelled", "all"];
+  if (!CLEARABLE.includes(status)) {
+    res.status(400).json({ error: `status must be one of: ${CLEARABLE.join(", ")}` }); return;
+  }
+
+  const where = status === "all" ? undefined : eq(emailQueueTable.status, status);
+  const [{ total }] = await db.select({ total: sql<number>`count(*)::int` }).from(emailQueueTable).where(where);
+
+  if (where) {
+    await db.delete(emailQueueTable).where(where);
+  } else {
+    await db.delete(emailQueueTable);
+  }
+
+  await db.insert(systemLogsTable).values({
+    userId: req.user!.id, type: "monitoring", severity: "warn",
+    description: `Admin cleared ${total} queue item(s) with status="${status}"`,
+  });
+  res.json({ success: true, removed: total });
+});
+
+// ─── Per-mailbox queue counts + actions ───────────────────────────────────────
+
+router.get("/admin/mailboxes/:id/queue-counts", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id as string, 10);
+  if (!id) { res.status(400).json({ error: "Invalid mailbox id" }); return; }
+  const rows = await db
+    .select({ status: emailQueueTable.status, count: sql<number>`count(*)::int` })
+    .from(emailQueueTable)
+    .where(eq(emailQueueTable.mailboxId, id))
+    .groupBy(emailQueueTable.status);
+  const counts: Record<string, number> = {};
+  for (const r of rows) counts[r.status] = r.count;
+  res.json(counts);
+});
+
+router.post("/admin/mailboxes/:id/retry-deferred", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id as string, 10);
+  if (!id) { res.status(400).json({ error: "Invalid mailbox id" }); return; }
+
+  const rows = await db.select({ id: emailQueueTable.id, campaignId: emailQueueTable.campaignId })
+    .from(emailQueueTable)
+    .where(and(eq(emailQueueTable.mailboxId, id), eq(emailQueueTable.status, "deferred")))
+    .limit(500);
+  if (rows.length === 0) { res.json({ success: true, retried: 0 }); return; }
+
+  await db.update(emailQueueTable)
+    .set({ status: "pending", retryAfter: null })
+    .where(inArray(emailQueueTable.id, rows.map(r => r.id)));
+
+  const campaignIds = [...new Set(rows.map(r => r.campaignId).filter((v): v is number => v != null))];
+  campaignIds.forEach(cid => startCampaignProcessor(cid).catch(() => {}));
+
+  await db.insert(systemLogsTable).values({
+    userId: req.user!.id, type: "monitoring", severity: "info",
+    description: `Admin retried ${rows.length} deferred items for mailbox #${id}`,
+  });
+  res.json({ success: true, retried: rows.length });
+});
+
+router.post("/admin/mailboxes/:id/clear-queue", requireAdmin, async (req, res): Promise<void> => {
+  const id     = parseInt(req.params.id as string, 10);
+  if (!id) { res.status(400).json({ error: "Invalid mailbox id" }); return; }
+  const status = (req.body?.status as string) ?? "";
+  const CLEARABLE = ["pending", "deferred", "failed", "success", "cancelled"];
+  if (!CLEARABLE.includes(status)) {
+    res.status(400).json({ error: `status must be one of: ${CLEARABLE.join(", ")}` }); return;
+  }
+
+  const where = and(eq(emailQueueTable.mailboxId, id), eq(emailQueueTable.status, status));
+  const [{ total }] = await db.select({ total: sql<number>`count(*)::int` }).from(emailQueueTable).where(where);
+  await db.delete(emailQueueTable).where(where);
+
+  await db.insert(systemLogsTable).values({
+    userId: req.user!.id, type: "monitoring", severity: "warn",
+    description: `Admin cleared ${total} ${status} queue item(s) for mailbox #${id}`,
+  });
+  res.json({ success: true, removed: total });
 });
 
 // ─── Logs ─────────────────────────────────────────────────────────────────────
