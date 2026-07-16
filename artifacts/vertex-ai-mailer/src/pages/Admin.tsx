@@ -348,7 +348,7 @@ export default function Admin() {
   const logsPageCount  = Math.max(Math.ceil(logsTotal  / 50), 1);
 
   return (
-    <div className="space-y-5 max-w-7xl mx-auto">
+    <div className="space-y-5 w-full min-w-0">
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>

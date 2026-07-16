@@ -388,6 +388,7 @@ function TopHeader({ onMobileMenuClick }: { onMobileMenuClick: () => void }) {
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   if (!user) return null;
@@ -414,7 +415,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <TopHeader onMobileMenuClick={() => setMobileOpen(true)} />
         <HeaderBanner />
         <main className="flex-1 overflow-auto">
-          <div className="max-w-6xl mx-auto w-full px-6 py-8">
+          {/* Admin routes get full-width layout; all other pages stay centered */}
+          <div className={location.startsWith("/admin") ? "w-full px-5 py-5 min-w-0" : "max-w-6xl mx-auto w-full px-6 py-8"}>
             {children}
           </div>
         </main>
