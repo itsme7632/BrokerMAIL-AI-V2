@@ -30,7 +30,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   CheckCircle2, XCircle, AlertTriangle, Loader2, RefreshCw,
   Server, Database, Inbox, Cpu, MemoryStick, Activity, Clock,
-  Users, Zap, ShieldAlert, Play, Pause, BarChart3, HardDrive,
+  Users, Zap, ShieldAlert, Play, Pause, HardDrive,
   MailSearch, TimerReset, RotateCcw, ListChecks, Trash2,
   ChevronLeft, ChevronRight, Copy, Check, Eye, Filter, X,
 } from "lucide-react";
@@ -425,7 +425,10 @@ function QueueManagement({ onQueuesChanged }: { onQueuesChanged: () => void }) {
         setTotal(data.total);
         setSelected(new Set());
       })
-      .catch(() => {})
+      .catch((err: Error) => {
+        if (v !== loadVersion.current) return;
+        toast({ title: "Failed to load queue", description: err.message, variant: "destructive" });
+      })
       .finally(() => { if (v === loadVersion.current) setLoading(false); });
   }, [page, statusFilter, userFilter, mailboxFilter, campaignFilter, dateFrom, dateTo, refreshTick]);
 
@@ -449,27 +452,27 @@ function QueueManagement({ onQueuesChanged }: { onQueuesChanged: () => void }) {
     setPendingAction(null);
     setActionBusy(action);
     try {
-      let res: any;
+      let res: { retried?: number; removed?: number } | undefined;
       switch (action) {
         case "retry-selected":
           res = await apiPost("queue/retry-selected", { ids: [...selected] });
-          toast({ title: `Retried ${res.retried} item(s)` });
+          toast({ title: `Retried ${res?.retried ?? 0} item(s)` });
           break;
         case "retry-deferred":
           res = await apiPost("queue/retry-deferred");
-          toast({ title: `Retried ${res.retried} deferred item(s)` });
+          toast({ title: `Retried ${res?.retried ?? 0} deferred item(s)` });
           break;
         case "retry-failed":
           res = await apiPost("queue/retry-failed");
-          toast({ title: `Retried ${res.retried} failed item(s)` });
+          toast({ title: `Retried ${res?.retried ?? 0} failed item(s)` });
           break;
         case "clear-selected":
           res = await apiPost("queue/clear-selected", { ids: [...selected] });
-          toast({ title: `Removed ${res.removed} queue item(s)` });
+          toast({ title: `Removed ${res?.removed ?? 0} queue item(s)` });
           break;
         case "clear":
           res = await apiPost("queue/clear", body);
-          toast({ title: `Removed ${res.removed} queue item(s)` });
+          toast({ title: `Removed ${res?.removed ?? 0} queue item(s)` });
           break;
       }
       reload();
@@ -532,7 +535,7 @@ function QueueManagement({ onQueuesChanged }: { onQueuesChanged: () => void }) {
             Filters
             {hasFilters && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
           </Button>
-          <Button variant="outline" size="sm" className="h-8 rounded-xl gap-1.5 text-xs" onClick={reload} disabled={loading}>
+          <Button variant="outline" size="sm" aria-label="Refresh queue" className="h-8 rounded-xl gap-1.5 text-xs" onClick={reload} disabled={loading}>
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </div>
@@ -795,8 +798,8 @@ function QueueManagement({ onQueuesChanged }: { onQueuesChanged: () => void }) {
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted-foreground">Page {page} of {pageCount}</span>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page <= 1 || loading} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
-            <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page >= pageCount || loading} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
+            <Button variant="outline" size="sm" aria-label="Previous page" className="h-8 w-8 p-0 rounded-lg" disabled={page <= 1 || loading} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+            <Button variant="outline" size="sm" aria-label="Next page" className="h-8 w-8 p-0 rounded-lg" disabled={page >= pageCount || loading} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
           </div>
         </div>
       )}
@@ -905,7 +908,7 @@ export function AdminMonitoring() {
   const retryAllFailed = useCallback(async () => {
     setActionBusy("retry-all");
     try {
-      const res = await apiPost("monitoring/queue/retry-all");
+      const res = await apiPost("queue/retry-failed");
       toast({ title: `Requeued ${res.retried} failed item(s)` });
       loadHealth(true);
     } catch (err) {
@@ -1016,7 +1019,7 @@ export function AdminMonitoring() {
               <div className="flex items-center gap-2">
                 <span className={`h-1.5 w-1.5 rounded-full ${queueRefreshing ? "bg-amber-500 animate-pulse" : "bg-emerald-500 animate-pulse"}`} />
                 <span className="text-[10px] text-muted-foreground">updates every 10s</span>
-                <Button variant="ghost" size="sm" className="h-6 px-2 rounded-lg" onClick={refreshQueue} disabled={queueRefreshing}>
+                <Button variant="ghost" size="sm" aria-label="Refresh live queue" className="h-6 px-2 rounded-lg" onClick={refreshQueue} disabled={queueRefreshing}>
                   <RefreshCw className={`h-3 w-3 ${queueRefreshing ? "animate-spin" : ""}`} />
                 </Button>
               </div>
@@ -1212,7 +1215,7 @@ export function AdminMonitoring() {
                           {smtpDisplayError(job.lastError) || "Unknown error"} · {job.attempts} attempt(s)
                         </p>
                       </div>
-                      <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] flex-shrink-0" onClick={() => retryQueueItem(job.id)} disabled={actionBusy === `retry-${job.id}`}>
+                      <Button variant="ghost" size="sm" aria-label="Retry this failed job" className="h-6 px-2 text-[10px] flex-shrink-0" onClick={() => retryQueueItem(job.id)} disabled={actionBusy === `retry-${job.id}`}>
                         {actionBusy === `retry-${job.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
                       </Button>
                     </div>

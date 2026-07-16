@@ -298,7 +298,7 @@ export function AdminAnalytics() {
               <Calendar
                 mode="range"
                 selected={customStart && customEnd ? { from: customStart, to: customEnd } : undefined}
-                onSelect={(r: any) => {
+                onSelect={(r: { from?: Date; to?: Date } | undefined) => {
                   setCustomStart(r?.from);
                   setCustomEnd(r?.to);
                   if (r?.from && r?.to) setCustomOpen(false);
@@ -308,7 +308,7 @@ export function AdminAnalytics() {
             </PopoverContent>
           </Popover>
 
-          <Button variant="outline" size="sm" className="h-8 rounded-xl gap-1.5" onClick={() => load(true)} disabled={refreshing}>
+          <Button variant="outline" size="sm" aria-label="Refresh analytics" className="h-8 rounded-xl gap-1.5" onClick={() => load(true)} disabled={refreshing}>
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
           </Button>
 

@@ -1,0 +1,81 @@
+Continue exactly from where the previous Replit session stopped.
+
+IMPORTANT:
+Do NOT perform another project audit.
+Do NOT explore the repository again.
+Do NOT reread files unless absolutely necessary for the specific code being edited.
+Do NOT rebuild or modify any completed phases.
+
+Project status:
+
+✅ Phase 1 – Audit
+✅ Phase 2 – Dashboard
+✅ Phase 3 – User Management
+✅ Phase 4 – Billing / Subscriptions
+✅ Phase 5 – Campaign Monitor
+✅ Phase 6 – Mailboxes
+✅ Phase 7 – Support Center
+✅ Phase 8 – Product Hub
+✅ Phase 9 – Bug Reports
+✅ Phase 10 – Feature Requests
+✅ Phase 11 – Analytics
+✅ Phase 12 – Monitoring
+✅ Phase 13 – Audit Log Center
+
+The Queue Management fixes are already completed:
+- Filter race-condition fixed
+- Clear Selected implemented
+- Confirmation dialogs implemented
+- Retry Failed endpoint added
+- Retry Failed actions working
+- Queue Management deployed
+
+Do NOT touch any of those again.
+
+We are currently finishing:
+
+=========================
+PHASE 14 – ADMIN POLISH
+=========================
+
+Only finish the remaining polish work.
+
+Remaining tasks:
+
+1. Replace every remaining silent catch {} with proper error handling and toast notifications where appropriate.
+
+2. Add aria-label attributes to every icon-only button throughout the admin panel.
+
+3. Remove any remaining dead imports, dead state, dead callbacks and unused helper functions.
+
+4. Verify every admin page uses consistent spacing, typography, cards and theme tokens.
+
+5. Fix any remaining dark-mode inconsistencies.
+
+6. Ensure loading, empty-state and error-state components are consistent across every admin page.
+
+7. Remove any remaining React console warnings.
+
+8. Remove any remaining TypeScript warnings.
+
+9. Verify frontend production build succeeds.
+
+10. Verify backend typecheck succeeds.
+
+11. Do NOT modify backend business logic unless required for polish.
+
+12. Do NOT add new features.
+
+13. Do NOT redesign the UI.
+
+14. Do NOT change existing APIs unless required for a polish fix.
+
+When finished:
+
+• Run frontend build.
+• Run backend typecheck.
+• Summarize every file changed.
+• Confirm there are no new TypeScript errors introduced.
+• Stop and wait for my review.
+
+Do NOT continue into another phase after Phase 14 is complete.

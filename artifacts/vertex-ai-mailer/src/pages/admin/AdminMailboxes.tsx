@@ -664,8 +664,9 @@ function QueueDrawer({ mailboxId, mailboxEmail, open, onClose, onRefreshParent }
       const data = await apiFetch(`mailboxes/${mailboxId}/queue?page=${page}&limit=30&view=${view}`);
       setItems(data.data);
       setTotal(data.total);
-    } catch { /* silent */ }
-    finally { setLoading(false); }
+    } catch (e) {
+      console.error("QueueDrawer: failed to load mailbox queue", e);
+    } finally { setLoading(false); }
   }, [mailboxId, open, page, view]);
 
   useEffect(() => { load(); }, [load]);
@@ -811,8 +812,8 @@ function QueueDrawer({ mailboxId, mailboxEmail, open, onClose, onRefreshParent }
           <div className="flex items-center justify-between pt-4">
             <span className="text-xs text-muted-foreground">{page} / {pageCount}</span>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
-              <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page >= pageCount} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
+              <Button variant="outline" size="sm" aria-label="Previous page" className="h-8 w-8 p-0 rounded-lg" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+              <Button variant="outline" size="sm" aria-label="Next page" className="h-8 w-8 p-0 rounded-lg" disabled={page >= pageCount} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
             </div>
           </div>
         )}
@@ -918,8 +919,9 @@ function SmtpEventsDrawer({ mailboxId, mailboxEmail, open, onClose }: {
       const data = await apiFetch(`mailboxes/${mailboxId}/smtp-history?page=${page}&limit=30&status=${status}`);
       setItems(data.data);
       setTotal(data.total);
-    } catch { /* silent */ }
-    finally { setLoading(false); }
+    } catch (e) {
+      console.error("SmtpEventsDrawer: failed to load SMTP history", e);
+    } finally { setLoading(false); }
   }, [mailboxId, open, page, status]);
 
   useEffect(() => { load(); }, [load]);
@@ -1016,8 +1018,8 @@ function SmtpEventsDrawer({ mailboxId, mailboxEmail, open, onClose }: {
           <div className="flex items-center justify-between pt-4">
             <span className="text-xs text-muted-foreground">{page} / {pageCount}</span>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
-              <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page >= pageCount} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
+              <Button variant="outline" size="sm" aria-label="Previous page" className="h-8 w-8 p-0 rounded-lg" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+              <Button variant="outline" size="sm" aria-label="Next page" className="h-8 w-8 p-0 rounded-lg" disabled={page >= pageCount} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
             </div>
           </div>
         )}
@@ -1468,8 +1470,9 @@ export function AdminMailboxes() {
     try {
       const overview = await apiFetch("dashboard-overview");
       setStats(overview.mailboxMonitor ?? null);
-    } catch { /* silent */ }
-    finally { setStatsLoading(false); }
+    } catch (e) {
+      console.error("AdminMailboxes: failed to load stats", e);
+    } finally { setStatsLoading(false); }
   }, []);
 
   const loadMailboxes = useCallback(async () => {
@@ -1495,8 +1498,10 @@ export function AdminMailboxes() {
   const loadUsers = useCallback(async () => {
     try {
       const data = await apiFetch("users?limit=100");
-      setUsers(data.data.map((u: any) => ({ id: u.id, name: u.name, email: u.email })));
-    } catch { /* silent */ }
+      setUsers(data.data.map((u: { id: number; name: string; email: string }) => ({ id: u.id, name: u.name, email: u.email })));
+    } catch (e) {
+      console.error("AdminMailboxes: failed to load users for filter", e);
+    }
   }, []);
 
   useEffect(() => { loadStats(); loadMailboxes(); }, [loadStats, loadMailboxes]);
@@ -1602,7 +1607,7 @@ export function AdminMailboxes() {
           {hasFilters && (
             <Button variant="ghost" size="sm" onClick={clearFilters} className="h-9 px-3 rounded-xl text-muted-foreground">Clear</Button>
           )}
-          <Button variant="outline" size="sm" onClick={() => { loadMailboxes(); loadStats(); }} disabled={loading} className="h-9 px-3 rounded-xl gap-1.5">
+          <Button variant="outline" size="sm" onClick={() => { loadMailboxes(); loadStats(); }} disabled={loading} aria-label="Refresh mailboxes" className="h-9 px-3 rounded-xl gap-1.5">
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           </Button>
           <Button variant="outline" size="sm" onClick={() => exportCSV(mailboxes)} disabled={mailboxes.length === 0} className="h-9 px-3 rounded-xl gap-1.5">
@@ -1698,7 +1703,7 @@ export function AdminMailboxes() {
                   <td className="px-3 py-3">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg" disabled={isBusy}>
+                        <Button variant="ghost" size="sm" aria-label="Mailbox actions" className="h-7 w-7 p-0 rounded-lg" disabled={isBusy}>
                           {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MoreHorizontal className="h-3.5 w-3.5" />}
                         </Button>
                       </DropdownMenuTrigger>
@@ -1749,7 +1754,7 @@ export function AdminMailboxes() {
                   <HealthBadge m={m} />
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg" disabled={isBusy}>
+                      <Button variant="ghost" size="sm" aria-label="Mailbox actions" className="h-7 w-7 p-0 rounded-lg" disabled={isBusy}>
                         {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MoreHorizontal className="h-3.5 w-3.5" />}
                       </Button>
                     </DropdownMenuTrigger>
@@ -1808,8 +1813,8 @@ export function AdminMailboxes() {
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted-foreground">Page {page} of {pageCount} · {total} total</span>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page <= 1 || loading} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
-            <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page >= pageCount || loading} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
+            <Button variant="outline" size="sm" aria-label="Previous page" className="h-8 w-8 p-0 rounded-lg" disabled={page <= 1 || loading} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+            <Button variant="outline" size="sm" aria-label="Next page" className="h-8 w-8 p-0 rounded-lg" disabled={page >= pageCount || loading} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
           </div>
         </div>
       )}

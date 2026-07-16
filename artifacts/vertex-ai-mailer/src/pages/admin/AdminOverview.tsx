@@ -7,7 +7,7 @@ import {
   Users, UserCheck, Send, Zap, MailOpen, AlertTriangle, ShieldOff,
   Server, Mail, HeartPulse, RefreshCw, AlertCircle, UserPlus, Megaphone,
   BadgeDollarSign, LifeBuoy, Lightbulb, Bug, ArrowRight, Database,
-  Cog, ListChecks, Cpu, ExternalLink,
+  Cog, ListChecks, Cpu,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -226,7 +226,7 @@ export function AdminOverview({ onNavigateTab }: { onNavigateTab: (tab: string) 
         </div>
         <div className="flex items-center gap-2">
           {k && <HealthPill health={k.platformHealth} />}
-          <Button size="sm" variant="outline" onClick={load} className="h-8 gap-1.5">
+          <Button size="sm" variant="outline" onClick={load} aria-label="Refresh dashboard" className="h-8 gap-1.5">
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </div>

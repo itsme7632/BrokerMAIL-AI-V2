@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import {
 import {
   Search, RefreshCw, ChevronLeft, ChevronRight, MoreVertical, Eye, LogIn,
   Ban, CheckCircle2, XCircle, KeyRound, RotateCcw, ArrowUpCircle, Trash2,
-  Crown, ShieldOff, Users as UsersIcon, AlertCircle, Download, ArrowUp,
+  Crown, ShieldOff, Users as UsersIcon, AlertCircle, Download,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -350,7 +350,7 @@ export function AdminUsers() {
             {f.options.map(o => <option key={o} value={o}>{o === "all" ? `All ${f.label}s` : o.charAt(0).toUpperCase() + o.slice(1)}</option>)}
           </select>
         ))}
-        <Button size="sm" variant="outline" onClick={load} className="h-9 rounded-xl gap-1.5">
+        <Button size="sm" variant="outline" onClick={load} aria-label="Refresh" className="h-9 rounded-xl gap-1.5">
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
         </Button>
       </div>
@@ -418,7 +418,7 @@ export function AdminUsers() {
                 <td className="px-3 py-3">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg"><MoreVertical className="h-3.5 w-3.5" /></Button>
+                      <Button variant="ghost" size="sm" aria-label="User actions" className="h-7 w-7 p-0 rounded-lg"><MoreVertical className="h-3.5 w-3.5" /></Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-48">
                       <DropdownMenuItem onClick={() => setViewUser(u)} className="gap-2 text-sm"><Eye className="h-3.5 w-3.5" /> View</DropdownMenuItem>
@@ -468,7 +468,7 @@ export function AdminUsers() {
                   <StatusBadge status={u.status} />
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg"><MoreVertical className="h-3.5 w-3.5" /></Button>
+                      <Button variant="ghost" size="sm" aria-label="User actions" className="h-7 w-7 p-0 rounded-lg"><MoreVertical className="h-3.5 w-3.5" /></Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-48">
                       <DropdownMenuItem onClick={() => setViewUser(u)} className="gap-2 text-sm"><Eye className="h-3.5 w-3.5" /> View</DropdownMenuItem>
@@ -500,9 +500,9 @@ export function AdminUsers() {
       <div className="flex items-center justify-between gap-4 pt-1">
         <p className="text-xs text-muted-foreground">{total} user{total !== 1 ? "s" : ""} total</p>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+          <Button variant="outline" size="sm" aria-label="Previous page" className="h-8 w-8 p-0 rounded-lg" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
           <span className="text-xs text-muted-foreground min-w-[60px] text-center">{page} / {pageCount}</span>
-          <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page >= pageCount} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
+          <Button variant="outline" size="sm" aria-label="Next page" className="h-8 w-8 p-0 rounded-lg" disabled={page >= pageCount} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
         </div>
       </div>
 

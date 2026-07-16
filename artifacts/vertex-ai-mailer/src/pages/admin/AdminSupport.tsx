@@ -2,7 +2,8 @@
  * AdminSupport.tsx — Phase 7: Unified Support Center
  * Merges support tickets, bug reports, and feature requests into one page.
  */
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,9 +18,9 @@ import {
 } from "@/components/ui/select";
 import {
   TicketCheck, Bug, Lightbulb, RefreshCw, Search, Send,
-  CheckCircle2, XCircle, Loader2, ChevronLeft, ChevronRight,
-  Inbox, Tag, AlertTriangle, User, Clock, MessageSquare,
-  Globe, Monitor, Zap, Trash2,
+  Loader2, ChevronLeft, ChevronRight,
+  Inbox, Tag, User, Clock,
+  Globe, Monitor, Trash2,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -526,6 +527,7 @@ function FeatureSheet({ feature, open, onClose, onUpdate }: {
 // ─── Tickets Panel ────────────────────────────────────────────────────────────
 
 function TicketsPanel() {
+  const { toast } = useToast();
   const [items, setItems]             = useState<SupportTicket[]>([]);
   const [total, setTotal]             = useState(0);
   const [page, setPage]               = useState(1);
@@ -552,7 +554,9 @@ function TicketsPanel() {
       const arr  = Array.isArray(data) ? data : (data.data ?? []);
       const tot  = Array.isArray(data) ? arr.length : (data.total ?? arr.length);
       setItems(arr); setTotal(tot);
-    } catch { /* silent */ } finally { setLoading(false); }
+    } catch (e) {
+      toast({ variant: "destructive", title: "Failed to load tickets", description: e instanceof Error ? e.message : "Unknown error" });
+    } finally { setLoading(false); }
   }, [page, search, statusFilter, priorityFilter, categoryFilter]);
 
   useEffect(() => { load(); }, [load]);
@@ -594,7 +598,7 @@ function TicketsPanel() {
             ))}
           </SelectContent>
         </Select>
-        <Button variant="outline" size="sm" className="h-9 rounded-xl" onClick={load} disabled={loading}>
+        <Button variant="outline" size="sm" aria-label="Refresh tickets" className="h-9 rounded-xl" onClick={load} disabled={loading}>
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
         </Button>
       </div>
@@ -639,8 +643,8 @@ function TicketsPanel() {
         <div className="flex items-center justify-between pt-2">
           <span className="text-xs text-muted-foreground">{total} total · page {page} of {pageCount}</span>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
-            <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page >= pageCount} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
+            <Button variant="outline" size="sm" aria-label="Previous page" className="h-8 w-8 p-0 rounded-lg" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+            <Button variant="outline" size="sm" aria-label="Next page" className="h-8 w-8 p-0 rounded-lg" disabled={page >= pageCount} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
           </div>
         </div>
       )}
@@ -653,6 +657,7 @@ function TicketsPanel() {
 // ─── Bug Reports Panel ────────────────────────────────────────────────────────
 
 function BugsPanel() {
+  const { toast } = useToast();
   const [items, setItems]         = useState<BugReport[]>([]);
   const [total, setTotal]         = useState(0);
   const [page, setPage]           = useState(1);
@@ -674,7 +679,9 @@ function BugsPanel() {
       });
       const data = await productHubFetch(`bug-reports?${params}`);
       setItems(data.data ?? []); setTotal(data.total ?? 0);
-    } catch { /* silent */ } finally { setLoading(false); }
+    } catch (e) {
+      toast({ variant: "destructive", title: "Failed to load bug reports", description: e instanceof Error ? e.message : "Unknown error" });
+    } finally { setLoading(false); }
   }, [page, search, statusFilter, sevFilter]);
 
   useEffect(() => { load(); }, [load]);
@@ -705,7 +712,7 @@ function BugsPanel() {
             ))}
           </SelectContent>
         </Select>
-        <Button variant="outline" size="sm" className="h-9 rounded-xl" onClick={load} disabled={loading}>
+        <Button variant="outline" size="sm" aria-label="Refresh bug reports" className="h-9 rounded-xl" onClick={load} disabled={loading}>
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
         </Button>
       </div>
@@ -747,8 +754,8 @@ function BugsPanel() {
         <div className="flex items-center justify-between pt-2">
           <span className="text-xs text-muted-foreground">{total} total · page {page} of {pageCount}</span>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
-            <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page >= pageCount} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
+            <Button variant="outline" size="sm" aria-label="Previous page" className="h-8 w-8 p-0 rounded-lg" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+            <Button variant="outline" size="sm" aria-label="Next page" className="h-8 w-8 p-0 rounded-lg" disabled={page >= pageCount} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
           </div>
         </div>
       )}
@@ -761,6 +768,7 @@ function BugsPanel() {
 // ─── Feature Requests Panel ───────────────────────────────────────────────────
 
 function FeaturesPanel() {
+  const { toast } = useToast();
   const [items, setItems]         = useState<FeatureRequest[]>([]);
   const [total, setTotal]         = useState(0);
   const [page, setPage]           = useState(1);
@@ -782,7 +790,9 @@ function FeaturesPanel() {
       });
       const data = await productHubFetch(`feature-requests?${params}`);
       setItems(data.data ?? []); setTotal(data.total ?? 0);
-    } catch { /* silent */ } finally { setLoading(false); }
+    } catch (e) {
+      toast({ variant: "destructive", title: "Failed to load feature requests", description: e instanceof Error ? e.message : "Unknown error" });
+    } finally { setLoading(false); }
   }, [page, search, statusFilter, catFilter]);
 
   useEffect(() => { load(); }, [load]);
@@ -813,7 +823,7 @@ function FeaturesPanel() {
             ))}
           </SelectContent>
         </Select>
-        <Button variant="outline" size="sm" className="h-9 rounded-xl" onClick={load} disabled={loading}>
+        <Button variant="outline" size="sm" aria-label="Refresh feature requests" className="h-9 rounded-xl" onClick={load} disabled={loading}>
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
         </Button>
       </div>
@@ -854,8 +864,8 @@ function FeaturesPanel() {
         <div className="flex items-center justify-between pt-2">
           <span className="text-xs text-muted-foreground">{total} total · page {page} of {pageCount}</span>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
-            <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page >= pageCount} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
+            <Button variant="outline" size="sm" aria-label="Previous page" className="h-8 w-8 p-0 rounded-lg" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+            <Button variant="outline" size="sm" aria-label="Next page" className="h-8 w-8 p-0 rounded-lg" disabled={page >= pageCount} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
           </div>
         </div>
       )}

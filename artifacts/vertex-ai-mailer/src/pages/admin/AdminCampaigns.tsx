@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
+import { useToast } from "@/hooks/use-toast";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -226,8 +226,9 @@ function QueueDrawer({ campaignId, campaignName, open, onClose }: {
       const data = await apiFetch(`campaigns/${campaignId}/queue?page=${page}&limit=30`);
       setItems(data.data);
       setTotal(data.total);
-    } catch { /* silent */ }
-    finally { setLoading(false); }
+    } catch (e) {
+      console.error("QueueDrawer: failed to load queue", e);
+    } finally { setLoading(false); }
   }, [campaignId, open, page]);
 
   useEffect(() => { load(); }, [load]);
@@ -293,10 +294,10 @@ function QueueDrawer({ campaignId, campaignName, open, onClose }: {
           <div className="flex items-center justify-between pt-4">
             <span className="text-xs text-muted-foreground">{page} / {pageCount}</span>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
+              <Button variant="outline" size="sm" aria-label="Previous page" className="h-8 w-8 p-0 rounded-lg" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg" disabled={page >= pageCount} onClick={() => setPage(p => p + 1)}>
+              <Button variant="outline" size="sm" aria-label="Next page" className="h-8 w-8 p-0 rounded-lg" disabled={page >= pageCount} onClick={() => setPage(p => p + 1)}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
@@ -346,6 +347,8 @@ function exportCSV(campaigns: AdminCampaign[]) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function AdminCampaigns({ onNavigateTab }: { onNavigateTab?: (tab: string) => void }) {
+  const { toast } = useToast();
+
   // Stats
   const [stats, setStats]       = useState<MonitorStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
@@ -426,7 +429,7 @@ export function AdminCampaigns({ onNavigateTab }: { onNavigateTab?: (tab: string
       await apiFetch(`campaigns/${id}/${action}`, { method: "POST" });
       await Promise.all([loadCampaigns(), loadStats()]);
     } catch (e) {
-      alert(e instanceof Error ? e.message : `Failed to ${action} campaign`);
+      toast({ variant: "destructive", title: `Failed to ${action} campaign`, description: e instanceof Error ? e.message : "Unknown error" });
     } finally {
       setActionLoading(null);
     }
@@ -683,7 +686,7 @@ export function AdminCampaigns({ onNavigateTab }: { onNavigateTab?: (tab: string
                   <td className="px-3 py-3">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg opacity-60 group-hover:opacity-100">
+                        <Button variant="ghost" size="sm" aria-label="Campaign actions" className="h-7 w-7 p-0 rounded-lg opacity-60 group-hover:opacity-100">
                           {actionLoading === c.id
                             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             : <MoreHorizontal className="h-3.5 w-3.5" />
@@ -792,7 +795,7 @@ export function AdminCampaigns({ onNavigateTab }: { onNavigateTab?: (tab: string
                   <StatusBadge c={c} />
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 rounded-lg">
+                      <Button variant="ghost" size="sm" aria-label="Campaign actions" className="h-7 w-7 p-0 rounded-lg">
                         {actionLoading === c.id
                           ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           : <MoreHorizontal className="h-3.5 w-3.5" />
@@ -868,12 +871,12 @@ export function AdminCampaigns({ onNavigateTab }: { onNavigateTab?: (tab: string
           {total.toLocaleString()} campaign{total !== 1 ? "s" : ""}
         </p>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg"
+          <Button variant="outline" size="sm" aria-label="Previous page" className="h-8 w-8 p-0 rounded-lg"
             disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <span className="text-xs text-muted-foreground min-w-[60px] text-center">{page} / {pageCount}</span>
-          <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg"
+          <Button variant="outline" size="sm" aria-label="Next page" className="h-8 w-8 p-0 rounded-lg"
             disabled={page >= pageCount} onClick={() => setPage(p => p + 1)}>
             <ChevronRight className="h-4 w-4" />
           </Button>
