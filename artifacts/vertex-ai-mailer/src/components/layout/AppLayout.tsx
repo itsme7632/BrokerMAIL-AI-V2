@@ -276,7 +276,7 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-slate-900 border-r border-slate-200/80 dark:border-slate-700/60 w-60">
-      {/* Logo */}
+      {/* Logo — pinned, never scrolls */}
       <div className="h-24 flex items-center px-5 border-b border-slate-100 dark:border-slate-700/60 flex-shrink-0">
         <Link href="/dashboard" className="flex items-center flex-1 min-w-0">
           <Logo className="h-10 w-auto object-contain max-w-[190px]" />
@@ -288,13 +288,13 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
         )}
       </div>
 
-      {/* ── Dashboard link (standalone, no section header) */}
-      <div className="px-3 pt-3 pb-1">
+      {/* ── Dashboard link (standalone, no section header) — pinned, never scrolls */}
+      <div className="px-3 pt-3 pb-1 flex-shrink-0">
         <NavItem href="/dashboard" icon={LayoutDashboard} label="Dashboard" exact />
       </div>
 
-      {/* ── Grouped nav ── */}
-      <nav className="flex-1 overflow-y-auto px-0 py-2 space-y-4">
+      {/* ── Grouped nav — scrolls independently, scrollbar hidden on all browsers */}
+      <nav className="flex-1 overflow-y-auto no-scrollbar px-0 py-2 space-y-4">
         {NAV_GROUPS.map(group => (
           <div key={group.label}>
             <p className="px-4 pb-1 text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
@@ -313,8 +313,8 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
         ))}
       </nav>
 
-      {/* ── Bottom: plan card + need help ── */}
-      <div className="pt-2 pb-1 border-t border-slate-100 dark:border-slate-700/60">
+      {/* ── Bottom: plan card + need help — pinned, never scrolls */}
+      <div className="pt-2 pb-1 border-t border-slate-100 dark:border-slate-700/60 flex-shrink-0">
         <SidebarPlanCard />
 
         {/* Need Help */}

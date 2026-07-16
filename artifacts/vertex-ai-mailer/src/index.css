@@ -601,3 +601,15 @@
   outline: none !important;
   box-shadow: none !important;
 }
+
+/* Hide scrollbar track while preserving scroll functionality.
+   Works on Chrome / Edge (webkit), Firefox (scrollbar-width), and IE/Edge legacy (-ms). */
+@layer utilities {
+  .no-scrollbar {
+    scrollbar-width: none;          /* Firefox */
+    -ms-overflow-style: none;       /* IE / Edge legacy */
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;                  /* Chrome / Safari / Edge (Blink) */
+  }
+}
