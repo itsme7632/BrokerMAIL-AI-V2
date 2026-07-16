@@ -454,6 +454,47 @@ export default function SentEmails() {
   const { toast }   = useToast();
   const queryClient = useQueryClient();
 
+  // ── Deep-link: auto-open a specific email from ?email=<id> ──────────────────
+  // Triggered by notification bell clicks (email opens and failed deliveries).
+  // Reads the URL param on first render, strips it to keep the URL clean, then
+  // fetches the individual email record and opens the correct modal.
+  useEffect(() => {
+    const params   = new URLSearchParams(window.location.search);
+    const emailParam = params.get("email");
+    if (!emailParam) return;
+
+    const id = parseInt(emailParam, 10);
+    if (isNaN(id)) return;
+
+    // Strip the param immediately so the URL stays clean without triggering navigation
+    const clean = new URL(window.location.href);
+    clean.searchParams.delete("email");
+    window.history.replaceState({}, "", clean.toString());
+
+    // Fetch the individual record — the new GET /api/sent-emails/:id endpoint
+    fetch(`/api/sent-emails/${id}`, { headers: getAuthHeaders() })
+      .then(r => {
+        if (!r.ok) throw new Error("not found");
+        return r.json() as Promise<SentEmail>;
+      })
+      .then(email => {
+        if (email.status === "failed" || email.status === "deferred") {
+          // Open the Edit & Retry modal so the user sees error + retry actions immediately
+          setEditEmail(email);
+        } else {
+          // Open the preview + timeline drawer
+          setSelectedId(id);
+        }
+      })
+      .catch(() => {
+        toast({
+          variant: "destructive",
+          title: "Item not found",
+          description: "The requested item could not be found.",
+        });
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const { dateFrom, dateTo } = useMemo(
     () => getDateBounds(dateRange, customFrom, customTo),
     [dateRange, customFrom, customTo]

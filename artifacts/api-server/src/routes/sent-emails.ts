@@ -409,6 +409,46 @@ router.get("/sent-emails/stats", requireAuth, async (req, res): Promise<void> =>
   });
 });
 
+// ─── Get single sent email by ID (deep-link support) ─────────────────────────
+// Must be registered before /:id/preview so Express doesn't shadow it.
+// The regex (\d+) ensures only numeric IDs match — "stats" and other named
+// sub-paths will never be routed here.
+
+router.get("/sent-emails/:id(\\d+)", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+  const id   = parseInt(req.params.id as string, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const selectCols = {
+    id: emailQueueTable.id, jobId: emailQueueTable.jobId, campaignId: emailQueueTable.campaignId,
+    leadId: emailQueueTable.leadId, email: emailQueueTable.email, subject: emailQueueTable.subject,
+    rowDataJson: emailQueueTable.rowDataJson, templateId: emailQueueTable.templateId,
+    style: emailQueueTable.style, useSignatureBuilder: emailQueueTable.useSignatureBuilder,
+    status: emailQueueTable.status, lastError: emailQueueTable.lastError,
+    sentAt: emailQueueTable.sentAt, bounceAt: emailQueueTable.bounceAt,
+    createdAt: emailQueueTable.createdAt,
+    quoteId: emailQueueTable.quoteId, trackingId: emailQueueTable.trackingId,
+    deferredCount: emailQueueTable.deferredCount, retryAfter: emailQueueTable.retryAfter,
+    attempts: emailQueueTable.attempts,
+    mailboxEmail: mailboxesTable.smtpUser, mailboxFromName: mailboxesTable.fromName,
+  };
+
+  const [item] = await db
+    .select(selectCols)
+    .from(emailQueueTable)
+    .leftJoin(mailboxesTable, eq(mailboxesTable.id, emailQueueTable.mailboxId))
+    .where(and(eq(emailQueueTable.id, id), eq(emailQueueTable.userId, user.id)))
+    .limit(1);
+
+  if (!item) { res.status(404).json({ error: "Not found" }); return; }
+
+  const tracking = item.trackingId
+    ? await getTrackingStatsForIds([item.trackingId])
+    : {};
+
+  res.json(formatItem(item, tracking));
+});
+
 // ─── Preview a sent email ─────────────────────────────────────────────────────
 
 router.get("/sent-emails/:id/preview", requireAuth, async (req, res): Promise<void> => {

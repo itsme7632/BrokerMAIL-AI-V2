@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Sparkles, Check, Zap, Bug, ShieldCheck, ExternalLink, Play, RefreshCw, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,14 +33,21 @@ function CategoryBadge({ category }: { category: string }) {
   );
 }
 
-function ReleaseCard({ release, onRead }: { release: Release; onRead: (id: number) => void }) {
+function ReleaseCard({
+  release, onRead, highlighted = false,
+}: { release: Release; onRead: (id: number) => void; highlighted?: boolean }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className={cn(
-      "bg-white rounded-2xl border shadow-sm transition-all duration-200 overflow-hidden",
-      !release.isRead ? "border-blue-200 shadow-blue-50" : "border-slate-200"
-    )}>
+    <div
+      id={`release-${release.id}`}
+      className={cn(
+        "bg-white rounded-2xl border shadow-sm transition-all duration-300 overflow-hidden",
+        highlighted
+          ? "border-blue-500 shadow-blue-100 ring-2 ring-blue-400/40"
+          : !release.isRead ? "border-blue-200 shadow-blue-50" : "border-slate-200"
+      )}
+    >
       <div className="p-5 sm:p-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
@@ -125,7 +132,24 @@ export default function WhatsNew() {
   const [searchInput, setSearchInput]   = useState("");
   const [search, setSearch]             = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("");
+  const [highlightId, setHighlightId]   = useState<number | null>(null);
   const debounceRef = useState<ReturnType<typeof setTimeout> | null>(null);
+  // Track whether we've already scrolled for this deep-link visit
+  const didScrollRef = useRef(false);
+
+  // ── Deep-link: detect ?release=<id> on first render ─────────────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const releaseParam = params.get("release");
+    if (!releaseParam) return;
+    const id = parseInt(releaseParam, 10);
+    if (isNaN(id)) return;
+    setHighlightId(id);
+    // Strip the param to keep the URL clean
+    const clean = new URL(window.location.href);
+    clean.searchParams.delete("release");
+    window.history.replaceState({}, "", clean.toString());
+  }, []);
 
   async function load(q = "", cat = "") {
     setLoading(true);
@@ -143,6 +167,22 @@ export default function WhatsNew() {
       setLoading(false);
     }
   }
+
+  // ── Scroll to the highlighted release once releases are loaded ───────────────
+  useEffect(() => {
+    if (!highlightId || loading || releases.length === 0) return;
+    if (didScrollRef.current) return;
+    didScrollRef.current = true;
+    // Give the browser one tick to paint the cards before scrolling
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`release-${highlightId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      // Auto-clear the highlight ring after 3 s so it doesn't linger forever
+      setTimeout(() => setHighlightId(null), 3000);
+    });
+  }, [highlightId, loading, releases]);
 
   useEffect(() => { load(); }, []);
 
@@ -256,7 +296,7 @@ export default function WhatsNew() {
         </div>
       ) : (
         <div className="space-y-4">
-          {releases.map(r => <ReleaseCard key={r.id} release={r} onRead={handleRead} />)}
+          {releases.map(r => <ReleaseCard key={r.id} release={r} onRead={handleRead} highlighted={r.id === highlightId} />)}
         </div>
       )}
     </div>

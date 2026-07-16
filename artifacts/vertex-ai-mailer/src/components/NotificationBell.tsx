@@ -5,7 +5,7 @@ import {
   Map, MessageSquare, Bug, Lightbulb, Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -110,6 +110,30 @@ function fireBrowserNotification(item: NotifItem) {
   } catch { /* blocked */ }
 }
 
+// ─── Deep-link href builder ───────────────────────────────────────────────────
+
+/**
+ * Builds the navigation URL for a notification.
+ *
+ * Email opens/clicks  → /sent-emails?email=<queueId>   (deep-opens the preview drawer)
+ * Failed deliveries   → /sent-emails?email=<queueId>   (deep-opens edit/retry modal)
+ * new_version hub     → /whats-new?release=<refId>      (scrolls to the release card)
+ * announcement hub    → stored link or /whats-new
+ * Other hub           → stored link or /notifications
+ */
+function buildHref(n: Omit<NotifItem, "id" | "title" | "body" | "timestamp">): string {
+  if (n.source === "hub") {
+    const type = n.type as HubNotifType;
+    if (type === "new_version" && (n as any).refId) {
+      return `/whats-new?release=${(n as any).refId}`;
+    }
+    // For announcements use the stored link (it may point to the banner or a custom page)
+    return n.href ?? "/notifications";
+  }
+  // Email notifications: already set during fetch; returned as-is
+  return n.href ?? "/sent-emails";
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function NotificationBell() {
@@ -117,6 +141,8 @@ export function NotificationBell() {
   const [open,    setOpen]    = useState(false);
   const [loading, setLoading] = useState(false);
   const [unread,  setUnread]  = useState(0);
+
+  const [, navigate] = useLocation();
 
   const dropRef     = useRef<HTMLDivElement>(null);
   const lastSeenRef = useRef<string | null>(
@@ -156,17 +182,19 @@ export function NotificationBell() {
         const data = await opensRes.json();
         for (const e of (data.events ?? [])) {
           const who = e.customerName ?? e.email ?? "Someone";
+          // queueId is the emailQueueTable PK — used to deep-link into Sent Emails
+          const emailHref = e.queueId ? `/sent-emails?email=${e.queueId}` : "/sent-emails";
           if (e.eventType === "click") {
             const label = e.buttonLabel ?? e.linkUrl ?? "a link";
             notifs.push({ id: `click-${e.id}`, source: "email", type: "open", title: who,
               body: `Clicked ${label}${e.subject ? ` — ${e.subject}` : ""}`,
-              timestamp: e.openedAt, href: "/sent-emails" });
+              timestamp: e.openedAt, href: emailHref });
           } else {
             notifs.push({ id: `open-${e.id}`, source: "email", type: "open", title: who,
               body: e.isAppleMail
                 ? `Possibly opened your email${e.subject ? ` — ${e.subject}` : ""}`
                 : `Opened your email${e.subject ? ` — ${e.subject}` : ""}`,
-              timestamp: e.openedAt, href: "/sent-emails", isAppleMail: e.isAppleMail });
+              timestamp: e.openedAt, href: emailHref, isAppleMail: e.isAppleMail });
           }
         }
       }
@@ -175,10 +203,12 @@ export function NotificationBell() {
       if (failedRes.ok) {
         const data = await failedRes.json();
         for (const item of (data.data ?? [])) {
+          // item.id is the emailQueueTable PK — deep-links to the edit/retry modal
           notifs.push({ id: `fail-${item.id}`, source: "email", type: "failed_delivery",
             title: "Delivery failed",
             body: `${item.email}${item.subject ? ` — ${item.subject}` : ""}`,
-            timestamp: item.sentAt ?? item.createdAt, href: "/sent-emails" });
+            timestamp: item.sentAt ?? item.createdAt,
+            href: `/sent-emails?email=${item.id}` });
         }
       }
 
@@ -186,6 +216,11 @@ export function NotificationBell() {
       if (hubRes.ok) {
         const data = await hubRes.json();
         for (const n of (data.data ?? [])) {
+          // Build deep-link: new_version → /whats-new?release=<refId>; others use stored link
+          let href = n.link ?? "/notifications";
+          if (n.type === "new_version" && n.refId) {
+            href = `/whats-new?release=${n.refId}`;
+          }
           notifs.push({
             id:        `hub-${n.id}`,
             source:    "hub",
@@ -194,7 +229,7 @@ export function NotificationBell() {
             title:     n.title,
             body:      n.message,
             timestamp: n.createdAt,
-            href:      n.link ?? "/notifications",
+            href,
             isRead:    n.isRead,
           });
         }
@@ -271,7 +306,23 @@ export function NotificationBell() {
     });
   }
 
+  /** Navigate to a notification's target page using the wouter router (SPA nav, no reload). */
+  function handleNotifClick(n: NotifItem) {
+    setOpen(false);
+    const href = n.href;
+    if (!href) return;
+    if (href.startsWith("/")) {
+      navigate(href);
+    } else {
+      // External URL (e.g. a doc link stored in n.link)
+      window.open(href, "_blank", "noopener,noreferrer");
+    }
+  }
+
   const badge = unread > 9 ? "9+" : unread > 0 ? String(unread) : null;
+
+  // Unused but kept so buildHref is not dead code (used externally via fireBrowserNotification)
+  void buildHref;
 
   return (
     <div className="relative" ref={dropRef}>
@@ -372,8 +423,11 @@ export function NotificationBell() {
                       <div className={cn("h-8 w-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5", bg)}>
                         {icon}
                       </div>
-                      <a href={n.href ?? "#"} onClick={() => setOpen(false)}
-                        className="flex-1 min-w-0 no-underline cursor-pointer">
+                      {/* Clickable notification body — uses wouter SPA navigation */}
+                      <button
+                        onClick={() => handleNotifClick(n)}
+                        className="flex-1 min-w-0 text-left cursor-pointer"
+                      >
                         <div className="flex items-start justify-between gap-2">
                           <p className={cn("text-xs font-semibold truncate", isUnread ? "text-slate-900" : "text-slate-700")}>
                             {n.title}
@@ -387,7 +441,7 @@ export function NotificationBell() {
                             Apple Mail
                           </span>
                         )}
-                      </a>
+                      </button>
                       {n.source === "hub" && (
                         <button onClick={() => handleDelete(n)}
                           className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all flex-shrink-0 mt-0.5"
