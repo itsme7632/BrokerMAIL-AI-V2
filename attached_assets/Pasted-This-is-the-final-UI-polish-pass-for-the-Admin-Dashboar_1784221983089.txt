@@ -1,0 +1,152 @@
+This is the final UI polish pass for the Admin Dashboard (Overview tab only).
+
+Do NOT change any backend logic or APIs.
+Do NOT modify database schema.
+Do NOT add placeholder/mock functionality.
+Only improve layout, responsiveness, and UX.
+
+==========================
+1. USE THE AVAILABLE WIDTH
+==========================
+
+Currently the Admin Dashboard content is constrained to a narrow centered column, leaving large empty areas on the left and right.
+
+Update the Overview layout so it uses the full available width inside the admin content area.
+
+Requirements:
+
+- Remove unnecessary max-width constraints.
+- Stretch the Overview container to 100% width.
+- Keep consistent spacing.
+- Make the dashboard look like modern SaaS dashboards (Stripe, Vercel, Linear, etc.).
+- Avoid excessive empty margins.
+
+==========================
+2. FIX TRUNCATED CARD TITLES
+==========================
+
+Many overview cards truncate text like:
+
+Platform He...
+Active Cam...
+Connected...
+Emails Sent...
+
+Instead:
+
+- Allow labels to wrap onto two lines if necessary.
+OR
+- Increase card width where appropriate.
+OR
+- Reduce font size slightly.
+
+Never cut labels with "...".
+
+Every card title should always be fully readable.
+
+==========================
+3. IMPROVE GRID RESPONSIVENESS
+==========================
+
+Adjust the stats grid so cards naturally fill the available width.
+
+Examples:
+
+Desktop:
+4-6 cards per row depending on width.
+
+Large screens:
+Use additional horizontal space.
+
+Medium screens:
+Wrap naturally.
+
+No giant unused whitespace.
+
+==========================
+4. RECENT ACTIVITY BADGES
+==========================
+
+Currently Info and Warn badges look like clickable buttons.
+
+They are NOT interactive.
+
+Convert them into passive status badges.
+
+Requirements:
+
+- No hover cursor pointer.
+- No button styling.
+- No button focus.
+- Use Badge component.
+- Different colors:
+Info = blue
+Warning = amber
+Error = red
+Success = green
+
+They should simply indicate event severity.
+
+==========================
+5. RECENT ACTIVITY TABLE
+==========================
+
+Improve spacing.
+
+Columns:
+
+Event
+Severity
+Time
+
+Ensure long event descriptions wrap nicely.
+
+No overlapping.
+
+==========================
+6. QUICK ACTIONS
+==========================
+
+Keep buttons equal height.
+
+Equal spacing.
+
+Use full width available.
+
+==========================
+7. SYSTEM STATUS
+==========================
+
+Make status rows evenly aligned.
+
+Green dot + label should line up.
+
+No truncation.
+
+==========================
+8. NO HORIZONTAL SCROLL
+==========================
+
+The Overview tab should never require horizontal scrolling on desktop.
+
+Only tables (Campaigns, Users, etc.) may scroll horizontally.
+
+The Overview page should fit naturally.
+
+==========================
+9. FINAL QA
+==========================
+
+Verify:
+
+✓ No truncated Overview labels.
+✓ No unnecessary empty margins.
+✓ No horizontal scrolling.
+✓ Responsive layout.
+✓ Consistent spacing.
+✓ Info/Warn badges are passive, not buttons.
+✓ No TypeScript errors.
+✓ No build errors.
+
+Do not modify any functionality.
+Only polish the UI.
