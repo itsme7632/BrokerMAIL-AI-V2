@@ -124,14 +124,12 @@ router.get("/communications/conversations", requireAuth, async (req, res) => {
   // Seed on first visit (idempotent)
   await ensureConversationsSeeded(userId);
 
-  const {
-    filter = "all",   // all | unread | needs_reply | starred | archived | spam
-    search = "",
-    page = "1",
-    limit = "30",
-    mailboxId,
-    campaignId,
-  } = req.query as Record<string, string>;
+  const filter = typeof req.query.filter === "string" ? req.query.filter : "all";
+  const search = typeof req.query.search === "string" ? req.query.search : "";
+  const page = typeof req.query.page === "string" ? req.query.page : "1";
+  const limit = typeof req.query.limit === "string" ? req.query.limit : "30";
+  const mailboxId = typeof req.query.mailboxId === "string" ? req.query.mailboxId : undefined;
+  const campaignId = typeof req.query.campaignId === "string" ? req.query.campaignId : undefined;
 
   const pageNum = Math.max(1, parseInt(page, 10));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10)));
@@ -195,14 +193,14 @@ router.get("/communications/conversations", requireAuth, async (req, res) => {
     .limit(limitNum)
     .offset(offset);
 
-  res.json({ data: conversations, total: countRow?.count ?? 0 });
+  return res.json({ data: conversations, total: countRow?.count ?? 0 });
 });
 
 // ─── GET /api/communications/conversations/:id ────────────────────────────────
 
 router.get("/communications/conversations/:id", requireAuth, async (req, res) => {
   const userId = (req as any).user.id as number;
-  const convId = parseInt(req.params.id, 10);
+  const convId = parseInt(typeof req.params.id === "string" ? req.params.id : "", 10);
 
   const [conv] = await db
     .select()
@@ -244,14 +242,14 @@ router.get("/communications/conversations/:id", requireAuth, async (req, res) =>
       .where(eq(commConversationsTable.id, convId));
   }
 
-  res.json({ conversation: { ...conv, status: conv.status === "unread" ? "read" : conv.status }, messages, notes, lead, campaign });
+  return res.json({ conversation: { ...conv, status: conv.status === "unread" ? "read" : conv.status }, messages, notes, lead, campaign });
 });
 
 // ─── PATCH /api/communications/conversations/:id ──────────────────────────────
 
 router.patch("/communications/conversations/:id", requireAuth, async (req, res) => {
   const userId = (req as any).user.id as number;
-  const convId = parseInt(req.params.id, 10);
+  const convId = parseInt(typeof req.params.id === "string" ? req.params.id : "", 10);
 
   const { status, starred } = req.body as { status?: string; starred?: boolean };
 
@@ -268,14 +266,14 @@ router.patch("/communications/conversations/:id", requireAuth, async (req, res) 
 
   await db.update(commConversationsTable).set(updates).where(eq(commConversationsTable.id, convId));
 
-  res.json({ success: true });
+  return res.json({ success: true });
 });
 
 // ─── POST /api/communications/conversations/:id/notes ────────────────────────
 
 router.post("/communications/conversations/:id/notes", requireAuth, async (req, res) => {
   const userId = (req as any).user.id as number;
-  const convId = parseInt(req.params.id, 10);
+  const convId = parseInt(typeof req.params.id === "string" ? req.params.id : "", 10);
 
   const { content } = req.body as { content: string };
   if (!content?.trim()) return res.status(400).json({ error: "Content is required" });
@@ -292,7 +290,7 @@ router.post("/communications/conversations/:id/notes", requireAuth, async (req, 
     .values({ conversationId: convId, userId, content: content.trim() })
     .returning();
 
-  res.json({ note });
+  return res.json({ note });
 });
 
 // ─── GET /api/communications/stats ───────────────────────────────────────────
