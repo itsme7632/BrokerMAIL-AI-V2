@@ -10,6 +10,7 @@ import { startCampaignProcessor } from "./routes/campaigns";
 import { resumeMailboxQuotaRecovery } from "./lib/smtp-quota";
 import { runBounceScanner } from "./lib/bounce-scanner";
 import { runGmailDraftSync } from "./lib/gmail-draft-sync";
+import { runCommSync } from "./lib/comm-sync";
 import { hashPassword } from "./lib/auth";
 import { maintenanceMiddleware } from "./lib/maintenance";
 import { touchCronStart, touchCronSuccess, touchCronError } from "./lib/monitoring-state";
@@ -288,6 +289,13 @@ function trackedGmailSync(): Promise<void> {
     .catch(err => { touchCronError("gmailSync", err); throw err; });
 }
 
+function trackedCommSync(): Promise<void> {
+  touchCronStart("commSync");
+  return runCommSync()
+    .then(() => touchCronSuccess("commSync"))
+    .catch(err => { touchCronError("commSync", err); throw err; });
+}
+
 // Start watchdog 10 s after boot, then every 60 s
 // Also runs bounce scanner and Gmail draft sync on each cycle
 setTimeout(() => {
@@ -308,6 +316,17 @@ setTimeout(() => {
     trackedGmailSync().catch(() => {});
   }, 5 * 60_000);
 }, 30_000);
+
+// Communications inbox sync — runs every 5 minutes
+// Imports new emails from connected Gmail and IMAP mailboxes into the
+// Communications inbox so the broker never needs to press Refresh manually.
+// Starts 90 s after boot (after the draft-sync has settled).
+setTimeout(() => {
+  trackedCommSync().catch(() => {});
+  setInterval(() => {
+    trackedCommSync().catch(() => {});
+  }, 5 * 60_000);
+}, 90_000);
 
 // ---------------------------------------------------------------------------
 // Startup schema validation — compares DB columns against Drizzle schema

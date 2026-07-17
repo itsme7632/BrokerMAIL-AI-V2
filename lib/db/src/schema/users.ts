@@ -35,6 +35,10 @@ export const usersTable = pgTable("users", {
   lastActiveAt: timestamp("last_active_at"),
   // ── Email verification ───────────────────────────────────────────────────
   emailVerified: boolean("email_verified").notNull().default(false),
+  // ── Communications inbox sync ────────────────────────────────────────────
+  // Timestamp of the last successful Gmail API inbox sync for Communications.
+  // Used for incremental sync: only messages after this date are fetched next time.
+  gmailCommSyncAt: timestamp("gmail_comm_sync_at"),
   // ─────────────────────────────────────────────────────────────────────────
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

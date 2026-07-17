@@ -1,0 +1,183 @@
+The Communications UI is complete, but it is not functional yet.
+
+Current issues:
+
+1. Sending emails to the connected Gmail mailbox does not create conversations.
+
+2. Sending emails to the connected SMTP mailbox does not create conversations.
+
+3. The Refresh button is currently a placeholder.
+
+4. Previously received emails are never imported.
+
+Please implement the full synchronization engine.
+
+==================================================
+MAILBOX SYNCHRONIZATION
+==================================================
+
+Support:
+
+• Gmail API (connected Gmail accounts)
+
+• IMAP (for SMTP mailboxes)
+
+SMTP itself is only for sending.
+
+Receiving must happen through IMAP.
+
+==================================================
+INITIAL IMPORT
+==================================================
+
+When a mailbox is connected for the first time:
+
+Import recent history.
+
+Limit:
+
+Last 90 days
+
+or
+
+Most recent 1000 emails
+
+(whichever comes first)
+
+==================================================
+INCREMENTAL SYNC
+==================================================
+
+After the initial import:
+
+Store the last successful sync timestamp.
+
+Future syncs should only download newer messages.
+
+==================================================
+REFRESH BUTTON
+==================================================
+
+The Refresh button should perform a real synchronization.
+
+Workflow:
+
+User clicks Refresh
+
+↓
+
+Synchronize every connected mailbox
+
+↓
+
+Import new emails
+
+↓
+
+Update conversations
+
+↓
+
+Refresh unread counts
+
+↓
+
+Refresh conversation list
+
+Show:
+
+Syncing...
+
+Progress indicator
+
+Success toast
+
+Error toast if synchronization fails.
+
+==================================================
+CONVERSATION BUILDING
+==================================================
+
+Group messages using:
+
+Message-ID
+
+In-Reply-To
+
+References
+
+Normalized Subject
+
+Do not create duplicate conversations.
+
+==================================================
+DATABASE
+==================================================
+
+Every synchronized email should create/update:
+
+Conversation
+
+Message
+
+Participants
+
+Tracking
+
+Unread count
+
+Last activity
+
+==================================================
+MAILBOX FILTER
+==================================================
+
+The mailbox selector should only display mailboxes that actually belong to the user.
+
+Selecting a mailbox should show only conversations from that mailbox.
+
+==================================================
+BACKGROUND SYNC
+==================================================
+
+Add automatic synchronization every few minutes (or another suitable interval) so users don't need to press Refresh to see new emails.
+
+==================================================
+LOGGING
+==================================================
+
+Add logging for each mailbox sync:
+
+Mailbox
+
+Messages scanned
+
+Messages imported
+
+Conversations created
+
+Conversations updated
+
+Sync duration
+
+Errors
+
+==================================================
+TESTING
+==================================================
+
+Verify:
+
+• Send an email from an external Gmail account to the connected Gmail mailbox → it appears in Communications.
+
+• Send an email to the connected IMAP mailbox → it appears.
+
+• Existing historical emails are imported during the first sync.
+
+• Refresh imports new emails immediately.
+
+• Duplicate messages are not created.
+
+• Conversation threading works correctly.
+
+Run backend/frontend TypeScript and production build before marking complete.

@@ -21,6 +21,9 @@ export const commMessagesTable = pgTable("comm_messages", {
   isRead: boolean("is_read").notNull().default(false),
   // Link to existing drafts table entry (for outbound)
   draftId: integer("draft_id").references(() => draftsTable.id, { onDelete: "set null" }),
+  // Deduplication key — Gmail internal ID ("gmail:<id>") or IMAP Message-ID header value.
+  // Null for manually created messages.
+  externalId: text("external_id"),
   sentAt: timestamp("sent_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

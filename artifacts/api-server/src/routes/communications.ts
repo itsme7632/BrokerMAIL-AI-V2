@@ -7,6 +7,7 @@ import {
 import { requireAuth } from "../lib/auth";
 import { eq, and, desc, or, ilike, sql, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { runCommSync } from "../lib/comm-sync";
 
 const router = Router();
 
@@ -314,6 +315,40 @@ router.get("/communications/stats", requireAuth, async (req, res) => {
     );
 
   res.json(stats ?? { total: 0, unread: 0, needsReply: 0, starred: 0 });
+});
+
+// ─── POST /api/communications/sync ───────────────────────────────────────────
+// Trigger a manual mailbox synchronisation for the authenticated user.
+// Runs Gmail API and/or IMAP sync depending on what the user has connected.
+
+router.post("/communications/sync", requireAuth, async (req, res) => {
+  const userId = (req as any).user.id as number;
+
+  try {
+    const results = await runCommSync(userId);
+
+    const totalImported     = results.reduce((s, r) => s + r.messagesImported, 0);
+    const totalCreated      = results.reduce((s, r) => s + r.conversationsCreated, 0);
+    const totalUpdated      = results.reduce((s, r) => s + r.conversationsUpdated, 0);
+    const errors            = results.filter(r => r.error).map(r => `${r.mailbox}: ${r.error}`);
+
+    logger.info(
+      { userId, totalImported, totalCreated, totalUpdated, mailboxCount: results.length },
+      "[COMM-SYNC] Manual sync complete",
+    );
+
+    return res.json({
+      success: true,
+      results,
+      totalImported,
+      totalCreated,
+      totalUpdated,
+      errors,
+    });
+  } catch (err) {
+    logger.error({ err, userId }, "[COMM-SYNC] Manual sync route error");
+    return res.status(500).json({ error: "Sync failed" });
+  }
 });
 
 // ─── GET /api/communications/mailboxes ───────────────────────────────────────

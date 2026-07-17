@@ -1,0 +1,723 @@
+/**
+ * comm-sync.ts
+ *
+ * Synchronisation engine for the Communications inbox.
+ * Supports two mailbox types:
+ *   • Gmail API  — connected Gmail accounts (gmailConnected = true on usersTable)
+ *   • IMAP       — SMTP mailboxes with IMAP credentials (imapHost / imapUser set)
+ *
+ * Deduplication uses commMessagesTable.externalId:
+ *   Gmail:  "gmail:<googleInternalMessageId>"
+ *   IMAP:   Message-ID header value  (or "imap:<mailboxId>:<uid>" as fallback)
+ *
+ * Logging per the spec:
+ *   [COMM-SYNC] Mailbox sync result  →  { mailbox, messagesScanned, messagesImported,
+ *                                          conversationsCreated, conversationsUpdated,
+ *                                          durationMs, error? }
+ *
+ * Never throws — every per-user / per-mailbox error is caught and stored in
+ * SyncResult.error so the cron loop and route handler can always return.
+ */
+
+import { ImapFlow } from "imapflow";
+import {
+  db,
+  usersTable,
+  mailboxesTable,
+  commConversationsTable,
+  commMessagesTable,
+} from "@workspace/db";
+import type { User, Mailbox } from "@workspace/db";
+import { eq, and, inArray, isNotNull, sql } from "drizzle-orm";
+import { getGmailClient } from "./gmail";
+import { decrypt } from "./crypto";
+import { logger } from "./logger";
+
+// ─── Public result type ───────────────────────────────────────────────────────
+
+export interface SyncResult {
+  mailbox: string;
+  messagesScanned: number;
+  messagesImported: number;
+  conversationsCreated: number;
+  conversationsUpdated: number;
+  durationMs: number;
+  error?: string;
+}
+
+// ─── Parsing helpers ──────────────────────────────────────────────────────────
+
+function normalizeSubject(subject: string): string {
+  return subject.replace(/^(Re|Fwd|FW|RE|FWD|Fw):\s*/gi, "").toLowerCase().trim();
+}
+
+function parseEmailAddress(header: string): { name: string; email: string } {
+  const m = header.trim().match(/^(.+?)\s*<([^>]+)>\s*$/);
+  if (m) {
+    const name = m[1]!.trim().replace(/^["']|["']$/g, "");
+    return { name, email: m[2]!.trim().toLowerCase() };
+  }
+  const email = header.trim().toLowerCase().replace(/[<>]/g, "").split(/[\s,;]/)[0] ?? "";
+  return { name: email.split("@")[0] ?? "", email };
+}
+
+/**
+ * Extract a single header value from a raw RFC 2822 message source,
+ * unfolding continuation lines per RFC 2822 §2.2.3.
+ */
+function parseHeader(raw: string, name: string): string {
+  const re = new RegExp(`^${name}:[ \\t]*(.+)`, "im");
+  const m = raw.match(re);
+  if (!m) return "";
+  return m[1]!.replace(/\r?\n[ \t]+/g, " ").trim();
+}
+
+function decodeQuotedPrintable(s: string): string {
+  return s
+    .replace(/=\r?\n/g, "")
+    .replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+}
+
+function decodeBase64Url(data: string): string {
+  return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf-8");
+}
+
+function snippetOf(text: string, html: string, max = 160): string {
+  const source = text || html.replace(/<[^>]+>/g, " ");
+  return source.replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// ─── Gmail body parser ────────────────────────────────────────────────────────
+
+function extractGmailBody(payload: any): { text: string; html: string } {
+  let text = "";
+  let html = "";
+
+  function traverse(part: any): void {
+    const mt: string = part.mimeType ?? "";
+    if (mt === "text/plain" && part.body?.data && !text) {
+      try { text = decodeBase64Url(part.body.data).slice(0, 50_000); } catch { }
+    } else if (mt === "text/html" && part.body?.data && !html) {
+      try { html = decodeBase64Url(part.body.data).slice(0, 100_000); } catch { }
+    }
+    if (Array.isArray(part.parts)) {
+      for (const p of part.parts) traverse(p);
+    }
+  }
+
+  traverse(payload);
+  return { text, html };
+}
+
+// ─── IMAP body parser (minimal RFC 2822 / MIME) ───────────────────────────────
+
+function extractImapBody(source: string): { text: string; html: string } {
+  const sep = source.search(/\r?\n\r?\n/);
+  if (sep === -1) return { text: "", html: "" };
+
+  const headerSection = source.slice(0, sep);
+  const bodySection = source.slice(sep + (source.charAt(sep + 1) === "\r" ? 4 : 2));
+
+  const ct = parseHeader(headerSection, "Content-Type");
+  const cte = parseHeader(headerSection, "Content-Transfer-Encoding").toLowerCase();
+
+  function decode(raw: string, encoding: string): string {
+    if (encoding === "base64") {
+      try { return Buffer.from(raw.replace(/\s/g, ""), "base64").toString("utf-8"); } catch { return raw; }
+    }
+    if (encoding === "quoted-printable") return decodeQuotedPrintable(raw);
+    return raw;
+  }
+
+  // Simple (non-multipart) message
+  if (!ct.toLowerCase().includes("multipart/")) {
+    const decoded = decode(bodySection, cte);
+    if (ct.toLowerCase().includes("text/html")) {
+      return {
+        text: decoded.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 50_000),
+        html: decoded.slice(0, 100_000),
+      };
+    }
+    return { text: decoded.slice(0, 50_000), html: "" };
+  }
+
+  // Multipart — find boundary and split
+  const bm = ct.match(/boundary="?([^";,\r\n]+)"?/i);
+  if (!bm) return { text: bodySection.slice(0, 2000), html: "" };
+
+  const boundary = bm[1]!.trim();
+  const parts = bodySection.split(new RegExp(`--${escapeRegex(boundary)}(?:--)?`));
+
+  let text = "";
+  let html = "";
+
+  for (const part of parts) {
+    if (!part.trim() || part.trim() === "--") continue;
+    const pSep = part.search(/\r?\n\r?\n/);
+    if (pSep === -1) continue;
+
+    const ph = part.slice(0, pSep);
+    const pb = part.slice(pSep + (part.charAt(pSep + 1) === "\r" ? 4 : 2)).trim();
+
+    const pct = parseHeader(ph, "Content-Type").toLowerCase();
+    const pcte = parseHeader(ph, "Content-Transfer-Encoding").toLowerCase();
+    const decoded = decode(pb, pcte);
+
+    if (pct.includes("text/plain") && !text) {
+      text = decoded.slice(0, 50_000);
+    } else if (pct.includes("text/html") && !html) {
+      html = decoded.slice(0, 100_000);
+    }
+  }
+
+  return { text, html };
+}
+
+// ─── Conversation threading ───────────────────────────────────────────────────
+
+async function findOrCreateConversation(opts: {
+  userId: number;
+  mailboxId: number | null;
+  customerEmail: string;
+  customerName: string;
+  subject: string;
+  inReplyTo?: string;
+  references?: string[];
+  messageAt: Date;
+}): Promise<{ id: number; isNew: boolean }> {
+  const { userId, mailboxId, customerEmail, customerName, subject, inReplyTo, references, messageAt } = opts;
+
+  // 1. Thread by In-Reply-To / References — find existing conversation via message externalId
+  const refIds = [inReplyTo, ...(references ?? [])]
+    .filter((r): r is string => typeof r === "string" && r.trim().length > 0);
+  if (refIds.length > 0) {
+    const [linked] = await db
+      .select({ convId: commMessagesTable.conversationId })
+      .from(commMessagesTable)
+      .where(inArray(commMessagesTable.externalId, refIds))
+      .limit(1);
+    if (linked) return { id: linked.convId, isNew: false };
+  }
+
+  // 2. One conversation per user × customer email (most recent)
+  const [existing] = await db
+    .select({ id: commConversationsTable.id })
+    .from(commConversationsTable)
+    .where(
+      and(
+        eq(commConversationsTable.userId, userId),
+        eq(commConversationsTable.customerEmail, customerEmail),
+      ),
+    )
+    .orderBy(sql`${commConversationsTable.lastMessageAt} DESC`)
+    .limit(1);
+
+  if (existing) return { id: existing.id, isNew: false };
+
+  // 3. Create new conversation
+  const [newConv] = await db
+    .insert(commConversationsTable)
+    .values({
+      userId,
+      mailboxId: mailboxId ?? null,
+      subject: subject || "(No subject)",
+      customerName: customerName || customerEmail.split("@")[0] || customerEmail,
+      customerEmail,
+      status: "unread",
+      starred: false,
+      messageCount: 0,
+      unreadCount: 0,
+      lastMessageAt: messageAt,
+    })
+    .returning({ id: commConversationsTable.id });
+
+  return { id: newConv!.id, isNew: true };
+}
+
+// ─── Message upsert ───────────────────────────────────────────────────────────
+
+async function upsertMessage(opts: {
+  externalId: string;
+  conversationId: number;
+  userId: number;
+  direction: "inbound" | "outbound";
+  fromEmail: string;
+  fromName: string;
+  toEmail: string;
+  subject: string;
+  text: string;
+  html: string;
+  sentAt: Date;
+}): Promise<boolean> {
+  const { externalId, conversationId, userId, direction, fromEmail, fromName, toEmail, subject, text, html, sentAt } = opts;
+
+  // Deduplication — skip if already present
+  const [existing] = await db
+    .select({ id: commMessagesTable.id })
+    .from(commMessagesTable)
+    .where(eq(commMessagesTable.externalId, externalId))
+    .limit(1);
+  if (existing) return false;
+
+  const body = text || html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const snippet = snippetOf(text, html);
+
+  await db.insert(commMessagesTable).values({
+    externalId,
+    conversationId,
+    userId,
+    direction,
+    fromEmail,
+    fromName: fromName || fromEmail.split("@")[0] || fromEmail,
+    toEmail,
+    subject,
+    body: body || "(empty)",
+    htmlBody: html || null,
+    snippet,
+    isRead: direction === "outbound",
+    sentAt,
+  });
+
+  // Messages that arrived in the last 24 h are "unread" for the broker.
+  const isRecent = (Date.now() - sentAt.getTime()) < 24 * 60 * 60 * 1_000;
+  const updates: Record<string, unknown> = {
+    messageCount: sql`${commConversationsTable.messageCount} + 1`,
+    lastMessageAt: sql`GREATEST(${commConversationsTable.lastMessageAt}, ${sentAt.toISOString()}::timestamptz)`,
+    updatedAt: new Date(),
+  };
+  if (direction === "inbound" && isRecent) {
+    updates.unreadCount = sql`${commConversationsTable.unreadCount} + 1`;
+    updates.status = "unread";
+  }
+
+  await db
+    .update(commConversationsTable)
+    .set(updates)
+    .where(eq(commConversationsTable.id, conversationId));
+
+  return true;
+}
+
+// ─── Gmail sync ───────────────────────────────────────────────────────────────
+
+async function syncGmailInbox(user: User): Promise<SyncResult> {
+  const t0 = Date.now();
+  const r: SyncResult = {
+    mailbox: `Gmail:${user.gmailEmail ?? user.email}`,
+    messagesScanned: 0,
+    messagesImported: 0,
+    conversationsCreated: 0,
+    conversationsUpdated: 0,
+    durationMs: 0,
+  };
+
+  try {
+    if (!user.gmailAccessToken || !user.gmailRefreshToken) {
+      r.error = "Gmail tokens missing";
+      return r;
+    }
+
+    const gmail = await getGmailClient(user);
+
+    // Determine since date — 90 days for initial, incremental after that
+    const sinceDate = user.gmailCommSyncAt
+      ? new Date(user.gmailCommSyncAt)
+      : new Date(Date.now() - 90 * 24 * 60 * 60 * 1_000);
+
+    const sinceStr = [
+      sinceDate.getFullYear(),
+      String(sinceDate.getMonth() + 1).padStart(2, "0"),
+      String(sinceDate.getDate()).padStart(2, "0"),
+    ].join("/");
+
+    // Fetch up to 500 message IDs (1 API page)
+    const listRes = await gmail.users.messages.list({
+      userId: "me",
+      q: `after:${sinceStr}`,
+      maxResults: 500,
+    });
+
+    const msgRefs = listRes.data.messages ?? [];
+    r.messagesScanned = msgRefs.length;
+
+    const brokerEmail = (user.gmailEmail ?? "").toLowerCase();
+
+    for (const { id } of msgRefs) {
+      if (!id) continue;
+      try {
+        const msgRes = await gmail.users.messages.get({
+          userId: "me",
+          id,
+          format: "full",
+        });
+
+        const msg = msgRes.data;
+        const payload = msg.payload;
+        if (!payload) continue;
+
+        const hdrs = payload.headers ?? [];
+        const get = (n: string) =>
+          hdrs.find(h => h.name?.toLowerCase() === n.toLowerCase())?.value ?? "";
+
+        const fromHeader  = get("from");
+        const toHeader    = get("to");
+        const subject     = get("subject") || "(No subject)";
+        const inReplyTo   = get("in-reply-to") || undefined;
+        const refsStr     = get("references");
+        const dateStr     = get("date");
+
+        const sentAt = dateStr
+          ? new Date(dateStr)
+          : new Date(Number(msg.internalDate ?? Date.now()));
+        if (isNaN(sentAt.getTime())) continue;
+
+        const from = parseEmailAddress(fromHeader);
+        const to   = parseEmailAddress(toHeader);
+
+        const isOutbound  = from.email === brokerEmail;
+        const direction   = isOutbound ? "outbound" : "inbound" as const;
+        const customerEmail = isOutbound ? to.email : from.email;
+        const customerName  = isOutbound ? to.name  : from.name;
+
+        if (!customerEmail.includes("@")) continue;
+
+        const { text, html } = extractGmailBody(payload);
+        const references = refsStr.split(/\s+/).filter(Boolean);
+        const externalId = `gmail:${id}`;
+
+        const conv = await findOrCreateConversation({
+          userId: user.id,
+          mailboxId: null,
+          customerEmail,
+          customerName,
+          subject,
+          inReplyTo,
+          references: references.length > 0 ? references : undefined,
+          messageAt: sentAt,
+        });
+
+        const inserted = await upsertMessage({
+          externalId,
+          conversationId: conv.id,
+          userId: user.id,
+          direction,
+          fromEmail: from.email,
+          fromName: from.name,
+          toEmail: to.email,
+          subject,
+          text,
+          html,
+          sentAt,
+        });
+
+        if (inserted) {
+          r.messagesImported++;
+          if (conv.isNew) r.conversationsCreated++;
+          else r.conversationsUpdated++;
+        }
+      } catch (msgErr) {
+        logger.warn(
+          { err: msgErr, gmailMsgId: id, userId: user.id },
+          "[COMM-SYNC] Gmail message fetch failed — skipping",
+        );
+      }
+    }
+
+    // Persist sync timestamp
+    await db
+      .update(usersTable)
+      .set({ gmailCommSyncAt: new Date(), updatedAt: new Date() })
+      .where(eq(usersTable.id, user.id));
+
+  } catch (err) {
+    r.error = err instanceof Error ? err.message : String(err);
+    logger.error({ err, userId: user.id }, "[COMM-SYNC] Gmail sync error");
+  }
+
+  r.durationMs = Date.now() - t0;
+  return r;
+}
+
+// ─── IMAP folder scanner ──────────────────────────────────────────────────────
+
+async function scanImapFolder(
+  client: ImapFlow,
+  folder: string,
+  defaultDirection: "inbound" | "outbound",
+  since: Date,
+  mailbox: Mailbox,
+  userId: number,
+  r: SyncResult,
+): Promise<void> {
+  let lock: { release: () => void } | null = null;
+  try {
+    lock = await client.getMailboxLock(folder);
+  } catch {
+    return; // Folder not accessible — skip silently
+  }
+
+  try {
+    const seqNums = await client.search({ since });
+    if (!seqNums || seqNums.length === 0) return;
+
+    // Take the most-recent 1000 (higher seq nums = more recent)
+    const range = seqNums.slice(-1000);
+    r.messagesScanned += range.length;
+
+    const messages = await client.fetchAll(range.join(","), { source: true });
+
+    for (const msg of messages) {
+      const source = msg.source?.toString() ?? "";
+      if (!source) continue;
+
+      try {
+        const fromHeader  = parseHeader(source, "From");
+        const toHeader    = parseHeader(source, "To");
+        const subject     = parseHeader(source, "Subject") || "(No subject)";
+        const messageId   = parseHeader(source, "Message-ID").trim();
+        const inReplyTo   = parseHeader(source, "In-Reply-To").trim() || undefined;
+        const refsStr     = parseHeader(source, "References");
+        const dateStr     = parseHeader(source, "Date");
+
+        const sentAt = dateStr ? new Date(dateStr) : new Date();
+        if (isNaN(sentAt.getTime())) continue;
+
+        const from = parseEmailAddress(fromHeader);
+        const to   = parseEmailAddress(toHeader);
+
+        if (!from.email.includes("@") || !to.email.includes("@")) continue;
+
+        const brokerEmail = (mailbox.smtpUser ?? "").toLowerCase();
+        const isOutbound  = from.email === brokerEmail || defaultDirection === "outbound";
+        const direction   = isOutbound ? "outbound" : "inbound" as const;
+        const customerEmail = isOutbound ? to.email : from.email;
+        const customerName  = isOutbound ? to.name  : from.name;
+
+        if (!customerEmail.includes("@")) continue;
+
+        // Use Message-ID header as the dedup key; fall back to seq-based ID
+        const externalId = messageId || `imap:${mailbox.id}:${msg.seq}`;
+        const references = refsStr.split(/\s+/).filter(Boolean);
+
+        const { text, html } = extractImapBody(source);
+
+        const conv = await findOrCreateConversation({
+          userId,
+          mailboxId: mailbox.id,
+          customerEmail,
+          customerName,
+          subject,
+          inReplyTo,
+          references: references.length > 0 ? references : undefined,
+          messageAt: sentAt,
+        });
+
+        const inserted = await upsertMessage({
+          externalId,
+          conversationId: conv.id,
+          userId,
+          direction,
+          fromEmail: from.email,
+          fromName: from.name,
+          toEmail: to.email,
+          subject,
+          text,
+          html,
+          sentAt,
+        });
+
+        if (inserted) {
+          r.messagesImported++;
+          if (conv.isNew) r.conversationsCreated++;
+          else r.conversationsUpdated++;
+        }
+      } catch (msgErr) {
+        logger.warn(
+          { err: msgErr, seq: msg.seq, mailboxId: mailbox.id },
+          "[COMM-SYNC] IMAP message parse failed — skipping",
+        );
+      }
+    }
+  } finally {
+    lock?.release();
+  }
+}
+
+// ─── IMAP sync ────────────────────────────────────────────────────────────────
+
+async function syncImapMailbox(mailbox: Mailbox, userId: number): Promise<SyncResult> {
+  const t0 = Date.now();
+  const r: SyncResult = {
+    mailbox: `IMAP:${mailbox.smtpUser ?? mailbox.imapUser ?? "unknown"}`,
+    messagesScanned: 0,
+    messagesImported: 0,
+    conversationsCreated: 0,
+    conversationsUpdated: 0,
+    durationMs: 0,
+  };
+
+  if (!mailbox.imapHost || !mailbox.imapUser || !mailbox.imapPassEncrypted) {
+    r.error = "IMAP credentials not configured";
+    r.durationMs = Date.now() - t0;
+    return r;
+  }
+
+  let pass: string;
+  try {
+    pass = decrypt(mailbox.imapPassEncrypted);
+    if (!pass) throw new Error("empty password after decrypt");
+  } catch {
+    r.error = "Failed to decrypt IMAP password";
+    r.durationMs = Date.now() - t0;
+    return r;
+  }
+
+  const port = mailbox.imapPort ?? 993;
+  const client = new ImapFlow({
+    host: mailbox.imapHost,
+    port,
+    secure: port === 993,
+    auth: { user: mailbox.imapUser, pass },
+    tls: { rejectUnauthorized: false },
+    logger: false,
+    connectionTimeout: 15_000,
+    socketTimeout: 30_000,
+  });
+
+  // Critical: prevent ImapFlow TLS errors from becoming uncaughtExceptions
+  client.on("error", () => {});
+
+  const since = mailbox.lastCommSyncAt
+    ? new Date(mailbox.lastCommSyncAt)
+    : new Date(Date.now() - 90 * 24 * 60 * 60 * 1_000);
+
+  try {
+    await client.connect();
+
+    // Locate the Sent folder (same detection logic as imap.ts saveToSent)
+    const sentCandidates = [
+      "Sent Items", "Sent Mail", "Sent Messages", "Sent", "INBOX.Sent", "INBOX/Sent",
+    ];
+    let sentFolder: string | null = null;
+    const allPaths: string[] = [];
+    const listed = await client.list();
+    for (const box of listed) {
+      const specialUse = (box as any).specialUse as string | undefined;
+      allPaths.push(box.path);
+      if (specialUse === "\\Sent" && !sentFolder) sentFolder = box.path;
+    }
+    if (!sentFolder) {
+      const lower = allPaths.map(p => p.toLowerCase());
+      for (const c of sentCandidates) {
+        const idx = lower.indexOf(c.toLowerCase());
+        if (idx !== -1) { sentFolder = allPaths[idx]!; break; }
+      }
+    }
+
+    // Scan INBOX for inbound messages (and any outbound in inbox)
+    await scanImapFolder(client, "INBOX", "inbound", since, mailbox, userId, r);
+
+    // Scan Sent folder for outbound messages the broker sent
+    if (sentFolder) {
+      await scanImapFolder(client, sentFolder, "outbound", since, mailbox, userId, r);
+    }
+
+    // Persist sync timestamp
+    await db
+      .update(mailboxesTable)
+      .set({ lastCommSyncAt: new Date(), updatedAt: new Date() })
+      .where(eq(mailboxesTable.id, mailbox.id));
+
+  } catch (err) {
+    r.error = err instanceof Error ? err.message : String(err);
+    logger.error({ err, mailboxId: mailbox.id, userId }, "[COMM-SYNC] IMAP sync error");
+  } finally {
+    client.logout().catch(() => {});
+  }
+
+  r.durationMs = Date.now() - t0;
+  return r;
+}
+
+// ─── Main entry point ─────────────────────────────────────────────────────────
+
+/**
+ * Run communications inbox sync for one user (manual refresh) or all users
+ * with connected mailboxes (background cron).
+ *
+ * Never throws — all errors are captured in SyncResult.error.
+ */
+export async function runCommSync(targetUserId?: number): Promise<SyncResult[]> {
+  const results: SyncResult[] = [];
+
+  try {
+    // ── Gmail users ──────────────────────────────────────────────────────────
+    const gmailUsers: User[] = targetUserId
+      ? await db.select().from(usersTable).where(eq(usersTable.id, targetUserId))
+      : await db.select().from(usersTable).where(eq(usersTable.gmailConnected, true));
+
+    for (const user of gmailUsers) {
+      if (!user.gmailConnected || !user.gmailAccessToken) continue;
+      const r = await syncGmailInbox(user);
+      results.push(r);
+      logger.info(
+        {
+          mailbox: r.mailbox,
+          messagesScanned:      r.messagesScanned,
+          messagesImported:     r.messagesImported,
+          conversationsCreated: r.conversationsCreated,
+          conversationsUpdated: r.conversationsUpdated,
+          durationMs:           r.durationMs,
+          error:                r.error,
+        },
+        "[COMM-SYNC] Mailbox sync result",
+      );
+    }
+
+    // ── IMAP mailboxes ───────────────────────────────────────────────────────
+    const mailboxes: Mailbox[] = targetUserId
+      ? await db
+          .select()
+          .from(mailboxesTable)
+          .where(
+            and(
+              eq(mailboxesTable.userId, targetUserId),
+              isNotNull(mailboxesTable.imapHost),
+            ),
+          )
+      : await db
+          .select()
+          .from(mailboxesTable)
+          .where(
+            and(
+              eq(mailboxesTable.isActive, true),
+              isNotNull(mailboxesTable.imapHost),
+            ),
+          );
+
+    for (const mb of mailboxes) {
+      const r = await syncImapMailbox(mb, mb.userId);
+      results.push(r);
+      logger.info(
+        {
+          mailbox: r.mailbox,
+          messagesScanned:      r.messagesScanned,
+          messagesImported:     r.messagesImported,
+          conversationsCreated: r.conversationsCreated,
+          conversationsUpdated: r.conversationsUpdated,
+          durationMs:           r.durationMs,
+          error:                r.error,
+        },
+        "[COMM-SYNC] Mailbox sync result",
+      );
+    }
+  } catch (err) {
+    logger.error({ err }, "[COMM-SYNC] runCommSync top-level error");
+  }
+
+  return results;
+}

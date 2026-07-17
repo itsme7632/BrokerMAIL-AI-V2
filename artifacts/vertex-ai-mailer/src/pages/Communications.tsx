@@ -290,14 +290,14 @@ function ConvItem({
 
 function LeftPanel({
   filter, setFilter, search, setSearch,
-  conversations, isLoading, selectedId, onSelect, stats, onRefresh,
+  conversations, isLoading, selectedId, onSelect, stats, onRefresh, isSyncing,
   mailboxes, selectedMailboxId, onMailboxChange,
 }: {
   filter: FilterKey; setFilter: (f: FilterKey) => void;
   search: string; setSearch: (s: string) => void;
   conversations: Conversation[]; isLoading: boolean;
   selectedId: number | null; onSelect: (id: number) => void;
-  stats: Stats | undefined; onRefresh: () => void;
+  stats: Stats | undefined; onRefresh: () => void; isSyncing: boolean;
   mailboxes: MailboxOption[]; selectedMailboxId: string | number | null;
   onMailboxChange: (id: string | number | null) => void;
 }) {
@@ -324,10 +324,11 @@ function LeftPanel({
           <h1 className="text-base font-bold text-slate-900 dark:text-slate-100">Communications</h1>
           <button
             onClick={onRefresh}
-            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors"
-            title="Refresh"
+            disabled={isSyncing}
+            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors disabled:opacity-50"
+            title={isSyncing ? "Syncing…" : "Sync mailboxes"}
           >
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className={cn("h-4 w-4", isSyncing && "animate-spin")} />
           </button>
         </div>
 
@@ -1090,7 +1091,9 @@ export default function Communications() {
   const [mobilePanel, setMobilePanel] = useState<"list" | "thread" | "details">("list");
   // Desktop: show right panel
   const [showDetails, setShowDetails] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   // Fetch connected mailboxes (Gmail + SMTP)
   const { data: mailboxes = [] } = useQuery<MailboxOption[]>({
@@ -1132,9 +1135,29 @@ export default function Communications() {
     setMobilePanel("thread");
   };
 
-  const handleRefresh = () => {
-    queryClient.invalidateQueries({ queryKey: ["conversations"] });
-    queryClient.invalidateQueries({ queryKey: ["comm-stats"] });
+  const handleRefresh = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      const result = await apiFetch<{ totalImported: number; totalCreated: number; errors: string[] }>(
+        "/api/communications/sync",
+        { method: "POST" },
+      );
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["comm-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["comm-mailboxes"] });
+      const newItems = result.totalImported;
+      toast({
+        title: "Sync complete",
+        description: newItems > 0
+          ? `Imported ${newItems} new message${newItems === 1 ? "" : "s"}`
+          : "Your inbox is up to date",
+      });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Sync failed", description: e.message });
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleMailboxChange = (id: string | number | null) => {
@@ -1168,6 +1191,7 @@ export default function Communications() {
           onSelect={handleSelect}
           stats={stats}
           onRefresh={handleRefresh}
+          isSyncing={isSyncing}
           mailboxes={mailboxes}
           selectedMailboxId={selectedMailboxId}
           onMailboxChange={handleMailboxChange}
