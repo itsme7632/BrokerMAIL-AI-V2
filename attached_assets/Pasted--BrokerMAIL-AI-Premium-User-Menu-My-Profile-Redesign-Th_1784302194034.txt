@@ -1,0 +1,518 @@
+# BrokerMAIL AI – Premium User Menu + My Profile Redesign
+
+The current top-right floating user menu (see attached screenshot) works, but it feels outdated and too similar to a basic admin template.
+
+I want to redesign the entire account experience into a modern premium SaaS experience similar to Linear, Notion, Slack, Vercel or HubSpot while keeping the existing BrokerMAIL AI design system.
+
+Do NOT redesign the whole application.
+
+Only redesign:
+
+• Top-right user dropdown
+• New My Profile page
+• Move personal account settings out of Brand Settings
+
+Maintain our existing dark theme, blue accent colors, rounded cards, spacing, shadows and typography.
+
+--------------------------------------------------
+PART 1 — REDESIGN THE USER DROPDOWN
+--------------------------------------------------
+
+Completely redesign the floating account dropdown.
+
+Current version is attached for reference.
+
+Instead of a simple list, create a premium account panel.
+
+Layout:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Large Avatar
+
+Frank Miller
+
+miller@vertexcarship.com
+
+🟣 Enterprise Plan
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+👤 My Profile
+
+🎨 Brand Settings
+
+📬 Mailboxes
+
+💳 Billing & Plans
+
+🔔 Notifications
+
+🛡 Security
+
+❓ Help & Support
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+(Admin only)
+
+⚙ Admin Dashboard
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚪 Sign Out
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Requirements:
+
+• Larger dropdown
+• Better spacing
+• Better typography
+• Smooth hover animations
+• Better icons
+• Softer shadows
+• Rounded corners
+• Modern separators
+• Premium SaaS look
+• Responsive
+• Keyboard accessible
+• No browser alerts
+
+The top section should feel like an account card instead of plain text.
+
+Show:
+
+Avatar
+
+Name
+
+Email
+
+Current Plan Badge
+
+Verified Badge
+
+Example:
+
+Frank Miller
+
+miller@vertexcarship.com
+
+🟣 Enterprise Plan
+
+✔ Verified
+
+--------------------------------------------------
+PART 2 — NAVIGATION
+--------------------------------------------------
+
+Clicking:
+
+My Profile
+
+should navigate to
+
+/profile
+
+using Wouter navigation.
+
+No page reload.
+
+--------------------------------------------------
+PART 3 — CREATE NEW MY PROFILE PAGE
+--------------------------------------------------
+
+Create a completely new page.
+
+Route:
+
+/profile
+
+Title:
+
+My Profile
+
+Subtitle:
+
+Manage your personal account, security and preferences.
+
+--------------------------------------------------
+PART 4 — HERO ACCOUNT SUMMARY
+--------------------------------------------------
+
+At the top create a beautiful full-width hero card.
+
+This is the centerpiece of the page.
+
+LEFT SIDE
+
+Large Avatar
+
+Full Name
+
+Email
+
+Current Plan Badge
+
+Verified Badge
+
+Member Since
+
+User ID
+
+Optional Company Name
+
+RIGHT SIDE
+
+Display modern statistics.
+
+Campaigns
+
+Emails Sent
+
+Open Rate
+
+Connected Mailboxes
+
+Each should have:
+
+Icon
+
+Large Number
+
+Small Label
+
+Use real API values where available.
+
+Otherwise show placeholders.
+
+Top right:
+
+Display account status badge.
+
+Examples:
+
+🟢 Active Account
+
+🟡 Trial
+
+🔴 Suspended
+
+--------------------------------------------------
+PART 5 — PERSONAL INFORMATION
+--------------------------------------------------
+
+Card:
+
+Personal Information
+
+Fields:
+
+Avatar Upload
+
+Full Name
+
+Email
+
+Username
+
+Phone
+
+Timezone
+
+Language
+
+Buttons:
+
+Save Changes
+
+Cancel
+
+Validation required.
+
+Email must remain unique.
+
+--------------------------------------------------
+PART 6 — SECURITY
+--------------------------------------------------
+
+Separate card.
+
+Current Password
+
+New Password
+
+Confirm Password
+
+Password Strength Indicator
+
+Button:
+
+Change Password
+
+Requirements:
+
+Minimum 8 characters
+
+Require current password
+
+Passwords must match
+
+Toast notifications
+
+Never prefill password fields
+
+--------------------------------------------------
+PART 7 — CONNECTED ACCOUNTS
+--------------------------------------------------
+
+Beautiful card.
+
+Rows:
+
+Google Account
+
+SMTP Mailboxes
+
+Login Sessions
+
+Each row displays:
+
+Status
+
+Description
+
+Arrow
+
+Example
+
+Google Account
+
+Connected
+
+john@email.com
+
+>
+
+SMTP Mailboxes
+
+3 Connected
+
+Manage sending accounts
+
+>
+
+Login Sessions
+
+2 Active
+
+View devices
+
+>
+
+--------------------------------------------------
+PART 8 — PREFERENCES
+--------------------------------------------------
+
+Theme
+
+System
+
+Light
+
+Dark
+
+Browser Notifications
+
+Email Notifications
+
+Marketing Emails
+
+Timezone
+
+Language
+
+Save Preferences
+
+--------------------------------------------------
+PART 9 — ACCOUNT INFORMATION
+--------------------------------------------------
+
+Read-only.
+
+Display:
+
+User ID
+
+Current Plan
+
+Member Since
+
+Last Login
+
+Account Status
+
+Email Verification
+
+--------------------------------------------------
+PART 10 — ACCOUNT HEALTH
+--------------------------------------------------
+
+BrokerMAIL AI specific feature.
+
+Create an Account Health card.
+
+Display:
+
+✔ Email Verified
+
+✔ Google Connected
+
+✔ SMTP Connected
+
+✔ Tracking Enabled
+
+✔ Subscription Active
+
+✔ Profile Completed
+
+If healthy:
+
+✅ Your account is fully configured and ready to send campaigns.
+
+If not:
+
+⚠ Complete your SMTP setup to start sending campaigns.
+
+This should become one of the nicest cards on the page.
+
+--------------------------------------------------
+PART 11 — BRAND SETTINGS CLEANUP
+--------------------------------------------------
+
+Brand Settings should ONLY contain company branding.
+
+Keep:
+
+Company Name
+
+Company Logo
+
+Business Website
+
+Business Phone
+
+Booking URL
+
+Quote URL
+
+Email Signature
+
+Brand Colors
+
+Business Information
+
+REMOVE from Brand Settings:
+
+User Name
+
+User Email
+
+Password
+
+Timezone
+
+Language
+
+Anything related to the user's personal account.
+
+Those belong only inside My Profile.
+
+--------------------------------------------------
+PART 12 — BACKEND
+--------------------------------------------------
+
+Allow updating:
+
+Name
+
+Phone
+
+Timezone
+
+Language
+
+Password
+
+Avatar (future-ready)
+
+Users CANNOT modify:
+
+Plan
+
+Role
+
+Subscription
+
+Admin Status
+
+Email Verification
+
+--------------------------------------------------
+PART 13 — UX IMPROVEMENTS
+--------------------------------------------------
+
+Use skeleton loaders.
+
+Loading buttons.
+
+Toast notifications only.
+
+No alert().
+
+No prompt().
+
+Responsive.
+
+No horizontal scrolling.
+
+Hover animations.
+
+Smooth transitions.
+
+Consistent spacing.
+
+Reuse existing UI components whenever possible.
+
+Keep everything consistent with the BrokerMAIL AI dashboard.
+
+--------------------------------------------------
+PART 14 — CODE QUALITY
+--------------------------------------------------
+
+Do not break existing functionality.
+
+Maintain current architecture.
+
+Reuse components.
+
+Run before completion:
+
+• Backend TypeScript
+• Frontend TypeScript
+• Production Vite Build
+
+All must pass with zero errors.
+
+--------------------------------------------------
+FINAL GOAL
+--------------------------------------------------
+
+The result should feel like a polished enterprise SaaS product.
+
+When a user clicks their avatar, they should immediately feel they are using a premium platform.
+
+The My Profile page should become the central place for everything related to the user's account, while Brand Settings should be dedicated exclusively to company branding.
+
+Before making changes, inspect the existing user dropdown, settings pages, routing, and shared components so the implementation integrates cleanly without duplicating logic or introducing regressions.
