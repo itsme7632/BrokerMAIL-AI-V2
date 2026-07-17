@@ -1,0 +1,412 @@
+You are continuing an existing BrokerMAIL AI project.
+
+IMPORTANT:
+Do NOT rebuild or redesign the Communications module.
+Read the existing codebase first and continue ONLY the missing work.
+
+The following already exist:
+
+• Communications page
+• Gmail + IMAP sync
+• Conversation threading
+• SSE events
+• Sync cron
+• Customer panel
+• Sync status
+• HTML renderer
+• Attachments
+• Internal notes panel
+• Admin monitor
+• Mailbox selector
+• Sidebar redesign
+
+Do NOT recreate these.
+
+----------------------------------------------------
+
+FIRST TASK
+
+Read these files completely before writing code:
+
+- Communications.tsx
+- communications.ts
+- comm-sync.ts
+- comm-events.ts
+- useCommEvents.ts
+- HtmlEmailRenderer.tsx
+- AttachmentList.tsx
+
+Understand the current implementation.
+
+Compare it against the checklist below.
+
+Only implement missing functionality.
+
+----------------------------------------------------
+
+CURRENT BUGS TO FIX
+
+1.
+
+SMTP sync never finishes.
+
+Fix the sync engine.
+
+Show:
+
+• mailbox
+• current folder
+• folders scanned
+• emails scanned
+• imported
+• skipped
+• elapsed time
+• completion
+• errors
+
+Never leave the UI stuck on "Syncing..."
+
+----------------------------------------------------
+
+2.
+
+Inbox/Sent separation.
+
+Currently outbound SMTP emails appear inside Inbox.
+
+Correct behavior:
+
+Inbox
+= inbound mail only.
+
+Sent
+= outbound mail only.
+
+Archived
+= archived conversations
+
+Spam
+= spam conversations
+
+Needs Reply
+= latest message inbound
+
+Unread
+= unread inbound
+
+Starred
+= starred
+
+Conversation threads should still contain BOTH inbound and outbound emails.
+
+Do NOT duplicate conversations.
+
+----------------------------------------------------
+
+3.
+
+Read / Unread
+
+Opening a conversation should
+
+• mark read
+• update DB
+• remove unread badge
+• decrement counters
+• sync over SSE
+
+----------------------------------------------------
+
+4.
+
+Bulk actions
+
+Add
+
+☐ checkboxes
+
+Select All
+
+Clear Selection
+
+Mark Read
+
+Mark Unread
+
+Archive
+
+Spam
+
+Delete
+
+Star
+
+Assign
+
+----------------------------------------------------
+
+5.
+
+Conversation toolbar
+
+Reply
+
+Reply All
+
+Forward
+
+Mark Read
+
+Archive
+
+Spam
+
+Delete
+
+Star
+
+Copy Email
+
+Open in Gmail
+
+Open in Mail Client
+
+----------------------------------------------------
+
+6.
+
+Internal Notes
+
+Currently notes cannot be created.
+
+Implement
+
+Create
+
+Edit
+
+Delete
+
+Author
+
+Timestamp
+
+Autosave
+
+----------------------------------------------------
+
+7.
+
+Reply composer
+
+Support
+
+Attachments
+
+Templates
+
+Design Templates
+
+AI Reply
+
+Schedule Send
+
+Signature
+
+Preview
+
+----------------------------------------------------
+
+8.
+
+Search
+
+Search
+
+customer
+
+email
+
+subject
+
+vehicle
+
+pickup
+
+delivery
+
+quote
+
+campaign
+
+phone
+
+notes
+
+----------------------------------------------------
+
+9.
+
+Customer panel
+
+Expand with
+
+Lead
+
+Vehicle
+
+Pickup
+
+Delivery
+
+Quote
+
+Phone
+
+CRM
+
+Quick actions
+
+----------------------------------------------------
+
+10.
+
+Live sync card
+
+Show
+
+Mailbox
+
+Folder
+
+Progress
+
+Imported
+
+Skipped
+
+Health
+
+Last sync
+
+Next sync
+
+Errors
+
+----------------------------------------------------
+
+11.
+
+Live folder counts
+
+Inbox
+
+Unread
+
+Needs Reply
+
+Sent
+
+Archive
+
+Spam
+
+Starred
+
+Update instantly.
+
+----------------------------------------------------
+
+12.
+
+Real-time updates
+
+Everything updates without refresh.
+
+Support
+
+new email
+
+reply
+
+read
+
+unread
+
+archive
+
+spam
+
+delete
+
+star
+
+notes
+
+sync progress
+
+sync complete
+
+----------------------------------------------------
+
+13.
+
+Attachments
+
+Preview
+
+Download
+
+Inline images
+
+----------------------------------------------------
+
+14.
+
+AI tools
+
+Summarize
+
+Suggested Reply
+
+Rewrite
+
+Translate
+
+Extract Intent
+
+Sentiment
+
+----------------------------------------------------
+
+15.
+
+Performance
+
+Virtual scrolling
+
+Pagination
+
+Infinite loading
+
+No unnecessary rerenders
+
+----------------------------------------------------
+
+IMPORTANT
+
+Do NOT stop after one feature.
+
+Continue implementing until the entire checklist is complete.
+
+When finished:
+
+Run
+
+pnpm typecheck
+
+pnpm build
+
+Both must pass with zero errors.
+
+Then summarize every implemented feature before stopping.
