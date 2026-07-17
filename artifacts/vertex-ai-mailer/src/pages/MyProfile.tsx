@@ -29,6 +29,35 @@ function getAuthHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+// ─── Timezone helpers ─────────────────────────────────────────────────────────
+
+/** Returns the UTC offset string for an IANA timezone name, e.g. "UTC−05:00" */
+function getUtcOffset(tz: string): string {
+  try {
+    const now = new Date();
+    const utcDate = new Date(now.toLocaleString("en-US", { timeZone: "UTC" }));
+    const tzDate  = new Date(now.toLocaleString("en-US", { timeZone: tz }));
+    const diffMin = Math.round((tzDate.getTime() - utcDate.getTime()) / 60000);
+    const sign    = diffMin >= 0 ? "+" : "−";
+    const abs     = Math.abs(diffMin);
+    const hh      = String(Math.floor(abs / 60)).padStart(2, "0");
+    const mm      = String(abs % 60).padStart(2, "0");
+    return `UTC${sign}${hh}:${mm}`;
+  } catch {
+    return "UTC+00:00";
+  }
+}
+
+/** Detect the browser IANA timezone, falling back to "UTC". */
+function detectBrowserTz(): string {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return tz || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
 // ─── Plan badge ───────────────────────────────────────────────────────────────
 
 function getPlanBadge(planName: string) {
@@ -296,9 +325,14 @@ export default function MyProfile() {
   const [loadingData, setLoadingData] = useState(true);
 
   // Profile form
-  const [profileForm, setProfileForm]       = useState({ name: "", timezone: "" });
-  const [profileInitial, setProfileInitial] = useState({ name: "", timezone: "" });
+  const [profileForm, setProfileForm]       = useState({ name: "" });
+  const [profileInitial, setProfileInitial] = useState({ name: "" });
   const [savingProfile, setSavingProfile]   = useState(false);
+
+  // Timezone (read-only, auto-detected)
+  const [detectedTz, setDetectedTz]   = useState("UTC");
+  const [tzOffset,   setTzOffset]     = useState("UTC+00:00");
+  const [tzAutoSaved, setTzAutoSaved] = useState(false); // true when we pushed to DB on load
 
   // Password form
   const [pwForm, setPwForm]     = useState({ current: "", newPw: "", confirm: "" });
@@ -323,11 +357,26 @@ export default function MyProfile() {
 
   useEffect(() => {
     if (!user) return;
-    const saved = (user as any).timezone as string | null | undefined;
-    const tz = saved?.trim() || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-    const init = { name: user.name ?? "", timezone: tz };
+    const init = { name: user.name ?? "" };
     setProfileForm(init);
     setProfileInitial(init);
+
+    // Timezone: prefer DB value, then browser, then "UTC"
+    const saved = ((user as any).timezone as string | undefined)?.trim();
+    const tz = saved || detectBrowserTz();
+    setDetectedTz(tz);
+    setTzOffset(getUtcOffset(tz));
+
+    // Auto-save detected timezone to DB if the user has none stored yet
+    if (!saved) {
+      fetch("/api/users/profile", {
+        method: "PATCH",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ name: user.name ?? "", timezone: tz }),
+      })
+        .then(r => { if (r.ok) setTzAutoSaved(true); })
+        .catch(() => { /* non-fatal */ });
+    }
 
     // Load activity + last pw change from localStorage
     setActivity(loadActivity(user.id));
@@ -351,8 +400,7 @@ export default function MyProfile() {
   // ── Derived ──────────────────────────────────────────────────────────────────
 
   const profileDirty =
-    profileForm.name !== profileInitial.name ||
-    profileForm.timezone !== profileInitial.timezone;
+    profileForm.name !== profileInitial.name;
 
   const pwFilled = pwForm.current && pwForm.newPw && pwForm.confirm;
   const pwReqs   = getPasswordRequirements(pwForm.newPw);
@@ -380,11 +428,11 @@ export default function MyProfile() {
       const res = await fetch("/api/users/profile", {
         method: "PATCH",
         headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ name: profileForm.name.trim(), timezone: profileForm.timezone }),
+        body: JSON.stringify({ name: profileForm.name.trim(), timezone: detectedTz }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Save failed");
       await refreshUser();
-      const next = { name: profileForm.name.trim(), timezone: profileForm.timezone };
+      const next = { name: profileForm.name.trim() };
       setProfileInitial(next);
       // Track activity
       if (user) {
@@ -672,10 +720,10 @@ export default function MyProfile() {
                       <Hash className="h-3.5 w-3.5 text-slate-500 flex-shrink-0" />
                       User #{user.id}
                     </span>
-                    {(user as any).timezone && (
+                    {detectedTz && (
                       <span className="flex items-center gap-1.5 text-xs text-muted-foreground dark:text-slate-400">
                         <Globe className="h-3.5 w-3.5 text-slate-500 flex-shrink-0" />
-                        {(user as any).timezone}
+                        {detectedTz} ({tzOffset})
                       </span>
                     )}
                   </div>
@@ -749,21 +797,24 @@ export default function MyProfile() {
                   </div>
                 </div>
 
-                {/* Timezone */}
+                {/* Timezone — read-only, auto-detected */}
                 <div>
-                  <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                  <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground dark:text-slate-400 uppercase tracking-wider mb-1.5">
                     <Globe className="h-3 w-3" /> Timezone
-                    {!((user as any).timezone) && profileForm.timezone && (
-                      <span className="text-[9px] text-blue-400 font-normal normal-case tracking-normal ml-1">(auto-detected)</span>
-                    )}
-                  </label>
-                  <Input
-                    value={profileForm.timezone}
-                    onChange={e => setProfileForm(f => ({ ...f, timezone: e.target.value }))}
-                    placeholder="e.g. America/New_York"
-                    className="rounded-xl h-9 text-sm bg-secondary/70 dark:bg-slate-800/60 border-border dark:border-slate-700 focus:border-blue-500/60 transition-colors"
-                  />
-                  <p className="text-[10px] text-slate-500 mt-1">IANA timezone identifier · auto-detected from your browser</p>
+                  </p>
+                  <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 bg-secondary/70 dark:bg-slate-800/60 border border-border dark:border-slate-700 min-h-[36px]">
+                    <Globe className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                    <span className="text-sm text-foreground dark:text-slate-200 font-medium flex-1">
+                      {detectedTz}
+                      <span className="ml-2 text-slate-500 dark:text-slate-400 font-normal">({tzOffset})</span>
+                    </span>
+                    <span className="flex items-center gap-1 text-[10px] font-medium text-green-500 dark:text-green-400 bg-green-500/10 border border-green-500/20 rounded-full px-2 py-0.5 flex-shrink-0">
+                      <CheckCircle2 className="h-2.5 w-2.5" /> Auto Detected
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Automatically detected from your device · not editable
+                  </p>
                 </div>
 
                 <div className="flex items-center gap-3 pt-2">
@@ -778,7 +829,7 @@ export default function MyProfile() {
                   </Button>
                   <Button
                     type="button" variant="outline" disabled={!profileDirty || savingProfile}
-                    onClick={() => setProfileForm({ name: user.name ?? "", timezone: (user as any).timezone ?? profileInitial.timezone })}
+                    onClick={() => setProfileForm({ name: user.name ?? "" })}
                     className={cn("h-9 rounded-xl text-sm bg-transparent border-border dark:border-slate-700", !profileDirty && "opacity-50")}
                   >
                     Cancel
