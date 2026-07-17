@@ -6,7 +6,7 @@ import {
   LayoutDashboard, FileText, UploadCloud, Mail, Settings, ShieldAlert,
   Menu, X, Server, CreditCard, SendHorizonal, Megaphone, LayoutGrid,
   LogOut, Palette, HelpCircle, ChevronDown, Moon, Sun, PenLine, TicketCheck,
-  Zap, Sparkles, Map, MessageSquare, Bug, Lightbulb, Bell, Inbox,
+  Zap, Sparkles, Map, MessageSquare, Bug, Bell, Inbox, User,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -27,39 +27,38 @@ const NAV_GROUPS = [
   {
     label: "COMMUNICATION",
     items: [
-      { href: "/communications",    icon: Inbox,        label: "Communications",   exact: false },
-      { href: "/compose",           icon: PenLine,      label: "Compose Email",    exact: true  },
-      { href: "/templates",         icon: FileText,     label: "Templates",        exact: true  },
-      { href: "/templates/gallery", icon: LayoutGrid,   label: "Template Gallery", exact: true  },
-      { href: "/leads/import",      icon: UploadCloud,  label: "Upload & Send",    exact: true  },
+      { href: "/communications",    icon: Inbox,         label: "Communications",   exact: false },
     ],
   },
   {
     label: "CAMPAIGNS",
     items: [
-      { href: "/campaigns",         icon: Megaphone,    label: "Campaigns",        exact: false },
-      { href: "/sent-emails",       icon: SendHorizonal,label: "Sent Emails",      exact: false },
-      { href: "/drafts",            icon: Mail,         label: "Gmail Drafts",     exact: false },
+      { href: "/campaigns",         icon: Megaphone,     label: "Campaigns",        exact: false },
+      { href: "/compose",           icon: PenLine,       label: "Compose Email",    exact: true  },
+      { href: "/templates",         icon: FileText,      label: "Templates",        exact: true  },
+      { href: "/templates/gallery", icon: LayoutGrid,    label: "Template Gallery", exact: true  },
+      { href: "/leads/import",      icon: UploadCloud,   label: "Upload & Send",    exact: true  },
     ],
   },
   {
-    label: "ACCOUNT",
+    label: "SETTINGS",
     items: [
-      { href: "/mailbox",           icon: Server,       label: "Mailbox",          exact: true  },
-      { href: "/plans",             icon: CreditCard,   label: "Plans & Billing",  exact: true  },
-      { href: "/suppressions",      icon: ShieldAlert,  label: "Suppression List", exact: true  },
-      { href: "/settings",          icon: Settings,     label: "Settings",         exact: true  },
-      { href: "/support",           icon: TicketCheck,  label: "Support",          exact: false },
+      { href: "/profile",           icon: User,          label: "My Profile",       exact: true  },
+      { href: "/settings",          icon: Palette,       label: "Brand Settings",   exact: true  },
+      { href: "/mailbox",           icon: Server,        label: "Mailboxes",        exact: true  },
+      { href: "/plans",             icon: CreditCard,    label: "Billing & Plans",  exact: true  },
+      { href: "/suppressions",      icon: ShieldAlert,   label: "Suppression List", exact: true  },
+      { href: "/support",           icon: TicketCheck,   label: "Support",          exact: false },
     ],
   },
   {
-    label: "PRODUCT HUB",
+    label: "UPDATES",
     items: [
+      { href: "/notifications",        icon: Bell,          label: "Notifications", exact: true  },
       { href: "/whats-new",            icon: Sparkles,      label: "What's New",    exact: true  },
       { href: "/roadmap",              icon: Map,           label: "Roadmap",       exact: true  },
       { href: "/product-hub/feedback", icon: MessageSquare, label: "Feedback",      exact: true  },
       { href: "/report-bug",           icon: Bug,           label: "Report a Bug",  exact: true  },
-      { href: "/notifications",        icon: Bell,          label: "Notifications", exact: true  },
     ],
   },
 ];

@@ -11,13 +11,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import {
-  Search, Star, Archive, Inbox, ChevronRight, ChevronLeft,
+  Search, Star, Archive, Inbox, ChevronRight, ChevronLeft, ChevronDown,
   Reply, Forward, MoreHorizontal, Mail, Phone, Truck,
-  MapPin, DollarSign, Megaphone, Server, Tag, Clock,
+  MapPin, DollarSign, Megaphone, Server, Tag,
   CheckCircle2, Eye, MousePointerClick, AlertTriangle,
-  Loader2, RefreshCw, Send, StickyNote, Plus, X,
-  MessageSquare, Sparkles, ArrowUpRight, Filter,
-  CornerDownLeft, Bold, Italic, Paperclip,
+  Loader2, RefreshCw, Send, StickyNote, X,
+  MessageSquare, Sparkles, ArrowUpRight,
+  CornerDownLeft, Bold, Italic, Paperclip, ListTodo,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -159,12 +159,62 @@ function statusBadge(status: string) {
 type FilterKey = "all" | "unread" | "needs_reply" | "starred" | "archived" | "spam";
 
 const FILTERS: { key: FilterKey; label: string; icon: React.ElementType }[] = [
-  { key: "all",         label: "All",         icon: Inbox },
+  { key: "all",         label: "Inbox",       icon: Inbox },
   { key: "unread",      label: "Unread",      icon: Mail },
   { key: "needs_reply", label: "Needs Reply", icon: CornerDownLeft },
   { key: "starred",     label: "Starred",     icon: Star },
   { key: "archived",    label: "Archived",    icon: Archive },
+  { key: "spam",        label: "Spam",        icon: AlertTriangle },
 ];
+
+// ─── Today's Work quick chips ─────────────────────────────────────────────────
+
+const TODAY_CHIPS: { key: FilterKey | "waiting_payment" | "booked_today" | "high_priority"; label: string; color: string }[] = [
+  { key: "needs_reply",    label: "Needs Reply",     color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800/40" },
+  { key: "unread",         label: "Unread",          color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800/40" },
+  { key: "waiting_payment",label: "Waiting Payment", color: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 border-violet-200 dark:border-violet-800/40" },
+  { key: "booked_today",   label: "Booked Today",    color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/40" },
+  { key: "high_priority",  label: "High Priority",   color: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 border-rose-200 dark:border-rose-800/40" },
+];
+
+// ─── Collapsible right-panel section ─────────────────────────────────────────
+
+function usePanelSection(key: string, defaultOpen: boolean) {
+  const storageKey = `comm_panel_${key}`;
+  const [open, setOpen] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(storageKey) ?? String(defaultOpen)); }
+    catch { return defaultOpen; }
+  });
+  const toggle = () => setOpen((v: boolean) => {
+    const next = !v;
+    localStorage.setItem(storageKey, String(next));
+    return next;
+  });
+  return [open as boolean, toggle] as const;
+}
+
+function PanelSection({ title, sectionKey, defaultOpen = false, children }: {
+  title: string; sectionKey: string; defaultOpen?: boolean; children: React.ReactNode;
+}) {
+  const [open, toggle] = usePanelSection(sectionKey, defaultOpen);
+  return (
+    <div className="border-b border-slate-100 dark:border-slate-800/80">
+      <button
+        onClick={toggle}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group"
+      >
+        <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors">
+          {title}
+        </span>
+        <ChevronDown className={cn(
+          "h-3.5 w-3.5 text-slate-400 dark:text-slate-500 transition-transform duration-200",
+          open && "rotate-180"
+        )} />
+      </button>
+      {open && <div className="px-4 pb-4">{children}</div>}
+    </div>
+  );
+}
 
 // ─── Conversation Item ────────────────────────────────────────────────────────
 
@@ -246,34 +296,66 @@ function LeftPanel({
   selectedId: number | null; onSelect: (id: number) => void;
   stats: Stats | undefined; onRefresh: () => void;
 }) {
+  const [mailbox, setMailbox] = useState("All Mailboxes");
+  const { toast } = useToast();
+
+  const handleChip = (key: string) => {
+    if (key === "needs_reply" || key === "unread") {
+      setFilter(key as FilterKey);
+    } else {
+      toast({ title: "Coming soon", description: "This filter will be available with full inbox sync." });
+    }
+  };
+
   return (
     <div className="flex flex-col h-full border-r border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 pt-4 pb-3 flex-shrink-0">
-        <div>
+      {/* Top bar: title + mailbox selector + refresh */}
+      <div className="px-4 pt-4 pb-3 flex-shrink-0 space-y-3">
+        <div className="flex items-center justify-between">
           <h1 className="text-base font-bold text-slate-900 dark:text-slate-100">Communications</h1>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-            {stats ? `${stats.total} conversations` : "Loading…"}
-          </p>
+          <button
+            onClick={onRefresh}
+            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </button>
         </div>
-        <button
-          onClick={onRefresh}
-          className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors"
-          title="Refresh"
-        >
-          <RefreshCw className="h-4 w-4" />
-        </button>
-      </div>
 
-      {/* Search */}
-      <div className="px-3 pb-3 flex-shrink-0">
+        {/* Mailbox selector */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors">
+              <div className="flex items-center gap-2">
+                <Server className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                <span className="truncate">{mailbox}</span>
+              </div>
+              <ChevronDown className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56">
+            {["All Mailboxes", "broker@gmail.com", "sales@domain.com", "support@domain.com"].map(m => (
+              <DropdownMenuItem
+                key={m}
+                onClick={() => setMailbox(m)}
+                className={cn("text-xs gap-2", mailbox === m && "text-blue-600 dark:text-blue-400 font-medium")}
+              >
+                <Server className="h-3 w-3 text-slate-400" />
+                {m}
+                {mailbox === m && <CheckCircle2 className="h-3 w-3 ml-auto text-blue-500" />}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
           <Input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search conversations…"
-            className="pl-8 h-8 text-xs rounded-lg border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+            placeholder="Search customer, email, vehicle…"
+            className="pl-8 h-8 text-xs rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60"
           />
           {search && (
             <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2">
@@ -313,7 +395,36 @@ function LeftPanel({
         })}
       </div>
 
-      <div className="mx-3 border-t border-slate-100 dark:border-slate-800 mb-1 flex-shrink-0" />
+      {/* Today's Work quick chips */}
+      <div className="px-3 pb-3 flex-shrink-0">
+        <div className="mb-2">
+          <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1 mb-1.5">Today's Work</p>
+          <div className="flex flex-wrap gap-1.5">
+            {TODAY_CHIPS.map(chip => (
+              <button
+                key={chip.key}
+                onClick={() => handleChip(chip.key)}
+                className={cn(
+                  "px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-colors",
+                  chip.color,
+                  (chip.key === filter) && "ring-1 ring-offset-1 ring-current"
+                )}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-3 border-t border-slate-100 dark:border-slate-800 flex-shrink-0" />
+
+      {/* Conversation count */}
+      <div className="px-4 py-2 flex-shrink-0">
+        <p className="text-[10px] text-slate-400 dark:text-slate-500">
+          {stats ? `${stats.total} conversation${stats.total === 1 ? "" : "s"}` : "Loading…"}
+        </p>
+      </div>
 
       {/* List */}
       <div className="flex-1 overflow-y-auto">
@@ -769,34 +880,33 @@ function RightPanel({
     );
   }
 
-  const { conversation: conv, lead, campaign } = data;
+  const { conversation: conv, lead, campaign, notes } = data;
   const color = avatarColor(conv.customerEmail);
 
   const fields = [
-    { icon: Mail, label: "Email", value: conv.customerEmail },
-    { icon: Phone, label: "Phone", value: conv.customerPhone },
-    { icon: Truck, label: "Vehicle", value: lead?.vehicle },
-    { icon: MapPin, label: "Pickup", value: lead?.pickup },
-    { icon: MapPin, label: "Delivery", value: lead?.delivery },
-    { icon: DollarSign, label: "Quote", value: lead?.price },
-    { icon: Megaphone, label: "Campaign", value: campaign?.name },
-    { icon: Tag, label: "Quote ID", value: lead?.quoteId },
+    { icon: Mail,       label: "Email",    value: conv.customerEmail },
+    { icon: Phone,      label: "Phone",    value: conv.customerPhone },
+    { icon: Truck,      label: "Vehicle",  value: lead?.vehicle },
+    { icon: MapPin,     label: "Pickup",   value: lead?.pickup },
+    { icon: MapPin,     label: "Delivery", value: lead?.delivery },
+    { icon: DollarSign, label: "Quote",    value: lead?.price },
+    { icon: Megaphone,  label: "Campaign", value: campaign?.name },
+    { icon: Tag,        label: "Quote ID", value: lead?.quoteId },
   ].filter(f => f.value);
 
-  // Fake timeline from messages
   const timeline = [
-    { icon: Send, label: "Quote Sent", done: true },
-    { icon: Eye, label: "Email Opened", done: false },
-    { icon: MousePointerClick, label: "Link Clicked", done: false },
-    { icon: CornerDownLeft, label: "Customer Replied", done: false },
-    { icon: CheckCircle2, label: "Vehicle Booked", done: false },
+    { icon: Send,             label: "Quote Sent",       done: true  },
+    { icon: Eye,              label: "Email Opened",     done: false },
+    { icon: MousePointerClick,label: "Link Clicked",     done: false },
+    { icon: CornerDownLeft,   label: "Customer Replied", done: false },
+    { icon: CheckCircle2,     label: "Vehicle Booked",   done: false },
   ];
 
   return (
     <div className="flex flex-col h-full border-l border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 overflow-y-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 pt-4 pb-3 flex-shrink-0 border-b border-slate-100 dark:border-slate-800">
-        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Customer</p>
+      {/* Header: avatar + name (always visible) */}
+      <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
+        <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Customer</p>
         {showCloseButton && (
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400">
             <X className="h-3.5 w-3.5" />
@@ -804,7 +914,7 @@ function RightPanel({
         )}
       </div>
 
-      {/* Avatar + Name */}
+      {/* Customer identity — always expanded */}
       <div className="flex flex-col items-center text-center px-4 py-5 border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
         <Avatar className="h-14 w-14 mb-3">
           <AvatarFallback className={`bg-gradient-to-br ${color} text-white text-lg font-bold`}>
@@ -813,9 +923,12 @@ function RightPanel({
         </Avatar>
         <p className="font-semibold text-slate-900 dark:text-slate-100">{conv.customerName}</p>
         <p className="text-xs text-slate-400 mt-0.5">{conv.customerEmail}</p>
-        <div className="flex gap-1.5 mt-3">
+        {conv.customerPhone && (
+          <p className="text-xs text-slate-400 mt-0.5">{conv.customerPhone}</p>
+        )}
+        <div className="flex gap-1.5 mt-3 flex-wrap justify-center">
           {lead && (
-            <Link href={`/leads/import`}>
+            <Link href="/leads/import">
               <Button variant="outline" size="sm" className="h-7 px-3 text-[10px] rounded-lg gap-1.5">
                 <ArrowUpRight className="h-3 w-3" /> Open Lead
               </Button>
@@ -831,11 +944,12 @@ function RightPanel({
         </div>
       </div>
 
-      {/* Details */}
-      {fields.length > 0 && (
-        <div className="px-4 py-4 border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-3">Details</p>
-          <div className="space-y-2.5">
+      {/* ── Collapsible sections ── */}
+
+      {/* Customer Details */}
+      <PanelSection title="Customer Details" sectionKey="details" defaultOpen={true}>
+        {fields.length > 0 ? (
+          <div className="space-y-2.5 pt-1">
             {fields.map(({ icon: Icon, label, value }) => (
               <div key={label} className="flex items-start gap-2.5">
                 <div className="h-6 w-6 rounded-md bg-slate-100 dark:bg-slate-800 flex items-center justify-center flex-shrink-0">
@@ -843,23 +957,24 @@ function RightPanel({
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-[10px] text-slate-400">{label}</p>
-                  <p className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate">{value}</p>
+                  <p className="text-xs font-medium text-slate-700 dark:text-slate-300 break-words">{value}</p>
                 </div>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <p className="text-xs text-slate-400 dark:text-slate-500 pt-1">No additional details available.</p>
+        )}
+      </PanelSection>
 
       {/* Tracking */}
-      <div className="px-4 py-4 border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
-        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-3">Email Tracking</p>
-        <div className="grid grid-cols-2 gap-2">
+      <PanelSection title="Email Tracking" sectionKey="tracking" defaultOpen={false}>
+        <div className="grid grid-cols-2 gap-2 pt-1">
           {[
-            { icon: CheckCircle2, label: "Delivered", value: conv.messageCount > 0 ? "Yes" : "—", ok: conv.messageCount > 0 },
-            { icon: Eye, label: "Opens", value: "—", ok: false },
-            { icon: MousePointerClick, label: "Clicks", value: "—", ok: false },
-            { icon: CornerDownLeft, label: "Replies", value: "—", ok: false },
+            { icon: CheckCircle2,     label: "Delivered", value: conv.messageCount > 0 ? "Yes" : "—", ok: conv.messageCount > 0 },
+            { icon: Eye,              label: "Opens",     value: "—", ok: false },
+            { icon: MousePointerClick,label: "Clicks",    value: "—", ok: false },
+            { icon: CornerDownLeft,   label: "Replies",   value: "—", ok: false },
           ].map(({ icon: Icon, label, value, ok }) => (
             <div key={label} className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5 flex flex-col gap-1">
               <div className="flex items-center gap-1.5">
@@ -870,26 +985,22 @@ function RightPanel({
             </div>
           ))}
         </div>
-      </div>
+      </PanelSection>
 
       {/* Timeline */}
-      <div className="px-4 py-4 flex-shrink-0">
-        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-3">Timeline</p>
-        <div className="space-y-0">
+      <PanelSection title="Timeline" sectionKey="timeline" defaultOpen={false}>
+        <div className="space-y-0 pt-1">
           {timeline.map((item, i) => (
             <div key={i} className="flex items-start gap-2.5 relative">
-              {/* Line */}
               {i < timeline.length - 1 && (
                 <div className={cn(
-                  "absolute left-[11px] top-5 w-px h-full",
+                  "absolute left-[10px] top-5 w-px h-full",
                   item.done ? "bg-emerald-200 dark:bg-emerald-800" : "bg-slate-100 dark:bg-slate-800"
                 )} />
               )}
               <div className={cn(
                 "h-5 w-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 z-10",
-                item.done
-                  ? "bg-emerald-100 dark:bg-emerald-900/40"
-                  : "bg-slate-100 dark:bg-slate-800"
+                item.done ? "bg-emerald-100 dark:bg-emerald-900/40" : "bg-slate-100 dark:bg-slate-800"
               )}>
                 <item.icon className={cn("h-2.5 w-2.5", item.done ? "text-emerald-600 dark:text-emerald-400" : "text-slate-300 dark:text-slate-600")} />
               </div>
@@ -901,7 +1012,35 @@ function RightPanel({
             </div>
           ))}
         </div>
-      </div>
+      </PanelSection>
+
+      {/* Internal Notes */}
+      <PanelSection title="Internal Notes" sectionKey="notes" defaultOpen={false}>
+        {notes && notes.length > 0 ? (
+          <div className="space-y-2 pt-1">
+            {notes.map(note => (
+              <div key={note.id} className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-xl px-3 py-2">
+                <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 mb-0.5">
+                  {timeAgo(note.createdAt)}
+                </p>
+                <p className="text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{note.content}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400 dark:text-slate-500 pt-1">No internal notes yet.</p>
+        )}
+      </PanelSection>
+
+      {/* Tasks */}
+      <PanelSection title="Tasks" sectionKey="tasks" defaultOpen={false}>
+        <div className="pt-1">
+          <div className="flex flex-col items-center py-3 text-center">
+            <ListTodo className="h-6 w-6 text-slate-300 dark:text-slate-600 mb-1.5" />
+            <p className="text-xs text-slate-400 dark:text-slate-500">Tasks coming soon</p>
+          </div>
+        </div>
+      </PanelSection>
     </div>
   );
 }

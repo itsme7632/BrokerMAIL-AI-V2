@@ -1,0 +1,270 @@
+# BrokerMAIL AI - Navigation & Sidebar Redesign
+
+The application has grown significantly and the current sidebar feels cluttered.
+
+I want to reorganize the entire navigation around the user's workflow instead of technical features.
+
+Do NOT simply rename menu items.
+
+Reorganize the information architecture.
+
+Maintain the existing design language, animations, spacing, colors, and dark theme.
+
+==================================================
+GOAL
+==================================================
+
+The sidebar should immediately answer:
+
+1. Where do I communicate?
+2. Where do I create campaigns?
+3. Where do I manage my account?
+4. Where do I find updates?
+
+Everything else should naturally fit under those sections.
+
+==================================================
+NEW SIDEBAR STRUCTURE
+==================================================
+
+🏠 Dashboard
+
+--------------------------------------------------
+
+💬 COMMUNICATION
+
+Communications
+
+• Inbox
+• Sent
+• Drafts
+
+(These should become tabs inside the Communications page, NOT separate sidebar items.)
+
+--------------------------------------------------
+
+📣 CAMPAIGNS
+
+Campaigns
+
+Compose Email
+
+Templates
+
+Template Gallery
+
+Upload & Send
+
+--------------------------------------------------
+
+⚙ SETTINGS
+
+My Profile
+
+Brand Settings
+
+Mailboxes
+
+Billing & Plans
+
+Suppression List
+
+Support
+
+--------------------------------------------------
+
+✨ UPDATES
+
+Notifications
+
+What's New
+
+Roadmap
+
+Feedback
+
+Report a Bug
+
+==================================================
+IMPORTANT
+==================================================
+
+The sidebar should only display the major sections.
+
+Inbox / Sent / Drafts should NOT all appear as separate sidebar items.
+
+Instead:
+
+Clicking Communications opens:
+
+/communications
+
+Inside Communications there should be tabs:
+
+Inbox
+
+Sent
+
+Drafts
+
+Starred
+
+Archived
+
+Spam
+
+This keeps the sidebar much cleaner.
+
+==================================================
+COMMUNICATIONS PAGE
+==================================================
+
+Inside Communications:
+
+Top Bar
+
+Search
+
+Mailbox Selector
+
+Tabs
+
+Inbox
+
+Unread
+
+Needs Reply
+
+Starred
+
+Archived
+
+Spam
+
+--------------------------------------------------
+
+Conversation List
+
+Conversation
+
+Customer Details
+
+--------------------------------------------------
+
+Do NOT create more sidebar items.
+
+==================================================
+RIGHT PANEL
+==================================================
+
+Instead of showing many cards at once, make them collapsible.
+
+Customer Details
+
+▼
+
+Tracking
+
+▶
+
+Timeline
+
+▶
+
+Internal Notes
+
+▶
+
+Tasks
+
+▶
+
+Remember collapsed state.
+
+==================================================
+MAILBOX SELECTOR
+==================================================
+
+Top of Communications:
+
+All Mailboxes ▼
+
+Broker@gmail.com
+
+Sales@
+
+Support@
+
+==================================================
+TODAY'S WORK
+==================================================
+
+Above the conversation list show:
+
+Needs Reply
+
+Unread
+
+Waiting Payment
+
+Booked Today
+
+High Priority
+
+==================================================
+GLOBAL SEARCH
+==================================================
+
+Search:
+
+Customer
+
+Email
+
+Phone
+
+Vehicle
+
+Campaign
+
+Subject
+
+Body
+
+==================================================
+DESIGN
+==================================================
+
+Reduce visual noise.
+
+Increase spacing.
+
+Reduce menu density.
+
+Make BrokerMAIL AI feel like a premium CRM.
+
+Follow the existing design system.
+
+No browser alerts.
+
+Toast notifications only.
+
+Responsive.
+
+==================================================
+FUTURE
+==================================================
+
+Structure everything so adding:
+
+SMS
+
+WhatsApp
+
+Facebook
+
+Phone Calls
+
+Live Chat
+
+will not require redesigning the navigation.
