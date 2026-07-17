@@ -414,7 +414,7 @@ router.get("/sent-emails/stats", requireAuth, async (req, res): Promise<void> =>
 // The regex (\d+) ensures only numeric IDs match — "stats" and other named
 // sub-paths will never be routed here.
 
-router.get("/sent-emails/:id(\\d+)", requireAuth, async (req, res): Promise<void> => {
+router.get("/sent-emails/:id", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
   const id   = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
