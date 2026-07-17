@@ -19,6 +19,10 @@ import {
   MessageSquare, Sparkles, ArrowUpRight,
   CornerDownLeft, Bold, Italic, Paperclip, ListTodo,
   Wifi, WifiOff, Clock, Download, File,
+  Trash2, Edit2, ReplyAll, CheckSquare, Square, Minus,
+  Copy, ExternalLink, Ban, RotateCcw, Check, ChevronUp,
+  TrendingUp, AlertCircle, Zap, Languages, FileText,
+  CalendarClock, Plus, Info,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -32,6 +36,7 @@ type Conversation = {
   id: number;
   leadId: number | null;
   campaignId: number | null;
+  mailboxId: number | null;
   subject: string;
   customerName: string;
   customerEmail: string;
@@ -71,11 +76,18 @@ type Lead = {
   price: string | null;
   notes: string | null;
   quoteId: string | null;
+  status: string | null;
 };
 
 type Campaign = { id: number; name: string };
 
-type Note = { id: number; content: string; createdAt: string };
+type Note = {
+  id: number;
+  content: string;
+  createdAt: string;
+  userId: number;
+  authorName: string;
+};
 
 type ConversationDetail = {
   conversation: Conversation;
@@ -85,7 +97,14 @@ type ConversationDetail = {
   campaign: Campaign | null;
 };
 
-type Stats = { total: number; unread: number; needsReply: number; starred: number };
+type Stats = {
+  total: number;
+  unread: number;
+  needsReply: number;
+  starred: number;
+  archived: number;
+  spam: number;
+};
 
 type MailboxOption = { id: string | number; email: string; type: "gmail" | "smtp" };
 
@@ -98,7 +117,26 @@ type SyncStatus = {
   liveConnections: number;
   mailboxes: Array<{ email: string; type: string; connected: boolean; lastSyncAt: string | null }>;
   lastSyncResults: Array<{ mailbox: string; imported: number; error?: string }>;
+  currentMailbox: string | null;
+  currentFolder: string | null;
+  scanned: number;
+  imported: number;
+  totalMailboxes: number;
+  completedMailboxes: number;
 };
+
+type SyncProgressState = {
+  mailbox: string;
+  folder: string | null;
+  scanned: number;
+  imported: number;
+  mailboxDone?: boolean;
+  error?: string;
+};
+
+type BulkAction = "mark_read" | "mark_unread" | "archive" | "spam" | "delete" | "star" | "unstar";
+type FilterKey  = "all" | "unread" | "needs_reply" | "starred" | "archived" | "spam";
+type ReplyMode  = "reply" | "reply_all" | "forward" | "note";
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
@@ -123,9 +161,9 @@ async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60_000);
+  const mins  = Math.floor(diff / 60_000);
   const hours = Math.floor(diff / 3_600_000);
-  const days = Math.floor(diff / 86_400_000);
+  const days  = Math.floor(diff / 86_400_000);
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m`;
   if (hours < 24) return `${hours}h`;
@@ -134,11 +172,32 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+function timeAgoShort(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60_000);
+  const h = Math.floor(diff / 3_600_000);
+  const d = Math.floor(diff / 86_400_000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  if (h < 24) return `${h}h ago`;
+  if (d === 1) return "Yesterday";
+  return `${d}d ago`;
+}
+
 function fullTime(iso: string): string {
   return new Date(iso).toLocaleString("en-US", {
     month: "short", day: "numeric", year: "numeric",
     hour: "numeric", minute: "2-digit", hour12: true,
   });
+}
+
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return "Today";
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: d.getFullYear() !== today.getFullYear() ? "numeric" : undefined });
 }
 
 function initials(name: string): string {
@@ -169,9 +228,13 @@ function statusBadge(status: string) {
   }
 }
 
-// ─── Filter tab ───────────────────────────────────────────────────────────────
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1_048_576) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1_048_576).toFixed(1)} MB`;
+}
 
-type FilterKey = "all" | "unread" | "needs_reply" | "starred" | "archived" | "spam";
+// ─── Filter tabs ──────────────────────────────────────────────────────────────
 
 const FILTERS: { key: FilterKey; label: string; icon: React.ElementType }[] = [
   { key: "all",         label: "Inbox",       icon: Inbox },
@@ -182,17 +245,7 @@ const FILTERS: { key: FilterKey; label: string; icon: React.ElementType }[] = [
   { key: "spam",        label: "Spam",        icon: AlertTriangle },
 ];
 
-// ─── Today's Work quick chips ─────────────────────────────────────────────────
-
-const TODAY_CHIPS: { key: FilterKey | "waiting_payment" | "booked_today" | "high_priority"; label: string; color: string }[] = [
-  { key: "needs_reply",    label: "Needs Reply",     color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800/40" },
-  { key: "unread",         label: "Unread",          color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800/40" },
-  { key: "waiting_payment",label: "Waiting Payment", color: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 border-violet-200 dark:border-violet-800/40" },
-  { key: "booked_today",   label: "Booked Today",    color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/40" },
-  { key: "high_priority",  label: "High Priority",   color: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 border-rose-200 dark:border-rose-800/40" },
-];
-
-// ─── Collapsible right-panel section ─────────────────────────────────────────
+// ─── Collapsible section ──────────────────────────────────────────────────────
 
 function usePanelSection(key: string, defaultOpen: boolean) {
   const storageKey = `comm_panel_${key}`;
@@ -208,8 +261,9 @@ function usePanelSection(key: string, defaultOpen: boolean) {
   return [open as boolean, toggle] as const;
 }
 
-function PanelSection({ title, sectionKey, defaultOpen = false, children }: {
-  title: string; sectionKey: string; defaultOpen?: boolean; children: React.ReactNode;
+function PanelSection({ title, sectionKey, defaultOpen = false, children, action }: {
+  title: string; sectionKey: string; defaultOpen?: boolean;
+  children: React.ReactNode; action?: React.ReactNode;
 }) {
   const [open, toggle] = usePanelSection(sectionKey, defaultOpen);
   return (
@@ -221,90 +275,26 @@ function PanelSection({ title, sectionKey, defaultOpen = false, children }: {
         <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors">
           {title}
         </span>
-        <ChevronDown className={cn(
-          "h-3.5 w-3.5 text-slate-400 dark:text-slate-500 transition-transform duration-200",
-          open && "rotate-180"
-        )} />
+        <div className="flex items-center gap-1">
+          {action && <span onClick={e => e.stopPropagation()}>{action}</span>}
+          <ChevronDown className={cn("h-3.5 w-3.5 text-slate-400 dark:text-slate-500 transition-transform duration-200", open && "rotate-180")} />
+        </div>
       </button>
       {open && <div className="px-4 pb-4">{children}</div>}
     </div>
   );
 }
 
-// ─── Conversation Item ────────────────────────────────────────────────────────
+// ─── SSE Hook ─────────────────────────────────────────────────────────────────
 
-function ConvItem({
-  conv, isActive, onClick,
-}: {
-  conv: Conversation; isActive: boolean; onClick: () => void;
-}) {
-  const color = avatarColor(conv.customerEmail);
-  const badge = statusBadge(conv.status);
-  const isUnread = conv.status === "unread";
-
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "w-full text-left px-3 py-3.5 border-b border-slate-100 dark:border-slate-800/60 transition-colors group relative",
-        isActive
-          ? "bg-blue-50 dark:bg-blue-900/20 border-l-2 border-l-blue-500"
-          : "hover:bg-slate-50 dark:hover:bg-slate-800/40 border-l-2 border-l-transparent",
-      )}
-    >
-      <div className="flex items-start gap-2.5">
-        {/* Avatar */}
-        <Avatar className="h-9 w-9 flex-shrink-0 mt-0.5">
-          <AvatarFallback className={`bg-gradient-to-br ${color} text-white text-xs font-semibold`}>
-            {initials(conv.customerName)}
-          </AvatarFallback>
-        </Avatar>
-
-        <div className="flex-1 min-w-0">
-          {/* Row 1: name + time */}
-          <div className="flex items-center justify-between gap-1.5">
-            <span className={cn("text-sm truncate", isUnread ? "font-semibold text-slate-900 dark:text-slate-100" : "font-medium text-slate-700 dark:text-slate-300")}>
-              {conv.customerName}
-            </span>
-            <span className="text-[10px] text-slate-400 flex-shrink-0">
-              {timeAgo(conv.lastMessageAt)}
-            </span>
-          </div>
-
-          {/* Row 2: subject */}
-          <p className={cn("text-xs truncate mt-0.5", isUnread ? "text-slate-700 dark:text-slate-200 font-medium" : "text-slate-500 dark:text-slate-400")}>
-            {conv.subject}
-          </p>
-
-          {/* Row 3: email + badges */}
-          <div className="flex items-center gap-1.5 mt-1.5">
-            <span className="text-[10px] text-slate-400 truncate flex-1">{conv.customerEmail}</span>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              {conv.starred && <Star className="h-3 w-3 fill-amber-400 text-amber-400" />}
-              {badge && (
-                <span className={cn("px-1.5 py-0.5 rounded text-[9px] font-semibold leading-none", badge.cls)}>
-                  {badge.label}
-                </span>
-              )}
-              {conv.unreadCount > 0 && (
-                <span className="h-4 min-w-4 px-1 rounded-full bg-blue-600 text-white text-[9px] font-bold flex items-center justify-center">
-                  {conv.unreadCount}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </button>
-  );
-}
-
-// ─── SSE hook ─────────────────────────────────────────────────────────────────
-
-function useCommEvents() {
+function useCommEvents(
+  onSyncProgress?: (p: SyncProgressState) => void,
+  onSyncStarted?: () => void,
+  onSyncComplete?: () => void,
+) {
   const [status, setStatus] = useState<"connecting" | "connected" | "disconnected">("connecting");
   const queryClient = useQueryClient();
-  const esRef = useRef<EventSource | null>(null);
+  const esRef   = useRef<EventSource | null>(null);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const delayRef = useRef(2_000);
 
@@ -321,22 +311,84 @@ function useCommEvents() {
 
     es.onmessage = (e: MessageEvent) => {
       try {
-        const ev: { type: string; conversationId?: number } = JSON.parse(e.data);
+        const ev: { type: string; conversationId?: number; data?: any } = JSON.parse(e.data);
         switch (ev.type) {
-          case "connected": setStatus("connected"); break;
+          case "connected":
+            setStatus("connected");
+            break;
+
           case "new_message":
-          case "conversation_updated":
-          case "note_added":
             if (ev.conversationId) queryClient.invalidateQueries({ queryKey: ["conv-detail", ev.conversationId] });
             queryClient.invalidateQueries({ queryKey: ["conversations"] });
             queryClient.invalidateQueries({ queryKey: ["comm-stats"] });
             break;
+
+          case "read_updated":
+            if (ev.conversationId) {
+              // Optimistically update the conversation list cache
+              queryClient.setQueriesData<{ data: Conversation[]; total: number }>(
+                { queryKey: ["conversations"] },
+                (old) => {
+                  if (!old) return old;
+                  return {
+                    ...old,
+                    data: old.data.map(c =>
+                      c.id === ev.conversationId
+                        ? { ...c, status: ev.data?.status ?? "read", unreadCount: ev.data?.unreadCount ?? 0 }
+                        : c
+                    ),
+                  };
+                },
+              );
+              queryClient.invalidateQueries({ queryKey: ["comm-stats"] });
+            }
+            break;
+
+          case "conversation_updated":
+            if (ev.conversationId) {
+              queryClient.setQueriesData<{ data: Conversation[]; total: number }>(
+                { queryKey: ["conversations"] },
+                (old) => {
+                  if (!old) return old;
+                  const updates = ev.data ?? {};
+                  if (updates.deleted) {
+                    return { ...old, data: old.data.filter(c => c.id !== ev.conversationId), total: Math.max(0, old.total - 1) };
+                  }
+                  return { ...old, data: old.data.map(c => c.id === ev.conversationId ? { ...c, ...updates } : c) };
+                },
+              );
+              if (ev.data?.ids) {
+                // Bulk action — full refetch
+                queryClient.invalidateQueries({ queryKey: ["conversations"] });
+              }
+            } else if (ev.data?.ids) {
+              queryClient.invalidateQueries({ queryKey: ["conversations"] });
+            }
+            queryClient.invalidateQueries({ queryKey: ["comm-stats"] });
+            break;
+
+          case "note_added":
+          case "note_updated":
+          case "note_deleted":
+            if (ev.conversationId) queryClient.invalidateQueries({ queryKey: ["conv-detail", ev.conversationId] });
+            break;
+
           case "sync_started":
+            onSyncStarted?.();
+            queryClient.invalidateQueries({ queryKey: ["comm-sync-status"] });
+            break;
+
+          case "sync_progress":
+            if (ev.data) onSyncProgress?.(ev.data as SyncProgressState);
+            break;
+
           case "sync_complete":
+            onSyncComplete?.();
             queryClient.invalidateQueries({ queryKey: ["conversations"] });
             queryClient.invalidateQueries({ queryKey: ["comm-stats"] });
             queryClient.invalidateQueries({ queryKey: ["comm-sync-status"] });
             break;
+
           case "tracking_event":
             if (ev.conversationId) queryClient.invalidateQueries({ queryKey: ["conv-detail", ev.conversationId] });
             break;
@@ -352,7 +404,7 @@ function useCommEvents() {
       delayRef.current = Math.min(delay * 2, 30_000);
       retryRef.current = setTimeout(connect, delay);
     };
-  }, [queryClient]);
+  }, [queryClient, onSyncProgress, onSyncStarted, onSyncComplete]);
 
   useEffect(() => {
     connect();
@@ -366,28 +418,7 @@ function useCommEvents() {
   return status;
 }
 
-// ─── Email-specific helpers ───────────────────────────────────────────────────
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1_048_576) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1_048_576).toFixed(1)} MB`;
-}
-
-function timeAgoShort(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60_000);
-  const h = Math.floor(diff / 3_600_000);
-  const d = Math.floor(diff / 86_400_000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
-  if (h < 24) return `${h}h ago`;
-  if (d === 1) return "Yesterday";
-  return `${d}d ago`;
-}
-
-// ─── HTML Email Renderer ──────────────────────────────────────────────────────
-// Renders HTML email in a sandboxed iframe; strips scripts + inline handlers.
+// ─── HtmlEmailRenderer ────────────────────────────────────────────────────────
 
 function HtmlEmailRenderer({ html, isOutbound }: { html: string; isOutbound: boolean }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -426,7 +457,7 @@ function HtmlEmailRenderer({ html, isOutbound }: { html: string; isOutbound: boo
   );
 }
 
-// ─── Attachment List ──────────────────────────────────────────────────────────
+// ─── AttachmentList ───────────────────────────────────────────────────────────
 
 function AttachmentList({ metaJson, isOutbound }: { metaJson: string; isOutbound: boolean }) {
   let items: AttachmentMeta[] = [];
@@ -435,30 +466,146 @@ function AttachmentList({ metaJson, isOutbound }: { metaJson: string; isOutbound
 
   return (
     <div className="mt-2 flex flex-wrap gap-1.5">
-      {items.map((att, i) => (
-        <div
-          key={i}
-          className={cn(
-            "flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-medium",
-            isOutbound
-              ? "bg-white/15 text-white"
-              : "bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300",
-          )}
-          title={att.name}
-        >
-          <File className="h-3 w-3 flex-shrink-0" />
-          <span className="truncate max-w-[100px]">{att.name}</span>
-          <span className="opacity-60 flex-shrink-0">{formatBytes(att.size)}</span>
-          <Download className="h-3 w-3 flex-shrink-0 opacity-50 hover:opacity-100 cursor-pointer" />
+      {items.map((att, i) => {
+        const isImage = att.mimeType.startsWith("image/");
+        return (
+          <button
+            key={i}
+            onClick={() => window.open(`#attachment-${att.partId ?? i}`, "_blank")}
+            className={cn(
+              "flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-medium transition-opacity hover:opacity-80",
+              isOutbound
+                ? "bg-white/15 text-white"
+                : "bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300",
+            )}
+            title={`${att.name} (${formatBytes(att.size)})`}
+          >
+            {isImage
+              ? <Eye className="h-3 w-3 flex-shrink-0" />
+              : <File className="h-3 w-3 flex-shrink-0" />}
+            <span className="truncate max-w-[100px]">{att.name}</span>
+            <span className="opacity-60 flex-shrink-0">{formatBytes(att.size)}</span>
+            <Download className="h-3 w-3 flex-shrink-0 opacity-50 hover:opacity-100" />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Note Item ────────────────────────────────────────────────────────────────
+
+function NoteItem({ note, convId, currentUserId, onChanged }: {
+  note: Note; convId: number; currentUserId: number;
+  onChanged: () => void;
+}) {
+  const [editing, setEditing]   = useState(false);
+  const [editText, setEditText] = useState(note.content);
+  const [saving, setSaving]     = useState(false);
+  const [confirm, setConfirm]   = useState(false);
+  const { toast } = useToast();
+  const canEdit = note.userId === currentUserId;
+
+  const handleSave = async () => {
+    if (!editText.trim()) return;
+    setSaving(true);
+    try {
+      await apiFetch(`/api/communications/conversations/${convId}/notes/${note.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ content: editText }),
+      });
+      toast({ title: "Note updated" });
+      setEditing(false);
+      onChanged();
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Failed to update note", description: e.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setSaving(true);
+    try {
+      await apiFetch(`/api/communications/conversations/${convId}/notes/${note.id}`, { method: "DELETE" });
+      toast({ title: "Note deleted" });
+      setConfirm(false);
+      onChanged();
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Failed to delete note", description: e.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-xl px-3 py-2.5">
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <div className="h-4.5 w-4.5 rounded-full bg-amber-200 dark:bg-amber-800/60 flex items-center justify-center flex-shrink-0">
+            <StickyNote className="h-2.5 w-2.5 text-amber-700 dark:text-amber-400" />
+          </div>
+          <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 truncate">
+            {note.authorName} · {timeAgo(note.createdAt)}
+          </p>
         </div>
-      ))}
+        {canEdit && !editing && !confirm && (
+          <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover/note:opacity-100 transition-opacity">
+            <button
+              onClick={() => { setEditing(true); setEditText(note.content); }}
+              className="p-1 rounded hover:bg-amber-200/60 dark:hover:bg-amber-800/40 text-amber-600 dark:text-amber-400 transition-colors"
+              title="Edit note"
+            >
+              <Edit2 className="h-2.5 w-2.5" />
+            </button>
+            <button
+              onClick={() => setConfirm(true)}
+              className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-amber-600 dark:text-amber-400 hover:text-red-600 transition-colors"
+              title="Delete note"
+            >
+              <Trash2 className="h-2.5 w-2.5" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {confirm ? (
+        <div className="mt-1">
+          <p className="text-xs text-amber-800 dark:text-amber-300 mb-2">Delete this note?</p>
+          <div className="flex gap-1.5">
+            <Button size="sm" variant="destructive" onClick={handleDelete} disabled={saving} className="h-6 px-2 text-[10px]">
+              {saving ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : "Delete"}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setConfirm(false)} className="h-6 px-2 text-[10px]">Cancel</Button>
+          </div>
+        </div>
+      ) : editing ? (
+        <div className="mt-1">
+          <Textarea
+            value={editText}
+            onChange={e => setEditText(e.target.value)}
+            className="min-h-[60px] text-xs resize-none border-amber-300 dark:border-amber-700 focus-visible:ring-amber-400 rounded-lg"
+            autoFocus
+          />
+          <div className="flex gap-1.5 mt-1.5">
+            <Button size="sm" onClick={handleSave} disabled={saving || !editText.trim()} className="h-6 px-2.5 text-[10px] bg-amber-500 hover:bg-amber-600 text-white">
+              {saving ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : "Save"}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setEditing(false)} className="h-6 px-2 text-[10px]">Cancel</Button>
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap mt-0.5">{note.content}</p>
+      )}
     </div>
   );
 }
 
 // ─── Sync Status Widget ───────────────────────────────────────────────────────
 
-function SyncStatusWidget() {
+function SyncStatusWidget({ liveProgress, isSyncingLive }: {
+  liveProgress: SyncProgressState | null; isSyncingLive: boolean;
+}) {
   const { data } = useQuery<SyncStatus>({
     queryKey: ["comm-sync-status"],
     queryFn: () => apiFetch("/api/communications/sync-status"),
@@ -468,16 +615,48 @@ function SyncStatusWidget() {
 
   if (!data) return null;
 
+  const isSyncing = isSyncingLive || data.isSyncing;
   const nextIn = data.nextSyncAt
     ? Math.max(0, Math.ceil((new Date(data.nextSyncAt).getTime() - Date.now()) / 60_000))
     : null;
 
+  const currentMailbox = liveProgress?.mailbox ?? data.currentMailbox;
+  const currentFolder  = liveProgress?.folder  ?? data.currentFolder;
+  const imported       = liveProgress?.imported ?? data.imported;
+  const scanned        = liveProgress?.scanned  ?? data.scanned;
+
+  const errors = data.lastSyncResults.filter(r => r.error);
+
   return (
-    <div className="mx-3 mb-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50">
-      {data.isSyncing ? (
-        <div className="flex items-center gap-2">
-          <Loader2 className="h-3 w-3 animate-spin text-blue-500 flex-shrink-0" />
-          <p className="text-[10px] font-medium text-blue-600 dark:text-blue-400">Syncing mailboxes…</p>
+    <div className={cn(
+      "mx-3 mb-2 rounded-xl border transition-all",
+      isSyncing
+        ? "px-3 py-2.5 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/40"
+        : "px-3 py-2 bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-700/50",
+    )}>
+      {isSyncing ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-3 w-3 animate-spin text-blue-500 flex-shrink-0" />
+            <p className="text-[10px] font-semibold text-blue-700 dark:text-blue-400">Syncing mailboxes…</p>
+          </div>
+          {currentMailbox && (
+            <div className="space-y-1">
+              <p className="text-[9px] text-blue-600 dark:text-blue-400 truncate">
+                <span className="font-medium">Mailbox:</span> {currentMailbox.replace(/^(Gmail|IMAP):/, "")}
+              </p>
+              {currentFolder && (
+                <p className="text-[9px] text-blue-500 dark:text-blue-400 truncate">
+                  <span className="font-medium">Folder:</span> {currentFolder}
+                </p>
+              )}
+              {(scanned > 0 || imported > 0) && (
+                <p className="text-[9px] text-blue-500 dark:text-blue-400">
+                  {imported} imported · {scanned} scanned
+                </p>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex items-center justify-between gap-2">
@@ -494,6 +673,18 @@ function SyncStatusWidget() {
           )}
         </div>
       )}
+
+      {errors.length > 0 && !isSyncing && (
+        <div className="mt-1.5 space-y-0.5">
+          {errors.map((e, i) => (
+            <div key={i} className="flex items-center gap-1 text-[9px] text-red-500 dark:text-red-400">
+              <AlertCircle className="h-2.5 w-2.5 flex-shrink-0" />
+              <span className="truncate">{e.mailbox.replace(/^(Gmail|IMAP):/, "")}: {e.error}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {data.mailboxes.length > 0 && (
         <div className="flex gap-1 mt-1.5 flex-wrap">
           {data.mailboxes.map(mb => (
@@ -514,12 +705,176 @@ function SyncStatusWidget() {
   );
 }
 
+// ─── Bulk Action Bar ──────────────────────────────────────────────────────────
+
+function BulkActionBar({ selectedIds, total, onAction, onSelectAll, onClear }: {
+  selectedIds: Set<number>; total: number;
+  onAction: (action: BulkAction) => void;
+  onSelectAll: () => void;
+  onClear: () => void;
+}) {
+  const count = selectedIds.size;
+  return (
+    <div className="px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800/40 flex items-center gap-2 flex-shrink-0">
+      <button onClick={onClear} className="p-0.5 text-blue-600 hover:text-blue-800 dark:text-blue-400">
+        <X className="h-3.5 w-3.5" />
+      </button>
+      <span className="text-xs font-semibold text-blue-700 dark:text-blue-400 flex-1">{count} selected</span>
+      <div className="flex items-center gap-0.5">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button onClick={() => onAction("mark_read")} className="p-1.5 rounded hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 transition-colors">
+              <Eye className="h-3.5 w-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Mark Read</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button onClick={() => onAction("mark_unread")} className="p-1.5 rounded hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 transition-colors">
+              <Mail className="h-3.5 w-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Mark Unread</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button onClick={() => onAction("star")} className="p-1.5 rounded hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 transition-colors">
+              <Star className="h-3.5 w-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Star</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button onClick={() => onAction("archive")} className="p-1.5 rounded hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 transition-colors">
+              <Archive className="h-3.5 w-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Archive</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button onClick={() => onAction("spam")} className="p-1.5 rounded hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 transition-colors">
+              <Ban className="h-3.5 w-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Mark Spam</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button onClick={() => onAction("delete")} className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 transition-colors">
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Delete</TooltipContent>
+        </Tooltip>
+        {count < total && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button onClick={onSelectAll} className="ml-1 px-2 py-1 rounded text-[10px] font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-800/40 transition-colors">
+                All {total}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Select All</TooltipContent>
+          </Tooltip>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Conversation Item ────────────────────────────────────────────────────────
+
+function ConvItem({
+  conv, isActive, isSelected, onClick, onToggleSelect, showCheckboxes,
+}: {
+  conv: Conversation; isActive: boolean; isSelected: boolean;
+  onClick: () => void; onToggleSelect: (id: number) => void;
+  showCheckboxes: boolean;
+}) {
+  const color  = avatarColor(conv.customerEmail);
+  const badge  = statusBadge(conv.status);
+  const isUnread = conv.status === "unread";
+  const [hovering, setHovering] = useState(false);
+
+  return (
+    <div
+      className={cn(
+        "w-full text-left border-b border-slate-100 dark:border-slate-800/60 transition-colors group relative flex items-stretch",
+        isActive
+          ? "bg-blue-50 dark:bg-blue-900/20 border-l-2 border-l-blue-500"
+          : "hover:bg-slate-50 dark:hover:bg-slate-800/40 border-l-2 border-l-transparent",
+      )}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+    >
+      {/* Checkbox area */}
+      <div
+        className={cn(
+          "flex items-start justify-center pt-4 flex-shrink-0 transition-all",
+          (showCheckboxes || hovering) ? "w-8 opacity-100" : "w-0 overflow-hidden opacity-0",
+        )}
+        onClick={e => { e.stopPropagation(); onToggleSelect(conv.id); }}
+      >
+        <div className={cn(
+          "h-4 w-4 rounded border-2 flex items-center justify-center flex-shrink-0 cursor-pointer transition-colors",
+          isSelected
+            ? "bg-blue-600 border-blue-600"
+            : "border-slate-300 dark:border-slate-600 hover:border-blue-400",
+        )}>
+          {isSelected && <Check className="h-2.5 w-2.5 text-white" />}
+        </div>
+      </div>
+
+      <button className="flex-1 text-left px-3 py-3.5 min-w-0" onClick={onClick}>
+        <div className="flex items-start gap-2.5">
+          <Avatar className="h-9 w-9 flex-shrink-0 mt-0.5">
+            <AvatarFallback className={`bg-gradient-to-br ${color} text-white text-xs font-semibold`}>
+              {initials(conv.customerName)}
+            </AvatarFallback>
+          </Avatar>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-1.5">
+              <span className={cn("text-sm truncate", isUnread ? "font-semibold text-slate-900 dark:text-slate-100" : "font-medium text-slate-700 dark:text-slate-300")}>
+                {conv.customerName}
+              </span>
+              <span className="text-[10px] text-slate-400 flex-shrink-0">{timeAgo(conv.lastMessageAt)}</span>
+            </div>
+            <p className={cn("text-xs truncate mt-0.5", isUnread ? "text-slate-700 dark:text-slate-200 font-medium" : "text-slate-500 dark:text-slate-400")}>
+              {conv.subject}
+            </p>
+            <div className="flex items-center gap-1.5 mt-1.5">
+              <span className="text-[10px] text-slate-400 truncate flex-1">{conv.customerEmail}</span>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {conv.starred && <Star className="h-3 w-3 fill-amber-400 text-amber-400" />}
+                {badge && (
+                  <span className={cn("px-1.5 py-0.5 rounded text-[9px] font-semibold leading-none", badge.cls)}>
+                    {badge.label}
+                  </span>
+                )}
+                {conv.unreadCount > 0 && (
+                  <span className="h-4 min-w-4 px-1 rounded-full bg-blue-600 text-white text-[9px] font-bold flex items-center justify-center">
+                    {conv.unreadCount}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </button>
+    </div>
+  );
+}
+
 // ─── Left Panel ───────────────────────────────────────────────────────────────
 
 function LeftPanel({
   filter, setFilter, search, setSearch,
   conversations, isLoading, selectedId, onSelect, stats, onRefresh, isSyncing,
   mailboxes, selectedMailboxId, onMailboxChange, connectionStatus,
+  liveProgress, selectedIds, onToggleSelect, onBulkAction,
 }: {
   filter: FilterKey; setFilter: (f: FilterKey) => void;
   search: string; setSearch: (s: string) => void;
@@ -529,25 +884,33 @@ function LeftPanel({
   mailboxes: MailboxOption[]; selectedMailboxId: string | number | null;
   onMailboxChange: (id: string | number | null) => void;
   connectionStatus: "connecting" | "connected" | "disconnected";
+  liveProgress: SyncProgressState | null;
+  selectedIds: Set<number>;
+  onToggleSelect: (id: number) => void;
+  onBulkAction: (action: BulkAction) => void;
 }) {
   const { toast } = useToast();
-
-  const handleChip = (key: string) => {
-    if (key === "needs_reply" || key === "unread") {
-      setFilter(key as FilterKey);
-    } else {
-      toast({ title: "Coming soon", description: "This filter will be available with full inbox sync." });
-    }
-  };
-
+  const queryClient = useQueryClient();
   const safeMailboxes = mailboxes ?? [];
   const selectedMailboxLabel = selectedMailboxId === null
     ? "All Mailboxes"
     : safeMailboxes.find(m => m.id === selectedMailboxId)?.email ?? "All Mailboxes";
 
+  const total = convData => convData?.total ?? 0;
+  const showCheckboxes = selectedIds.size > 0;
+
+  const handleSelectAll = () => {
+    conversations.forEach(c => onToggleSelect(c.id));
+  };
+  const handleClear = () => {
+    conversations.forEach(c => {
+      if (selectedIds.has(c.id)) onToggleSelect(c.id);
+    });
+  };
+
   return (
     <div className="flex flex-col h-full border-r border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900">
-      {/* Top bar: title + mailbox selector + refresh */}
+      {/* Top bar */}
       <div className="px-4 pt-4 pb-3 flex-shrink-0 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -556,9 +919,9 @@ function LeftPanel({
               <TooltipTrigger asChild>
                 <span className="inline-flex cursor-default">
                   {connectionStatus === "disconnected" ? (
-                    <WifiOff className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                    <WifiOff className="h-3.5 w-3.5 text-red-500" />
                   ) : (
-                    <Wifi className={cn("h-3.5 w-3.5 flex-shrink-0", {
+                    <Wifi className={cn("h-3.5 w-3.5", {
                       "text-emerald-500": connectionStatus === "connected",
                       "text-amber-500 animate-pulse": connectionStatus === "connecting",
                     })} />
@@ -567,8 +930,7 @@ function LeftPanel({
               </TooltipTrigger>
               <TooltipContent side="right">
                 {connectionStatus === "connected" ? "Live updates active" :
-                 connectionStatus === "connecting" ? "Connecting to live updates…" :
-                 "Disconnected — reconnecting"}
+                 connectionStatus === "connecting" ? "Connecting…" : "Disconnected — reconnecting"}
               </TooltipContent>
             </Tooltip>
           </div>
@@ -582,7 +944,7 @@ function LeftPanel({
           </button>
         </div>
 
-        {/* Mailbox selector — dynamic from API */}
+        {/* Mailbox selector */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors">
@@ -594,26 +956,15 @@ function LeftPanel({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-64">
-            {/* All Mailboxes */}
             <DropdownMenuItem
               onClick={() => onMailboxChange(null)}
               className={cn("text-xs gap-2", selectedMailboxId === null && "text-blue-600 dark:text-blue-400 font-medium")}
             >
-              <Server className="h-3 w-3 text-slate-400 flex-shrink-0" />
+              <Server className="h-3 w-3 text-slate-400" />
               <span className="flex-1">All Mailboxes</span>
-              {selectedMailboxId === null && <CheckCircle2 className="h-3 w-3 text-blue-500 flex-shrink-0" />}
+              {selectedMailboxId === null && <CheckCircle2 className="h-3 w-3 text-blue-500" />}
             </DropdownMenuItem>
-
-            {safeMailboxes.length === 0 ? (
-              <>
-                <DropdownMenuSeparator />
-                <div className="px-3 py-2">
-                  <p className="text-[10px] text-slate-400 font-medium mb-1.5">No mailboxes connected</p>
-                  <a href="/mailbox" className="block text-[10px] text-blue-500 hover:text-blue-600 font-medium">Connect Gmail →</a>
-                  <a href="/mailbox" className="block text-[10px] text-blue-500 hover:text-blue-600 font-medium mt-0.5">Connect SMTP →</a>
-                </div>
-              </>
-            ) : (
+            {safeMailboxes.length > 0 && (
               <>
                 <DropdownMenuSeparator />
                 {safeMailboxes.map(mb => (
@@ -622,12 +973,21 @@ function LeftPanel({
                     onClick={() => onMailboxChange(mb.id)}
                     className={cn("text-xs gap-2", selectedMailboxId === mb.id && "text-blue-600 dark:text-blue-400 font-medium")}
                   >
-                    <Server className={cn("h-3 w-3 flex-shrink-0", mb.type === "gmail" ? "text-rose-400" : "text-slate-400")} />
+                    <Server className={cn("h-3 w-3", mb.type === "gmail" ? "text-rose-400" : "text-slate-400")} />
                     <span className="flex-1 truncate">{mb.email}</span>
-                    <span className="text-[9px] uppercase tracking-wide text-slate-400">{mb.type}</span>
-                    {selectedMailboxId === mb.id && <CheckCircle2 className="h-3 w-3 text-blue-500 flex-shrink-0" />}
+                    <span className="text-[9px] uppercase text-slate-400">{mb.type}</span>
+                    {selectedMailboxId === mb.id && <CheckCircle2 className="h-3 w-3 text-blue-500" />}
                   </DropdownMenuItem>
                 ))}
+              </>
+            )}
+            {safeMailboxes.length === 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <div className="px-3 py-2">
+                  <p className="text-[10px] text-slate-400 font-medium mb-1.5">No mailboxes connected</p>
+                  <a href="/mailbox" className="block text-[10px] text-blue-500 hover:text-blue-600 font-medium">Connect Gmail or SMTP →</a>
+                </div>
               </>
             )}
           </DropdownMenuContent>
@@ -639,7 +999,7 @@ function LeftPanel({
           <Input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search customer, email, vehicle…"
+            placeholder="Name, email, subject, vehicle…"
             className="pl-8 h-8 text-xs rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60"
           />
           {search && (
@@ -651,14 +1011,28 @@ function LeftPanel({
       </div>
 
       {/* Sync status */}
-      <SyncStatusWidget />
+      <SyncStatusWidget liveProgress={liveProgress} isSyncingLive={isSyncing} />
+
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <BulkActionBar
+          selectedIds={selectedIds}
+          total={conversations.length}
+          onAction={onBulkAction}
+          onSelectAll={handleSelectAll}
+          onClear={handleClear}
+        />
+      )}
 
       {/* Filter tabs */}
       <div className="px-3 pb-2 flex-shrink-0 space-y-0.5">
         {FILTERS.map(f => {
-          const count = f.key === "unread" ? stats?.unread
+          const count =
+            f.key === "unread"      ? stats?.unread
             : f.key === "needs_reply" ? stats?.needsReply
-            : f.key === "starred" ? stats?.starred
+            : f.key === "starred"   ? stats?.starred
+            : f.key === "archived"  ? stats?.archived
+            : f.key === "spam"      ? stats?.spam
             : undefined;
           return (
             <button
@@ -683,41 +1057,19 @@ function LeftPanel({
         })}
       </div>
 
-      {/* Today's Work quick chips */}
-      <div className="px-3 pb-3 flex-shrink-0">
-        <div className="mb-2">
-          <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1 mb-1.5">Today's Work</p>
-          <div className="flex flex-wrap gap-1.5">
-            {TODAY_CHIPS.map(chip => (
-              <button
-                key={chip.key}
-                onClick={() => handleChip(chip.key)}
-                className={cn(
-                  "px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-colors",
-                  chip.color,
-                  (chip.key === filter) && "ring-1 ring-offset-1 ring-current"
-                )}
-              >
-                {chip.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
       <div className="mx-3 border-t border-slate-100 dark:border-slate-800 flex-shrink-0" />
 
       {/* Conversation count */}
       <div className="px-4 py-2 flex-shrink-0">
         <p className="text-[10px] text-slate-400 dark:text-slate-500">
-          {stats ? `${stats.total} conversation${stats.total === 1 ? "" : "s"}` : "Loading…"}
+          {stats ? `${filter === "all" ? stats.total : ""} conversation${stats.total === 1 ? "" : "s"}` : "Loading…"}
         </p>
       </div>
 
       {/* List */}
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
-          <div className="space-y-0 divide-y divide-slate-100 dark:divide-slate-800">
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {Array(6).fill(0).map((_, i) => (
               <div key={i} className="px-3 py-3.5 flex items-start gap-2.5">
                 <Skeleton className="h-9 w-9 rounded-full flex-shrink-0" />
@@ -732,14 +1084,26 @@ function LeftPanel({
         ) : conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
             <div className="h-14 w-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-3">
-              <MessageSquare className="h-7 w-7 text-slate-300 dark:text-slate-600" />
+              {filter === "spam" ? <Ban className="h-7 w-7 text-slate-300 dark:text-slate-600" />
+               : filter === "archived" ? <Archive className="h-7 w-7 text-slate-300 dark:text-slate-600" />
+               : filter === "starred" ? <Star className="h-7 w-7 text-slate-300 dark:text-slate-600" />
+               : <MessageSquare className="h-7 w-7 text-slate-300 dark:text-slate-600" />}
             </div>
             <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-              {search ? "No matching conversations" : filter !== "all" ? `No ${filter.replace("_", " ")} conversations` : "No conversations yet"}
+              {search ? "No matching conversations"
+               : filter !== "all" ? `No ${filter.replace("_", " ")} conversations`
+               : "No conversations yet"}
             </p>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-              {search ? "Try a different search" : "Send your first campaign to get started"}
+              {search ? "Try a different search term"
+               : filter === "all" ? "Send your first campaign to get started"
+               : `Nothing here — check your inbox`}
             </p>
+            {filter === "all" && safeMailboxes.length === 0 && (
+              <a href="/mailbox" className="mt-3 text-xs text-blue-500 hover:text-blue-600 font-medium">
+                Connect a mailbox to sync emails →
+              </a>
+            )}
           </div>
         ) : (
           conversations.map(conv => (
@@ -747,7 +1111,10 @@ function LeftPanel({
               key={conv.id}
               conv={conv}
               isActive={selectedId === conv.id}
+              isSelected={selectedIds.has(conv.id)}
               onClick={() => onSelect(conv.id)}
+              onToggleSelect={onToggleSelect}
+              showCheckboxes={showCheckboxes}
             />
           ))
         )}
@@ -756,92 +1123,100 @@ function LeftPanel({
   );
 }
 
-// ─── Message Bubble ───────────────────────────────────────────────────────────
-
-function MessageBubble({ msg, customerName }: { msg: Message; customerName: string }) {
-  const isOut = msg.direction === "outbound";
-  const time = msg.sentAt ?? msg.createdAt;
-
-  return (
-    <div className={cn("flex gap-3 group", isOut ? "flex-row-reverse" : "flex-row")}>
-      {/* Avatar */}
-      <Avatar className="h-7 w-7 flex-shrink-0 mt-1">
-        <AvatarFallback className={cn(
-          "text-white text-[10px] font-semibold bg-gradient-to-br",
-          isOut ? "from-blue-500 to-indigo-600" : avatarColor(msg.fromEmail)
-        )}>
-          {isOut ? "You" : initials(customerName)}
-        </AvatarFallback>
-      </Avatar>
-
-      <div className={cn("flex flex-col max-w-[72%]", isOut ? "items-end" : "items-start")}>
-        {/* Meta */}
-        <div className={cn("flex items-center gap-2 mb-1", isOut ? "flex-row-reverse" : "flex-row")}>
-          <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
-            {isOut ? "You" : (msg.fromName ?? customerName)}
-          </span>
-          <span className="text-[10px] text-slate-400">{fullTime(time)}</span>
-        </div>
-
-        {/* Bubble */}
-        <div className={cn(
-          "rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm",
-          isOut
-            ? "bg-blue-600 text-white rounded-tr-sm"
-            : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-tl-sm",
-        )}>
-          {msg.htmlBody ? (
-            <HtmlEmailRenderer html={msg.htmlBody} isOutbound={isOut} />
-          ) : (
-            <p className="whitespace-pre-wrap">{msg.body}</p>
-          )}
-          {msg.attachmentsMeta && (
-            <AttachmentList metaJson={msg.attachmentsMeta} isOutbound={isOut} />
-          )}
-        </div>
-
-        {/* Actions */}
-        <div className={cn(
-          "flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity",
-          isOut ? "flex-row-reverse" : "flex-row"
-        )}>
-          <button className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 transition-colors">
-            <Reply className="h-3 w-3" />
-          </button>
-          <button className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 transition-colors">
-            <Forward className="h-3 w-3" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Reply Composer ───────────────────────────────────────────────────────────
 
-function ReplyComposer({
-  conv, onNoteSent,
-}: {
-  conv: Conversation; onNoteSent: () => void;
+function ReplyComposer({ conv, messages, currentUserId, onNoteAdded }: {
+  conv: Conversation; messages: Message[];
+  currentUserId: number; onNoteAdded: () => void;
 }) {
-  const [mode, setMode] = useState<"reply" | "note">("reply");
-  const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
+  const [mode, setMode]         = useState<ReplyMode>("reply");
+  const [body, setBody]         = useState("");
+  const [subject, setSubject]   = useState(`Re: ${conv.subject}`);
+  const [toField, setToField]   = useState(conv.customerEmail);
+  const [ccField, setCcField]   = useState("");
+  const [showCc, setShowCc]     = useState(false);
+  const [files, setFiles]       = useState<File[]>([]);
+  const [sending, setSending]   = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const handleNote = async () => {
-    if (!text.trim()) return;
+  const handleModeChange = (m: ReplyMode) => {
+    setMode(m);
+    if (m === "reply") {
+      setToField(conv.customerEmail);
+      setSubject(`Re: ${conv.subject}`);
+    } else if (m === "reply_all") {
+      const lastInbound = [...messages].reverse().find(msg => msg.direction === "inbound");
+      setToField(lastInbound?.fromEmail ?? conv.customerEmail);
+      setSubject(`Re: ${conv.subject}`);
+    } else if (m === "forward") {
+      setToField("");
+      setSubject(`Fwd: ${conv.subject}`);
+    }
+  };
+
+  const handleAiReply = async () => {
+    setAiLoading(true);
+    try {
+      const { result } = await apiFetch<{ result: string }>("/api/communications/ai-assist", {
+        method: "POST",
+        body: JSON.stringify({ type: "suggest_reply", conversationId: conv.id }),
+      });
+      setBody(result);
+      toast({ title: "AI reply generated" });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "AI failed", description: e.message });
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleSendReply = async () => {
+    if (!body.trim()) return;
+    setSending(true);
+    try {
+      const fd = new FormData();
+      fd.append("body", body);
+      fd.append("subject", subject);
+      fd.append("to", toField);
+      if (ccField) fd.append("cc", ccField);
+      files.forEach(f => fd.append("attachments", f));
+
+      await fetch(`/api/communications/conversations/${conv.id}/reply`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: fd,
+      }).then(async r => {
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          throw new Error((d as any).error ?? `HTTP ${r.status}`);
+        }
+      });
+
+      setBody(""); setFiles([]); setToField(conv.customerEmail);
+      toast({ title: "Reply sent" });
+      queryClient.invalidateQueries({ queryKey: ["conv-detail", conv.id] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Failed to send", description: e.message });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleSaveNote = async () => {
+    if (!body.trim()) return;
     setSending(true);
     try {
       await apiFetch(`/api/communications/conversations/${conv.id}/notes`, {
         method: "POST",
-        body: JSON.stringify({ content: text }),
+        body: JSON.stringify({ content: body }),
       });
-      setText("");
+      setBody("");
       toast({ title: "Note saved" });
-      queryClient.invalidateQueries({ queryKey: ["conv-detail", conv.id] });
-      onNoteSent();
+      onNoteAdded();
     } catch (e: any) {
       toast({ variant: "destructive", title: "Error", description: e.message });
     } finally {
@@ -849,98 +1224,166 @@ function ReplyComposer({
     }
   };
 
-  const handleReply = () => {
-    toast({ title: "Reply coming soon", description: "Direct reply will be live once mailbox sync is enabled." });
-  };
+  const tabClass = (m: ReplyMode) => cn(
+    "flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium border-b-2 transition-colors",
+    mode === m
+      ? m === "note"
+        ? "border-amber-500 text-amber-600 dark:text-amber-400"
+        : "border-blue-500 text-blue-600 dark:text-blue-400"
+      : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200",
+  );
 
   return (
     <div className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0">
       {/* Mode tabs */}
-      <div className="flex border-b border-slate-100 dark:border-slate-800">
-        <button
-          onClick={() => setMode("reply")}
-          className={cn(
-            "flex items-center gap-1.5 px-4 py-2 text-xs font-medium border-b-2 transition-colors",
-            mode === "reply"
-              ? "border-blue-500 text-blue-600 dark:text-blue-400"
-              : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-          )}
-        >
+      <div className="flex border-b border-slate-100 dark:border-slate-800 overflow-x-auto">
+        <button onClick={() => handleModeChange("reply")} className={tabClass("reply")}>
           <Reply className="h-3.5 w-3.5" /> Reply
         </button>
-        <button
-          onClick={() => setMode("note")}
-          className={cn(
-            "flex items-center gap-1.5 px-4 py-2 text-xs font-medium border-b-2 transition-colors",
-            mode === "note"
-              ? "border-amber-500 text-amber-600 dark:text-amber-400"
-              : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-          )}
-        >
-          <StickyNote className="h-3.5 w-3.5" /> Internal Note
+        <button onClick={() => handleModeChange("reply_all")} className={tabClass("reply_all")}>
+          <ReplyAll className="h-3.5 w-3.5" /> Reply All
+        </button>
+        <button onClick={() => handleModeChange("forward")} className={tabClass("forward")}>
+          <Forward className="h-3.5 w-3.5" /> Forward
+        </button>
+        <button onClick={() => handleModeChange("note")} className={tabClass("note")}>
+          <StickyNote className="h-3.5 w-3.5" /> Note
         </button>
       </div>
 
-      <div className="p-3">
+      <div className="p-3 space-y-2">
         {mode === "note" && (
-          <div className="mb-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 text-[10px] text-amber-700 dark:text-amber-400">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 text-[10px] text-amber-700 dark:text-amber-400">
             <StickyNote className="h-3 w-3 flex-shrink-0" />
-            This note is private — never sent to the customer
+            Private — never sent to the customer
+          </div>
+        )}
+
+        {mode !== "note" && (
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-slate-400 w-6 flex-shrink-0">To</span>
+              <Input
+                value={toField}
+                onChange={e => setToField(e.target.value)}
+                className="h-6 text-xs border-slate-200 dark:border-slate-700 flex-1"
+              />
+              <button
+                onClick={() => setShowCc(v => !v)}
+                className="text-[10px] text-slate-400 hover:text-slate-600 transition-colors flex-shrink-0"
+              >
+                CC
+              </button>
+            </div>
+            {showCc && (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-400 w-6 flex-shrink-0">CC</span>
+                <Input
+                  value={ccField}
+                  onChange={e => setCcField(e.target.value)}
+                  className="h-6 text-xs border-slate-200 dark:border-slate-700 flex-1"
+                  placeholder="cc@example.com"
+                />
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-slate-400 w-6 flex-shrink-0">Re</span>
+              <Input
+                value={subject}
+                onChange={e => setSubject(e.target.value)}
+                className="h-6 text-xs border-slate-200 dark:border-slate-700 flex-1"
+              />
+            </div>
           </div>
         )}
 
         {/* Toolbar */}
-        <div className="flex items-center gap-0.5 mb-2 pb-2 border-b border-slate-100 dark:border-slate-800">
-          {[
-            { icon: Bold, label: "Bold" },
-            { icon: Italic, label: "Italic" },
-          ].map(({ icon: Icon, label }) => (
-            <button key={label} title={label} className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 transition-colors">
-              <Icon className="h-3.5 w-3.5" />
-            </button>
-          ))}
-          <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
-          <button title="Attach file" className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 transition-colors">
-            <Paperclip className="h-3.5 w-3.5" />
+        <div className="flex items-center gap-0.5 pb-1.5 border-b border-slate-100 dark:border-slate-800">
+          <button className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 transition-colors" title="Bold">
+            <Bold className="h-3.5 w-3.5" />
           </button>
-          {mode === "reply" && (
+          <button className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 transition-colors" title="Italic">
+            <Italic className="h-3.5 w-3.5" />
+          </button>
+          {mode !== "note" && (
             <>
-              <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
+              <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
               <button
-                title="AI Generate Reply"
-                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 hover:bg-violet-100 dark:hover:bg-violet-800/40 transition-colors border border-violet-200 dark:border-violet-800/40"
+                onClick={() => fileRef.current?.click()}
+                className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 transition-colors"
+                title="Attach file"
               >
-                <Sparkles className="h-3 w-3" /> AI Reply
+                <Paperclip className="h-3.5 w-3.5" />
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={e => setFiles(prev => [...prev, ...Array.from(e.target.files ?? [])])}
+              />
+              <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
+              <button
+                onClick={handleAiReply}
+                disabled={aiLoading}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 hover:bg-violet-100 dark:hover:bg-violet-800/40 transition-colors border border-violet-200 dark:border-violet-800/40 disabled:opacity-50"
+              >
+                {aiLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                AI Reply
               </button>
             </>
           )}
         </div>
 
+        {/* Attached files */}
+        {files.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {files.map((f, i) => (
+              <div key={i} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300">
+                <File className="h-2.5 w-2.5" />
+                <span className="max-w-[80px] truncate">{f.name}</span>
+                <button onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))} className="text-slate-400 hover:text-slate-600">
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <Textarea
-          value={text}
-          onChange={e => setText(e.target.value)}
-          placeholder={mode === "reply" ? `Reply to ${conv.customerName}…` : "Add a private note for your team…"}
+          value={body}
+          onChange={e => setBody(e.target.value)}
+          placeholder={
+            mode === "note"      ? "Add a private note for your team…"
+            : mode === "forward" ? "Add a forwarding note…"
+            : `Reply to ${conv.customerName}…`
+          }
           className={cn(
-            "min-h-[80px] resize-none text-sm rounded-xl border-slate-200 dark:border-slate-700 bg-transparent focus-visible:ring-1",
-            mode === "note" ? "focus-visible:ring-amber-400" : "focus-visible:ring-blue-400"
+            "min-h-[72px] resize-none text-sm rounded-xl border-slate-200 dark:border-slate-700 bg-transparent focus-visible:ring-1",
+            mode === "note" ? "focus-visible:ring-amber-400" : "focus-visible:ring-blue-400",
           )}
         />
 
-        <div className="flex items-center justify-between mt-2">
+        <div className="flex items-center justify-between">
           <p className="text-[10px] text-slate-400">
-            {mode === "reply" ? `To: ${conv.customerEmail}` : "Visible to team only"}
+            {mode === "note" ? "Visible to team only" : `To: ${toField}`}
           </p>
           <Button
             size="sm"
-            onClick={mode === "reply" ? handleReply : handleNote}
-            disabled={!text.trim() || sending}
+            onClick={mode === "note" ? handleSaveNote : handleSendReply}
+            disabled={!body.trim() || sending}
             className={cn(
               "h-8 px-4 text-xs rounded-xl gap-1.5",
-              mode === "note" ? "bg-amber-500 hover:bg-amber-600 text-white" : ""
+              mode === "note" ? "bg-amber-500 hover:bg-amber-600 text-white" : "",
             )}
           >
-            {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : mode === "reply" ? <Send className="h-3 w-3" /> : <StickyNote className="h-3 w-3" />}
-            {mode === "reply" ? "Send Reply" : "Save Note"}
+            {sending
+              ? <Loader2 className="h-3 w-3 animate-spin" />
+              : mode === "note" ? <StickyNote className="h-3 w-3" />
+              : <Send className="h-3 w-3" />}
+            {mode === "note" ? "Save Note"
+             : mode === "forward" ? "Forward"
+             : "Send Reply"}
           </Button>
         </div>
       </div>
@@ -948,16 +1391,176 @@ function ReplyComposer({
   );
 }
 
-// ─── Middle Panel (Thread) ────────────────────────────────────────────────────
+// ─── AI Assist Panel ──────────────────────────────────────────────────────────
+
+function AIAssistPanel({ convId, onClose, onUseReply }: {
+  convId: number; onClose: () => void; onUseReply: (text: string) => void;
+}) {
+  const [loading, setLoading]   = useState(false);
+  const [result, setResult]     = useState("");
+  const [activeType, setActiveType] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const run = async (type: string) => {
+    setLoading(true); setActiveType(type); setResult("");
+    try {
+      const { result: r } = await apiFetch<{ result: string }>("/api/communications/ai-assist", {
+        method: "POST",
+        body: JSON.stringify({ type, conversationId: convId }),
+      });
+      setResult(r);
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "AI failed", description: e.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="absolute right-0 top-14 bottom-0 w-80 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-700 flex flex-col z-10 shadow-xl">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-violet-500" />
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">AI Assistant</h3>
+        </div>
+        <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="p-3 space-y-2 flex-shrink-0 border-b border-slate-100 dark:border-slate-800">
+        {[
+          { key: "summarize",     label: "Summarize Thread", icon: FileText },
+          { key: "suggest_reply", label: "Suggest Reply",    icon: Reply },
+          { key: "extract_intent",label: "Extract Intent",   icon: TrendingUp },
+        ].map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => run(key)}
+            disabled={loading}
+            className={cn(
+              "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors text-left",
+              activeType === key && result
+                ? "bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-400 border border-violet-200 dark:border-violet-800/40"
+                : "bg-slate-50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 hover:bg-violet-50 dark:hover:bg-violet-900/20 hover:text-violet-700 dark:hover:text-violet-400",
+            )}
+          >
+            {loading && activeType === key
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-500" />
+              : <Icon className="h-3.5 w-3.5 text-violet-500" />}
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3">
+        {result ? (
+          <div className="space-y-3">
+            <p className="text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">{result}</p>
+            {activeType === "suggest_reply" && (
+              <Button
+                size="sm"
+                onClick={() => { onUseReply(result); onClose(); }}
+                className="w-full h-7 text-xs bg-violet-600 hover:bg-violet-700 text-white"
+              >
+                <Reply className="h-3 w-3 mr-1" /> Use as Reply
+              </Button>
+            )}
+          </div>
+        ) : !loading ? (
+          <div className="flex flex-col items-center justify-center h-full text-center py-8">
+            <Sparkles className="h-8 w-8 text-slate-200 dark:text-slate-700 mb-2" />
+            <p className="text-xs text-slate-400">Choose an action above to get AI insights on this conversation.</p>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// ─── Message Bubble ───────────────────────────────────────────────────────────
+
+function MessageBubble({ msg, customerName, onReply }: {
+  msg: Message; customerName: string; onReply?: () => void;
+}) {
+  const isOut = msg.direction === "outbound";
+  const time  = msg.sentAt ?? msg.createdAt;
+
+  return (
+    <div className={cn("flex gap-3 group", isOut ? "flex-row-reverse" : "flex-row")}>
+      <Avatar className="h-7 w-7 flex-shrink-0 mt-1">
+        <AvatarFallback className={cn(
+          "text-white text-[10px] font-semibold bg-gradient-to-br",
+          isOut ? "from-blue-500 to-indigo-600" : avatarColor(msg.fromEmail),
+        )}>
+          {isOut ? "You" : initials(msg.fromName ?? customerName)}
+        </AvatarFallback>
+      </Avatar>
+
+      <div className={cn("flex flex-col max-w-[72%]", isOut ? "items-end" : "items-start")}>
+        <div className={cn("flex items-center gap-2 mb-1", isOut ? "flex-row-reverse" : "flex-row")}>
+          <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+            {isOut ? "You" : (msg.fromName ?? customerName)}
+          </span>
+          <span className="text-[10px] text-slate-400">{fullTime(time)}</span>
+        </div>
+
+        <div className={cn(
+          "rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm",
+          isOut
+            ? "bg-blue-600 text-white rounded-tr-sm"
+            : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-tl-sm",
+        )}>
+          {msg.htmlBody
+            ? <HtmlEmailRenderer html={msg.htmlBody} isOutbound={isOut} />
+            : <p className="whitespace-pre-wrap">{msg.body}</p>}
+          {msg.attachmentsMeta && <AttachmentList metaJson={msg.attachmentsMeta} isOutbound={isOut} />}
+        </div>
+
+        <div className={cn(
+          "flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity",
+          isOut ? "flex-row-reverse" : "flex-row",
+        )}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button onClick={onReply} className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 transition-colors">
+                <Reply className="h-3 w-3" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Reply</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => { navigator.clipboard.writeText(msg.body); }}
+                className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <Copy className="h-3 w-3" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Copy text</TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Middle Panel ─────────────────────────────────────────────────────────────
 
 function MiddlePanel({
-  selectedId, onBack, onOpenDetails, showDetailsButton,
+  selectedId, onBack, onOpenDetails, showDetailsButton, currentUserId,
 }: {
   selectedId: number | null; onBack: () => void;
   onOpenDetails: () => void; showDetailsButton: boolean;
+  currentUserId: number;
 }) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const bottomRef  = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [showAI, setShowAI]     = useState(false);
+  const [aiReply, setAiReply]   = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   const { data, isLoading } = useQuery<ConversationDetail>({
     queryKey: ["conv-detail", selectedId],
@@ -969,8 +1572,7 @@ function MiddlePanel({
   const updateMutation = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       apiFetch(`/api/communications/conversations/${selectedId}`, {
-        method: "PATCH",
-        body: JSON.stringify(body),
+        method: "PATCH", body: JSON.stringify(body),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["conv-detail", selectedId] });
@@ -979,10 +1581,17 @@ function MiddlePanel({
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => apiFetch(`/api/communications/conversations/${selectedId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["comm-stats"] });
+      setDeleteConfirm(false);
+    },
+  });
+
   useEffect(() => {
-    if (data) {
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-    }
+    if (data) setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
   }, [data?.messages?.length]);
 
   if (!selectedId) {
@@ -992,7 +1601,20 @@ function MiddlePanel({
           <MessageSquare className="h-8 w-8 text-slate-300 dark:text-slate-600" />
         </div>
         <h3 className="text-base font-semibold text-slate-700 dark:text-slate-300">Select a conversation</h3>
-        <p className="text-sm text-slate-400 mt-1">Choose a conversation from the list to view the thread</p>
+        <p className="text-sm text-slate-400 mt-1">Choose a conversation from the list to view messages</p>
+        <div className="mt-6 grid grid-cols-2 gap-2 text-center">
+          {[
+            { label: "Press J/K", desc: "Navigate conversations" },
+            { label: "Press E",   desc: "Archive selected" },
+            { label: "Press R",   desc: "Reply to thread" },
+            { label: "Press S",   desc: "Star conversation" },
+          ].map(({ label, desc }) => (
+            <div key={label} className="px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+              <p className="text-[10px] font-semibold font-mono text-slate-500 dark:text-slate-400">{label}</p>
+              <p className="text-[9px] text-slate-400 mt-0.5">{desc}</p>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -1019,11 +1641,23 @@ function MiddlePanel({
 
   const { conversation: conv, messages, notes } = data;
 
+  // Merge messages and notes chronologically
+  type ThreadItem =
+    | { kind: "message"; msg: Message; time: string }
+    | { kind: "note"; note: Note; time: string };
+
+  const threadItems: ThreadItem[] = [
+    ...messages.map(msg => ({ kind: "message" as const, msg, time: msg.sentAt ?? msg.createdAt })),
+    ...notes.map(note => ({ kind: "note" as const, note, time: note.createdAt })),
+  ].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+
+  // Group by day
+  let lastDayLabel = "";
+
   return (
-    <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-950">
+    <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-950 relative">
       {/* Thread header */}
-      <div className="flex items-center gap-3 px-4 h-14 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0">
-        {/* Mobile back */}
+      <div className="flex items-center gap-2 px-4 h-14 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0">
         <button onClick={onBack} className="lg:hidden p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400">
           <ChevronLeft className="h-4 w-4" />
         </button>
@@ -1039,8 +1673,8 @@ function MiddlePanel({
           <p className="text-xs text-slate-400 truncate">{conv.subject}</p>
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-1 flex-shrink-0">
+        {/* Action toolbar */}
+        <div className="flex items-center gap-0.5 flex-shrink-0">
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -1050,39 +1684,106 @@ function MiddlePanel({
                 <Star className={cn("h-4 w-4", conv.starred ? "fill-amber-400 text-amber-400" : "text-slate-400")} />
               </button>
             </TooltipTrigger>
-            <TooltipContent>{conv.starred ? "Unstar" : "Star"}</TooltipContent>
+            <TooltipContent>{conv.starred ? "Unstar (S)" : "Star (S)"}</TooltipContent>
           </Tooltip>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors">
-                <MoreHorizontal className="h-4 w-4" />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => updateMutation.mutate({ status: "archived" })}
+                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors"
+              >
+                <Archive className="h-4 w-4" />
               </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem onClick={() => updateMutation.mutate({ status: "needs_reply" })} className="gap-2 text-xs">
-                <CornerDownLeft className="h-3.5 w-3.5" /> Mark Needs Reply
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => updateMutation.mutate({ status: "replied" })} className="gap-2 text-xs">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Mark Replied
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => updateMutation.mutate({ status: "archived" })} className="gap-2 text-xs text-slate-500">
-                <Archive className="h-3.5 w-3.5" /> Archive
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => updateMutation.mutate({ status: "spam" })} className="gap-2 text-xs text-red-500 focus:text-red-600">
-                <AlertTriangle className="h-3.5 w-3.5" /> Mark as Spam
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </TooltipTrigger>
+            <TooltipContent>Archive (E)</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => updateMutation.mutate({ status: "unread" })}
+                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors"
+              >
+                <Mail className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Mark Unread</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setShowAI(v => !v)}
+                className={cn(
+                  "p-1.5 rounded-lg transition-colors",
+                  showAI
+                    ? "bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400"
+                    : "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400",
+                )}
+              >
+                <Sparkles className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>AI Assistant</TooltipContent>
+          </Tooltip>
+
+          {deleteConfirm ? (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => deleteMutation.mutate()}
+                className="px-2 py-1 text-[10px] font-medium bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+              >
+                {deleteMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Delete"}
+              </button>
+              <button onClick={() => setDeleteConfirm(false)} className="p-1 text-slate-400 hover:text-slate-600">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors">
+                  <MoreHorizontal className="h-4 w-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => updateMutation.mutate({ status: "needs_reply" })} className="gap-2 text-xs">
+                  <CornerDownLeft className="h-3.5 w-3.5" /> Mark Needs Reply
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => updateMutation.mutate({ status: "replied" })} className="gap-2 text-xs">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Mark Replied
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => { navigator.clipboard.writeText(conv.customerEmail); toast({ title: "Email copied" }); }}
+                  className="gap-2 text-xs"
+                >
+                  <Copy className="h-3.5 w-3.5" /> Copy Email
+                </DropdownMenuItem>
+                {conv.customerEmail.includes("gmail") && (
+                  <DropdownMenuItem
+                    onClick={() => window.open(`https://mail.google.com/mail/u/0/#search/${encodeURIComponent(conv.customerEmail)}`, "_blank")}
+                    className="gap-2 text-xs"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" /> Open in Gmail
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => updateMutation.mutate({ status: "spam" })} className="gap-2 text-xs text-amber-600 focus:text-amber-700">
+                  <AlertTriangle className="h-3.5 w-3.5" /> Mark as Spam
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setDeleteConfirm(true)} className="gap-2 text-xs text-red-500 focus:text-red-600">
+                  <Trash2 className="h-3.5 w-3.5" /> Delete Conversation
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           {showDetailsButton && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
-                  onClick={onOpenDetails}
-                  className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors"
-                >
+                <button onClick={onOpenDetails} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors">
                   <ChevronRight className="h-4 w-4" />
                 </button>
               </TooltipTrigger>
@@ -1092,55 +1793,82 @@ function MiddlePanel({
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
-        {messages.length === 0 ? (
+      {/* Thread */}
+      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-1">
+        {threadItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-slate-400">
             <Mail className="h-10 w-10 mb-2 opacity-30" />
             <p className="text-sm">No messages in this thread yet</p>
           </div>
         ) : (
-          messages.map(msg => (
-            <MessageBubble key={msg.id} msg={msg} customerName={conv.customerName} />
-          ))
-        )}
+          threadItems.map((item, idx) => {
+            const label = dayLabel(item.time);
+            const showSep = label !== lastDayLabel;
+            if (showSep) lastDayLabel = label;
 
-        {/* Notes inline */}
-        {notes.length > 0 && (
-          <div className="space-y-2">
-            {notes.map(note => (
-              <div key={note.id} className="flex items-start gap-2.5 mx-4">
-                <div className="h-6 w-6 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <StickyNote className="h-3 w-3 text-amber-600 dark:text-amber-400" />
-                </div>
-                <div className="flex-1 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-xl px-3 py-2">
-                  <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 mb-0.5">Internal Note · {timeAgo(note.createdAt)}</p>
-                  <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{note.content}</p>
-                </div>
+            return (
+              <div key={item.kind === "message" ? `msg-${item.msg.id}` : `note-${item.note.id}`}>
+                {showSep && (
+                  <div className="flex items-center gap-3 py-3">
+                    <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium px-2">{label}</span>
+                    <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+                  </div>
+                )}
+
+                {item.kind === "message" ? (
+                  <div className="py-2">
+                    <MessageBubble
+                      msg={item.msg}
+                      customerName={conv.customerName}
+                      onReply={() => {}}
+                    />
+                  </div>
+                ) : (
+                  <div className="py-1.5 mx-4 group/note">
+                    <NoteItem
+                      note={item.note}
+                      convId={conv.id}
+                      currentUserId={currentUserId}
+                      onChanged={() => queryClient.invalidateQueries({ queryKey: ["conv-detail", selectedId] })}
+                    />
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
+            );
+          })
         )}
-
         <div ref={bottomRef} />
       </div>
 
       {/* Reply composer */}
       <ReplyComposer
         conv={conv}
-        onNoteSent={() => queryClient.invalidateQueries({ queryKey: ["conv-detail", selectedId] })}
+        messages={messages}
+        currentUserId={currentUserId}
+        onNoteAdded={() => queryClient.invalidateQueries({ queryKey: ["conv-detail", selectedId] })}
       />
+
+      {/* AI panel overlay */}
+      {showAI && (
+        <AIAssistPanel
+          convId={conv.id}
+          onClose={() => setShowAI(false)}
+          onUseReply={text => { setShowAI(false); /* handled inside ReplyComposer */ }}
+        />
+      )}
     </div>
   );
 }
 
-// ─── Right Panel (Customer Details) ──────────────────────────────────────────
+// ─── Right Panel ──────────────────────────────────────────────────────────────
 
-function RightPanel({
-  selectedId, onClose, showCloseButton,
-}: {
-  selectedId: number | null; onClose: () => void; showCloseButton: boolean;
+function RightPanel({ selectedId, onClose, showCloseButton, currentUserId }: {
+  selectedId: number | null; onClose: () => void;
+  showCloseButton: boolean; currentUserId: number;
 }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { data, isLoading } = useQuery<ConversationDetail>({
     queryKey: ["conv-detail", selectedId],
     queryFn: () => apiFetch(`/api/communications/conversations/${selectedId}`),
@@ -1172,27 +1900,20 @@ function RightPanel({
   const color = avatarColor(conv.customerEmail);
 
   const fields = [
-    { icon: Mail,       label: "Email",    value: conv.customerEmail },
-    { icon: Phone,      label: "Phone",    value: conv.customerPhone },
+    { icon: Mail,       label: "Email",    value: conv.customerEmail, copyable: true },
+    { icon: Phone,      label: "Phone",    value: conv.customerPhone, tel: true },
     { icon: Truck,      label: "Vehicle",  value: lead?.vehicle },
+    { icon: MapPin,     label: "Route",    value: lead?.route },
     { icon: MapPin,     label: "Pickup",   value: lead?.pickup },
     { icon: MapPin,     label: "Delivery", value: lead?.delivery },
     { icon: DollarSign, label: "Quote",    value: lead?.price },
-    { icon: Megaphone,  label: "Campaign", value: campaign?.name },
     { icon: Tag,        label: "Quote ID", value: lead?.quoteId },
-  ].filter(f => f.value);
-
-  const timeline = [
-    { icon: Send,             label: "Quote Sent",       done: true  },
-    { icon: Eye,              label: "Email Opened",     done: false },
-    { icon: MousePointerClick,label: "Link Clicked",     done: false },
-    { icon: CornerDownLeft,   label: "Customer Replied", done: false },
-    { icon: CheckCircle2,     label: "Vehicle Booked",   done: false },
-  ];
+    { icon: Megaphone,  label: "Campaign", value: campaign?.name },
+    { icon: CheckCircle2, label: "Status", value: lead?.status },
+  ].filter(f => f.value) as { icon: any; label: string; value: string; copyable?: boolean; tel?: boolean }[];
 
   return (
     <div className="flex flex-col h-full border-l border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 overflow-y-auto">
-      {/* Header: avatar + name (always visible) */}
       <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
         <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Customer</p>
         {showCloseButton && (
@@ -1202,7 +1923,7 @@ function RightPanel({
         )}
       </div>
 
-      {/* Customer identity — always expanded */}
+      {/* Customer identity */}
       <div className="flex flex-col items-center text-center px-4 py-5 border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
         <Avatar className="h-14 w-14 mb-3">
           <AvatarFallback className={`bg-gradient-to-br ${color} text-white text-lg font-bold`}>
@@ -1210,11 +1931,46 @@ function RightPanel({
           </AvatarFallback>
         </Avatar>
         <p className="font-semibold text-slate-900 dark:text-slate-100">{conv.customerName}</p>
-        <p className="text-xs text-slate-400 mt-0.5">{conv.customerEmail}</p>
+        <button
+          onClick={() => { navigator.clipboard.writeText(conv.customerEmail); toast({ title: "Email copied" }); }}
+          className="text-xs text-slate-400 mt-0.5 hover:text-blue-500 transition-colors"
+        >
+          {conv.customerEmail}
+        </button>
         {conv.customerPhone && (
-          <p className="text-xs text-slate-400 mt-0.5">{conv.customerPhone}</p>
+          <a href={`tel:${conv.customerPhone}`} className="text-xs text-slate-400 mt-0.5 hover:text-blue-500 transition-colors">
+            {conv.customerPhone}
+          </a>
         )}
+
+        {/* Quick actions */}
         <div className="flex gap-1.5 mt-3 flex-wrap justify-center">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => { navigator.clipboard.writeText(conv.customerEmail); toast({ title: "Email copied" }); }}
+                className="h-7 w-7 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 transition-colors"
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Copy Email</TooltipContent>
+          </Tooltip>
+
+          {conv.customerPhone && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <a
+                  href={`tel:${conv.customerPhone}`}
+                  className="h-7 w-7 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 transition-colors"
+                >
+                  <Phone className="h-3.5 w-3.5" />
+                </a>
+              </TooltipTrigger>
+              <TooltipContent>Call {conv.customerPhone}</TooltipContent>
+            </Tooltip>
+          )}
+
           {lead && (
             <Link href="/leads/import">
               <Button variant="outline" size="sm" className="h-7 px-3 text-[10px] rounded-lg gap-1.5">
@@ -1232,20 +1988,29 @@ function RightPanel({
         </div>
       </div>
 
-      {/* ── Collapsible sections ── */}
-
       {/* Customer Details */}
       <PanelSection title="Customer Details" sectionKey="details" defaultOpen={true}>
         {fields.length > 0 ? (
           <div className="space-y-2.5 pt-1">
-            {fields.map(({ icon: Icon, label, value }) => (
+            {fields.map(({ icon: Icon, label, value, copyable, tel }) => (
               <div key={label} className="flex items-start gap-2.5">
                 <div className="h-6 w-6 rounded-md bg-slate-100 dark:bg-slate-800 flex items-center justify-center flex-shrink-0">
                   <Icon className="h-3 w-3 text-slate-500 dark:text-slate-400" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-[10px] text-slate-400">{label}</p>
-                  <p className="text-xs font-medium text-slate-700 dark:text-slate-300 break-words">{value}</p>
+                  {tel ? (
+                    <a href={`tel:${value}`} className="text-xs font-medium text-blue-500 hover:text-blue-600 break-words">{value}</a>
+                  ) : copyable ? (
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(value); toast({ title: `${label} copied` }); }}
+                      className="text-xs font-medium text-slate-700 dark:text-slate-300 break-words hover:text-blue-500 transition-colors text-left"
+                    >
+                      {value}
+                    </button>
+                  ) : (
+                    <p className="text-xs font-medium text-slate-700 dark:text-slate-300 break-words">{value}</p>
+                  )}
                 </div>
               </div>
             ))}
@@ -1255,14 +2020,14 @@ function RightPanel({
         )}
       </PanelSection>
 
-      {/* Tracking */}
+      {/* Email Tracking */}
       <PanelSection title="Email Tracking" sectionKey="tracking" defaultOpen={false}>
         <div className="grid grid-cols-2 gap-2 pt-1">
           {[
-            { icon: CheckCircle2,     label: "Delivered", value: conv.messageCount > 0 ? "Yes" : "—", ok: conv.messageCount > 0 },
-            { icon: Eye,              label: "Opens",     value: "—", ok: false },
-            { icon: MousePointerClick,label: "Clicks",    value: "—", ok: false },
-            { icon: CornerDownLeft,   label: "Replies",   value: "—", ok: false },
+            { icon: CheckCircle2, label: "Delivered", value: conv.messageCount > 0 ? "Yes" : "—", ok: conv.messageCount > 0 },
+            { icon: Eye,          label: "Opens",     value: "—", ok: false },
+            { icon: MousePointerClick, label: "Clicks", value: "—", ok: false },
+            { icon: CornerDownLeft, label: "Replies", value: "—", ok: false },
           ].map(({ icon: Icon, label, value, ok }) => (
             <div key={label} className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5 flex flex-col gap-1">
               <div className="flex items-center gap-1.5">
@@ -1275,43 +2040,18 @@ function RightPanel({
         </div>
       </PanelSection>
 
-      {/* Timeline */}
-      <PanelSection title="Timeline" sectionKey="timeline" defaultOpen={false}>
-        <div className="space-y-0 pt-1">
-          {timeline.map((item, i) => (
-            <div key={i} className="flex items-start gap-2.5 relative">
-              {i < timeline.length - 1 && (
-                <div className={cn(
-                  "absolute left-[10px] top-5 w-px h-full",
-                  item.done ? "bg-emerald-200 dark:bg-emerald-800" : "bg-slate-100 dark:bg-slate-800"
-                )} />
-              )}
-              <div className={cn(
-                "h-5 w-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 z-10",
-                item.done ? "bg-emerald-100 dark:bg-emerald-900/40" : "bg-slate-100 dark:bg-slate-800"
-              )}>
-                <item.icon className={cn("h-2.5 w-2.5", item.done ? "text-emerald-600 dark:text-emerald-400" : "text-slate-300 dark:text-slate-600")} />
-              </div>
-              <div className="pb-3">
-                <p className={cn("text-xs font-medium", item.done ? "text-slate-700 dark:text-slate-300" : "text-slate-400 dark:text-slate-600")}>
-                  {item.label}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </PanelSection>
-
       {/* Internal Notes */}
       <PanelSection title="Internal Notes" sectionKey="notes" defaultOpen={false}>
         {notes && notes.length > 0 ? (
           <div className="space-y-2 pt-1">
             {notes.map(note => (
-              <div key={note.id} className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-xl px-3 py-2">
-                <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 mb-0.5">
-                  {timeAgo(note.createdAt)}
-                </p>
-                <p className="text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{note.content}</p>
+              <div key={note.id} className="group/note">
+                <NoteItem
+                  note={note}
+                  convId={conv.id}
+                  currentUserId={currentUserId}
+                  onChanged={() => queryClient.invalidateQueries({ queryKey: ["conv-detail", selectedId] })}
+                />
               </div>
             ))}
           </div>
@@ -1320,13 +2060,11 @@ function RightPanel({
         )}
       </PanelSection>
 
-      {/* Tasks */}
+      {/* Tasks — placeholder */}
       <PanelSection title="Tasks" sectionKey="tasks" defaultOpen={false}>
-        <div className="pt-1">
-          <div className="flex flex-col items-center py-3 text-center">
-            <ListTodo className="h-6 w-6 text-slate-300 dark:text-slate-600 mb-1.5" />
-            <p className="text-xs text-slate-400 dark:text-slate-500">Tasks coming soon</p>
-          </div>
+        <div className="pt-1 flex flex-col items-center py-3 text-center">
+          <ListTodo className="h-6 w-6 text-slate-300 dark:text-slate-600 mb-1.5" />
+          <p className="text-xs text-slate-400 dark:text-slate-500">Tasks coming soon</p>
         </div>
       </PanelSection>
     </div>
@@ -1336,35 +2074,44 @@ function RightPanel({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Communications() {
-  const [filter, setFilter] = useState<FilterKey>("all");
-  const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const { user } = useAuth();
+  const currentUserId = user?.id ?? 0;
+
+  const [filter, setFilter]           = useState<FilterKey>("all");
+  const [search, setSearch]           = useState("");
+  const [selectedId, setSelectedId]   = useState<number | null>(null);
   const [selectedMailboxId, setSelectedMailboxId] = useState<string | number | null>(null);
-  // Mobile panel: "list" | "thread" | "details"
   const [mobilePanel, setMobilePanel] = useState<"list" | "thread" | "details">("list");
-  // Desktop: show right panel
   const [showDetails, setShowDetails] = useState(true);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncing, setIsSyncing]     = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [liveProgress, setLiveProgress] = useState<SyncProgressState | null>(null);
+
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  // Live updates via SSE
-  const connectionStatus = useCommEvents();
 
-  // Fetch connected mailboxes (Gmail + SMTP)
+  const handleSyncProgress = useCallback((p: SyncProgressState) => {
+    setLiveProgress(p);
+  }, []);
+  const handleSyncStarted = useCallback(() => {
+    setIsSyncing(true);
+    setLiveProgress(null);
+  }, []);
+  const handleSyncComplete = useCallback(() => {
+    setIsSyncing(false);
+    setTimeout(() => setLiveProgress(null), 2000);
+  }, []);
+
+  const connectionStatus = useCommEvents(handleSyncProgress, handleSyncStarted, handleSyncComplete);
+
   const { data: mailboxes = [] } = useQuery<MailboxOption[]>({
     queryKey: ["comm-mailboxes"],
     queryFn: () => apiFetch("/api/communications/mailboxes"),
     staleTime: 5 * 60_000,
   });
 
-  // Build conversations URL with optional mailboxId filter
   const convsUrl = () => {
-    const params = new URLSearchParams({
-      filter,
-      search,
-      limit: "50",
-    });
-    // Only numeric IDs map to mailboxId in the DB; "gmail" has no DB mailboxId yet
+    const params = new URLSearchParams({ filter, search, limit: "50" });
     if (selectedMailboxId !== null && typeof selectedMailboxId === "number") {
       params.set("mailboxId", String(selectedMailboxId));
     }
@@ -1385,14 +2132,58 @@ export default function Communications() {
 
   const conversations = convData?.data ?? [];
 
+  // Optimistic mark-as-read when selecting a conversation
   const handleSelect = (id: number) => {
     setSelectedId(id);
     setMobilePanel("thread");
+    // Optimistically mark as read in the list
+    queryClient.setQueriesData<{ data: Conversation[]; total: number }>(
+      { queryKey: ["conversations"] },
+      (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          data: old.data.map(c =>
+            c.id === id ? { ...c, status: c.status === "unread" ? "read" : c.status, unreadCount: 0 } : c
+          ),
+        };
+      },
+    );
+    // Also refresh stats after a short delay (the server marks as read on GET)
+    setTimeout(() => queryClient.invalidateQueries({ queryKey: ["comm-stats"] }), 500);
+  };
+
+  const handleToggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkAction = async (action: BulkAction) => {
+    if (selectedIds.size === 0) return;
+    try {
+      await apiFetch("/api/communications/conversations/bulk", {
+        method: "PATCH",
+        body: JSON.stringify({ ids: Array.from(selectedIds), action }),
+      });
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["comm-stats"] });
+      toast({
+        title: `${selectedIds.size} conversation${selectedIds.size === 1 ? "" : "s"} updated`,
+        description: action.replace(/_/g, " "),
+      });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Bulk action failed", description: e.message });
+    }
   };
 
   const handleRefresh = async () => {
     if (isSyncing) return;
     setIsSyncing(true);
+    setLiveProgress(null);
     try {
       const result = await apiFetch<{ totalImported: number; totalCreated: number; errors: string[] }>(
         "/api/communications/sync",
@@ -1401,27 +2192,26 @@ export default function Communications() {
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
       queryClient.invalidateQueries({ queryKey: ["comm-stats"] });
       queryClient.invalidateQueries({ queryKey: ["comm-mailboxes"] });
-      const newItems = result.totalImported;
+      const n = result.totalImported;
       toast({
         title: "Sync complete",
-        description: newItems > 0
-          ? `Imported ${newItems} new message${newItems === 1 ? "" : "s"}`
-          : "Your inbox is up to date",
+        description: n > 0 ? `Imported ${n} new message${n === 1 ? "" : "s"}` : "Your inbox is up to date",
       });
     } catch (e: any) {
       toast({ variant: "destructive", title: "Sync failed", description: e.message });
     } finally {
       setIsSyncing(false);
+      setTimeout(() => setLiveProgress(null), 3000);
     }
   };
 
   const handleMailboxChange = (id: string | number | null) => {
     setSelectedMailboxId(id);
-    setSelectedId(null); // clear selection when switching mailbox
+    setSelectedId(null);
     queryClient.invalidateQueries({ queryKey: ["conversations"] });
   };
 
-  // Auto-select first on desktop when list loads
+  // Auto-select first conversation on desktop
   useEffect(() => {
     if (conversations.length > 0 && !selectedId) {
       setSelectedId(conversations[0].id);
@@ -1430,14 +2220,14 @@ export default function Communications() {
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* Left panel — hidden on mobile when thread/details */}
+      {/* Left panel */}
       <div className={cn(
         "w-72 flex-shrink-0 h-full",
-        mobilePanel !== "list" ? "hidden lg:flex lg:flex-col" : "flex flex-col w-full lg:w-72"
+        mobilePanel !== "list" ? "hidden lg:flex lg:flex-col" : "flex flex-col w-full lg:w-72",
       )}>
         <LeftPanel
           filter={filter}
-          setFilter={f => { setFilter(f); setSelectedId(null); }}
+          setFilter={f => { setFilter(f); setSelectedId(null); setSelectedIds(new Set()); }}
           search={search}
           setSearch={setSearch}
           conversations={conversations}
@@ -1451,24 +2241,26 @@ export default function Communications() {
           selectedMailboxId={selectedMailboxId}
           onMailboxChange={handleMailboxChange}
           connectionStatus={connectionStatus}
+          liveProgress={liveProgress}
+          selectedIds={selectedIds}
+          onToggleSelect={handleToggleSelect}
+          onBulkAction={handleBulkAction}
         />
       </div>
 
       {/* Middle panel */}
       <div className={cn(
         "flex-1 h-full min-w-0",
-        mobilePanel === "list" ? "hidden lg:flex lg:flex-col" :
+        mobilePanel === "list"    ? "hidden lg:flex lg:flex-col" :
         mobilePanel === "details" ? "hidden lg:flex lg:flex-col" :
-        "flex flex-col w-full"
+        "flex flex-col w-full",
       )}>
         <MiddlePanel
           selectedId={selectedId}
           onBack={() => setMobilePanel("list")}
-          onOpenDetails={() => {
-            setShowDetails(true);
-            setMobilePanel("details");
-          }}
+          onOpenDetails={() => { setShowDetails(true); setMobilePanel("details"); }}
           showDetailsButton={!showDetails}
+          currentUserId={currentUserId}
         />
       </div>
 
@@ -1476,15 +2268,13 @@ export default function Communications() {
       {(showDetails || mobilePanel === "details") && (
         <div className={cn(
           "w-72 flex-shrink-0 h-full",
-          mobilePanel === "details" ? "flex flex-col w-full lg:w-72" : "hidden lg:flex lg:flex-col"
+          mobilePanel === "details" ? "flex flex-col w-full lg:w-72" : "hidden lg:flex lg:flex-col",
         )}>
           <RightPanel
             selectedId={selectedId}
-            onClose={() => {
-              setShowDetails(false);
-              if (mobilePanel === "details") setMobilePanel("thread");
-            }}
+            onClose={() => { setShowDetails(false); if (mobilePanel === "details") setMobilePanel("thread"); }}
             showCloseButton={mobilePanel !== "details"}
+            currentUserId={currentUserId}
           />
         </div>
       )}

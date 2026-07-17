@@ -27,8 +27,12 @@ export type CommEventType =
   | "new_message"
   | "conversation_updated"
   | "sync_started"
+  | "sync_progress"
   | "sync_complete"
   | "note_added"
+  | "note_updated"
+  | "note_deleted"
+  | "read_updated"
   | "tracking_event"
   | "mailbox_status";
 
@@ -87,6 +91,15 @@ export function broadcastAll(event: CommEvent): void {
   }
 }
 
+/** Broadcast an event to every connection for a specific user. Alias kept for symmetry. */
+export function broadcastRead(userId: number, conversationId: number): void {
+  broadcastToUser(userId, {
+    type: "read_updated",
+    conversationId,
+    data: { status: "read", unreadCount: 0 },
+  });
+}
+
 export function getConnectionCount(): number {
   let count = 0;
   for (const b of connections.values()) count += b.size;
@@ -106,12 +119,25 @@ interface SyncState {
   isSyncing: boolean;
   lastSyncAt: Date | null;
   lastSyncResults: SyncMailboxResult[];
+  // Live progress (only meaningful while isSyncing = true)
+  currentMailbox: string | null;
+  currentFolder: string | null;
+  scanned: number;
+  imported: number;
+  totalMailboxes: number;
+  completedMailboxes: number;
 }
 
 let syncState: SyncState = {
   isSyncing: false,
   lastSyncAt: null,
   lastSyncResults: [],
+  currentMailbox: null,
+  currentFolder: null,
+  scanned: 0,
+  imported: 0,
+  totalMailboxes: 0,
+  completedMailboxes: 0,
 };
 
 export function getSyncState(): Readonly<SyncState> {
@@ -119,11 +145,62 @@ export function getSyncState(): Readonly<SyncState> {
 }
 
 /** Call this at the very start of runCommSync (before any mailbox work). */
-export function markSyncStarted(): void {
-  syncState = { ...syncState, isSyncing: true };
+export function markSyncStarted(totalMailboxes = 0): void {
+  syncState = {
+    ...syncState,
+    isSyncing: true,
+    currentMailbox: null,
+    currentFolder: null,
+    scanned: 0,
+    imported: 0,
+    totalMailboxes,
+    completedMailboxes: 0,
+  };
+  broadcastAll({ type: "sync_started", data: { totalMailboxes } });
+}
+
+/**
+ * Call this as each mailbox / folder is processed.
+ * Broadcasts a sync_progress event to the user so the UI can show live progress.
+ */
+export function markSyncProgress(
+  userId: number,
+  mailbox: string,
+  folder: string,
+  scanned: number,
+  imported: number,
+): void {
+  syncState = { ...syncState, currentMailbox: mailbox, currentFolder: folder, scanned, imported };
+  broadcastToUser(userId, {
+    type: "sync_progress",
+    data: { mailbox, folder, scanned, imported },
+  });
+}
+
+/** Call this when a mailbox finishes so we can update the completed count. */
+export function markMailboxComplete(userId: number, mailbox: string, imported: number, error?: string): void {
+  syncState = { ...syncState, completedMailboxes: syncState.completedMailboxes + 1 };
+  broadcastToUser(userId, {
+    type: "sync_progress",
+    data: {
+      mailbox,
+      folder: null,
+      scanned: syncState.scanned,
+      imported: syncState.imported,
+      mailboxDone: true,
+      error,
+    },
+  });
 }
 
 /** Call this after runCommSync finishes (success or partial error). */
 export function markSyncComplete(results: SyncMailboxResult[]): void {
-  syncState = { isSyncing: false, lastSyncAt: new Date(), lastSyncResults: results };
+  syncState = {
+    ...syncState,
+    isSyncing: false,
+    lastSyncAt: new Date(),
+    lastSyncResults: results,
+    currentMailbox: null,
+    currentFolder: null,
+  };
 }

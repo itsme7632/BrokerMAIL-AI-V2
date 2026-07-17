@@ -37,6 +37,8 @@ import {
   broadcastAll,
   markSyncStarted,
   markSyncComplete,
+  markSyncProgress,
+  markMailboxComplete,
   type SyncMailboxResult,
 } from "./comm-events";
 
@@ -394,6 +396,8 @@ async function syncGmailInbox(user: User): Promise<SyncResult> {
       String(sinceDate.getDate()).padStart(2, "0"),
     ].join("/");
 
+    markSyncProgress(user.id, r.mailbox, "INBOX", 0, 0);
+
     // Fetch up to 500 message IDs (1 API page)
     const listRes = await gmail.users.messages.list({
       userId: "me",
@@ -403,6 +407,7 @@ async function syncGmailInbox(user: User): Promise<SyncResult> {
 
     const msgRefs = listRes.data.messages ?? [];
     r.messagesScanned = msgRefs.length;
+    markSyncProgress(user.id, r.mailbox, "INBOX", r.messagesScanned, 0);
 
     const brokerEmail = (user.gmailEmail ?? "").toLowerCase();
 
@@ -479,6 +484,10 @@ async function syncGmailInbox(user: User): Promise<SyncResult> {
           r.messagesImported++;
           if (conv.isNew) r.conversationsCreated++;
           else r.conversationsUpdated++;
+          // Broadcast progress every 10 messages
+          if (r.messagesImported % 10 === 0) {
+            markSyncProgress(user.id, r.mailbox, "INBOX", r.messagesScanned, r.messagesImported);
+          }
         }
       } catch (msgErr) {
         logger.warn(
@@ -499,6 +508,7 @@ async function syncGmailInbox(user: User): Promise<SyncResult> {
     logger.error({ err, userId: user.id }, "[COMM-SYNC] Gmail sync error");
   }
 
+  markMailboxComplete(user.id, r.mailbox, r.messagesImported, r.error);
   r.durationMs = Date.now() - t0;
   return r;
 }
@@ -528,6 +538,7 @@ async function scanImapFolder(
     // Take the most-recent 1000 (higher seq nums = more recent)
     const range = seqNums.slice(-1000);
     r.messagesScanned += range.length;
+    markSyncProgress(userId, r.mailbox, folder, r.messagesScanned, r.messagesImported);
 
     const messages = await client.fetchAll(range.join(","), { source: true });
 
@@ -596,6 +607,9 @@ async function scanImapFolder(
           r.messagesImported++;
           if (conv.isNew) r.conversationsCreated++;
           else r.conversationsUpdated++;
+          if (r.messagesImported % 10 === 0) {
+            markSyncProgress(userId, r.mailbox, folder, r.messagesScanned, r.messagesImported);
+          }
         }
       } catch (msgErr) {
         logger.warn(
@@ -701,6 +715,7 @@ async function syncImapMailbox(mailbox: Mailbox, userId: number): Promise<SyncRe
     client.logout().catch(() => {});
   }
 
+  markMailboxComplete(userId, r.mailbox, r.messagesImported, r.error);
   r.durationMs = Date.now() - t0;
   return r;
 }
@@ -715,7 +730,17 @@ async function syncImapMailbox(mailbox: Mailbox, userId: number): Promise<SyncRe
  */
 export async function runCommSync(targetUserId?: number): Promise<SyncResult[]> {
   const results: SyncResult[] = [];
-  markSyncStarted();
+
+  // Count total mailboxes so progress panel can show N/M
+  let totalMailboxes = 0;
+  if (targetUserId) {
+    const hasGmail = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.id, targetUserId), eq(usersTable.gmailConnected, true))).limit(1);
+    const hasImap = await db.select({ id: mailboxesTable.id }).from(mailboxesTable)
+      .where(and(eq(mailboxesTable.userId, targetUserId), isNotNull(mailboxesTable.imapHost))).limit(1);
+    totalMailboxes = (hasGmail.length > 0 ? 1 : 0) + hasImap.length;
+  }
+  markSyncStarted(totalMailboxes);
 
   try {
     // ── Gmail users ──────────────────────────────────────────────────────────
