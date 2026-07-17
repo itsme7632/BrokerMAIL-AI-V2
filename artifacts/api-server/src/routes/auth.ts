@@ -583,4 +583,85 @@ router.post("/auth/reset-password", async (req, res): Promise<void> => {
   res.json({ message: "Password updated successfully" });
 });
 
+// ─── Update Profile ───────────────────────────────────────────────────────────
+
+router.patch("/users/profile", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+  const { name, timezone } = req.body as { name?: string; timezone?: string };
+
+  if (!name?.trim()) {
+    res.status(400).json({ error: "Name is required" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(usersTable)
+    .set({ name: name.trim(), timezone: timezone?.trim() || "UTC", updatedAt: new Date() })
+    .where(eq(usersTable.id, user.id))
+    .returning();
+
+  res.json(userShape(updated));
+});
+
+// ─── Change Password ──────────────────────────────────────────────────────────
+
+router.patch("/users/password", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+  const { currentPassword, newPassword } = req.body as {
+    currentPassword?: string;
+    newPassword?: string;
+  };
+
+  if (!currentPassword || !newPassword) {
+    res.status(400).json({ error: "Current and new password are required" });
+    return;
+  }
+  if (newPassword.length < 8) {
+    res.status(400).json({ error: "Password must be at least 8 characters" });
+    return;
+  }
+
+  const [fullUser] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, user.id));
+
+  if (!fullUser?.passwordHash) {
+    res.status(400).json({ error: "Password change is not available for social login accounts" });
+    return;
+  }
+
+  const valid = await comparePassword(currentPassword, fullUser.passwordHash);
+  if (!valid) {
+    res.status(400).json({ error: "Current password is incorrect" });
+    return;
+  }
+
+  const newHash = await hashPassword(newPassword);
+
+  // Send notification email (non-fatal)
+  try {
+    const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+      ?? req.ip
+      ?? null;
+    const ua = req.headers["user-agent"] ?? null;
+    const { html, text } = buildPasswordChangedEmail(fullUser.name, new Date(), ip, ua);
+    await sendTransactionalEmail({
+      to:      fullUser.email,
+      subject: "Your BrokerMAIL AI password was changed",
+      html,
+      text,
+    });
+  } catch (err) {
+    req.log.warn({ err }, "Failed to send password-changed email");
+  }
+
+  await db
+    .update(usersTable)
+    .set({ passwordHash: newHash, updatedAt: new Date() })
+    .where(eq(usersTable.id, user.id));
+
+  res.json({ ok: true });
+});
+
 export default router;

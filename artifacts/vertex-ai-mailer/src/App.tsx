@@ -52,6 +52,7 @@ import Roadmap from "@/pages/Roadmap";
 import Feedback from "@/pages/Feedback";
 import ReportBug from "@/pages/ReportBug";
 import Notifications from "@/pages/Notifications";
+import MyProfile from "@/pages/MyProfile";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -240,6 +241,12 @@ function Router() {
       <Route path="/notifications">
         <ProtectedRoute>
           <AppLayout><Notifications /></AppLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/profile">
+        <ProtectedRoute>
+          <AppLayout><MyProfile /></AppLayout>
         </ProtectedRoute>
       </Route>
 

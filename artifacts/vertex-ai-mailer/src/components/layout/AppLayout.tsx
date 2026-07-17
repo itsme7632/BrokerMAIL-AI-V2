@@ -115,79 +115,157 @@ function ThemeToggle() {
 
 // ─── User profile dropdown ────────────────────────────────────────────────────
 
+function getPlanStyle(planName: string) {
+  const n = planName.toLowerCase();
+  if (n.includes("enterprise"))
+    return { cls: "bg-amber-500/15 border-amber-500/30 text-amber-400", dot: "bg-amber-400" };
+  if (n.includes("growth") || n.includes("pro"))
+    return { cls: "bg-purple-500/15 border-purple-500/30 text-purple-400", dot: "bg-purple-400" };
+  if (n.includes("starter"))
+    return { cls: "bg-blue-500/15 border-blue-500/30 text-blue-400", dot: "bg-blue-400" };
+  return { cls: "bg-slate-500/15 border-slate-500/30 text-slate-400", dot: "bg-slate-400" };
+}
+
 function UserProfileDropdown({ user, logout }: {
-  user: { name: string; email: string; avatarUrl?: string | null; role?: string };
+  user: { name: string; email: string; avatarUrl?: string | null; role?: string; emailVerified?: boolean };
   logout: () => void;
 }) {
-  const initials = user.name.charAt(0).toUpperCase();
+  const [planName, setPlanName] = useState<string | null>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem("auth_token") ?? "";
+    if (!token) return;
+    fetch("/api/billing/subscription", { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => d?.plan?.name && setPlanName(d.plan.name))
+      .catch(() => {});
+  }, []);
+
+  const initials = user.name
+    .split(" ")
+    .map(w => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  const plan = planName ? getPlanStyle(planName) : null;
+
+  const navItems = [
+    { href: "/profile",       icon: Zap,        label: "My Profile",      desc: "Account & security" },
+    { href: "/settings",      icon: Palette,    label: "Brand Settings",  desc: "Logo, colors & signature" },
+    { href: "/mailbox",       icon: Server,     label: "Mailboxes",       desc: "SMTP accounts" },
+    { href: "/plans",         icon: CreditCard, label: "Billing & Plans", desc: "Subscription & usage" },
+    { href: "/notifications", icon: Bell,       label: "Notifications",   desc: "Activity feed" },
+    { href: "/support",       icon: HelpCircle, label: "Help & Support",  desc: "Get assistance" },
+  ];
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="flex items-center gap-2 h-9 px-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors group focus:outline-none">
-          <Avatar className="h-7 w-7 border border-slate-200 dark:border-slate-600 flex-shrink-0">
+        <button className="flex items-center gap-2 h-9 px-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700/70 transition-all duration-200 group focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50">
+          <Avatar className="h-7 w-7 border border-slate-200 dark:border-slate-600 flex-shrink-0 shadow-sm">
             {user.avatarUrl
               ? <AvatarImage src={user.avatarUrl} alt={user.name} />
-              : <AvatarFallback className="bg-gradient-to-br from-blue-400 to-blue-600 text-white text-xs font-semibold">{initials}</AvatarFallback>}
+              : <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white text-xs font-bold">{initials}</AvatarFallback>}
           </Avatar>
           <div className="hidden md:flex flex-col items-start text-left min-w-0">
-            <span className="text-sm font-medium text-slate-900 dark:text-slate-100 leading-none truncate max-w-[120px]">{user.name}</span>
+            <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 leading-none truncate max-w-[110px]">{user.name}</span>
           </div>
-          <ChevronDown className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500 flex-shrink-0" />
+          <ChevronDown className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500 flex-shrink-0 group-data-[state=open]:rotate-180 transition-transform duration-200" />
         </button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" sideOffset={6} className="w-56 rounded-xl shadow-xl p-1">
-        <DropdownMenuLabel className="px-3 py-2">
-          <p className="text-sm font-semibold truncate">{user.name}</p>
-          <p className="text-xs text-muted-foreground truncate mt-0.5">{user.email}</p>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
+      <DropdownMenuContent
+        align="end"
+        sideOffset={8}
+        className="w-72 rounded-2xl shadow-2xl p-0 overflow-hidden border border-border/80 dark:border-slate-700/60 bg-card dark:bg-slate-900"
+      >
+        {/* ── Account card ── */}
+        <div className="relative px-4 py-4 bg-gradient-to-br from-blue-600/8 via-indigo-500/5 to-transparent border-b border-border/60 dark:border-slate-700/60">
+          <div className="flex items-center gap-3">
+            {/* Large avatar */}
+            <Avatar className="h-12 w-12 border-2 border-white/20 dark:border-slate-600/60 shadow-lg flex-shrink-0">
+              {user.avatarUrl
+                ? <AvatarImage src={user.avatarUrl} alt={user.name} />
+                : <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white text-base font-bold">{initials}</AvatarFallback>}
+            </Avatar>
 
-        <DropdownMenuItem asChild className="rounded-lg cursor-pointer">
-          <Link href="/settings">
-            <Settings className="mr-2 h-4 w-4 text-muted-foreground" /> My Account
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild className="rounded-lg cursor-pointer">
-          <Link href="/settings">
-            <Palette className="mr-2 h-4 w-4 text-muted-foreground" /> Branding Settings
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild className="rounded-lg cursor-pointer">
-          <Link href="/mailbox">
-            <Server className="mr-2 h-4 w-4 text-muted-foreground" /> Mailbox Settings
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild className="rounded-lg cursor-pointer">
-          <Link href="/plans">
-            <CreditCard className="mr-2 h-4 w-4 text-muted-foreground" /> Billing
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild className="rounded-lg cursor-pointer">
-          <Link href="/support">
-            <HelpCircle className="mr-2 h-4 w-4 text-muted-foreground" /> Support
-          </Link>
-        </DropdownMenuItem>
+            {/* Identity */}
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-foreground dark:text-slate-100 truncate leading-tight">{user.name}</p>
+              <p className="text-xs text-muted-foreground dark:text-slate-400 truncate mt-0.5">{user.email}</p>
+              <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                {plan && planName && (
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${plan.cls}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${plan.dot}`} />
+                    {planName} Plan
+                  </span>
+                )}
+                {user.emailVerified && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 border border-blue-500/20 text-blue-400">
+                    ✓ Verified
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
 
-        {user.role === "admin" && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild className="rounded-lg cursor-pointer">
-              <Link href="/admin/dashboard">
-                <ShieldAlert className="mr-2 h-4 w-4 text-muted-foreground" /> Admin Panel
+        {/* ── Nav items ── */}
+        <div className="p-1.5 space-y-0.5">
+          {navItems.map(item => (
+            <DropdownMenuItem key={item.href} asChild className="rounded-xl cursor-pointer p-0 focus:bg-transparent">
+              <Link
+                href={item.href}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-secondary dark:hover:bg-slate-800/60 transition-all duration-150 group/item w-full"
+              >
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-secondary dark:bg-slate-800/80 border border-border dark:border-slate-700/60 flex-shrink-0 group-hover/item:border-blue-500/30 transition-colors">
+                  <item.icon className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400 group-hover/item:text-blue-500 dark:group-hover/item:text-blue-400 transition-colors" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-foreground dark:text-slate-200 leading-none">{item.label}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">{item.desc}</p>
+                </div>
               </Link>
             </DropdownMenuItem>
+          ))}
+        </div>
+
+        {/* ── Admin section ── */}
+        {user.role === "admin" && (
+          <>
+            <DropdownMenuSeparator className="my-0 bg-border dark:bg-slate-800" />
+            <div className="px-1.5 pt-1 pb-1.5">
+              <p className="px-3 pt-1 pb-1 text-[9px] font-semibold text-slate-400 uppercase tracking-widest">Administration</p>
+              <DropdownMenuItem asChild className="rounded-xl cursor-pointer p-0 focus:bg-transparent">
+                <Link
+                  href="/admin/dashboard"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-secondary dark:hover:bg-slate-800/60 transition-all duration-150 group/item w-full"
+                >
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/10 border border-amber-500/20 flex-shrink-0">
+                    <ShieldAlert className="h-3.5 w-3.5 text-amber-500 dark:text-amber-400" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground dark:text-slate-200 leading-none">Admin Dashboard</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Platform management</p>
+                  </div>
+                </Link>
+              </DropdownMenuItem>
+            </div>
           </>
         )}
 
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={logout}
-          className="rounded-lg cursor-pointer text-red-600 focus:bg-red-50 dark:focus:bg-red-950/40 focus:text-red-700 dark:focus:text-red-400"
-        >
-          <LogOut className="mr-2 h-4 w-4" /> Log out
-        </DropdownMenuItem>
+        {/* ── Sign out ── */}
+        <DropdownMenuSeparator className="my-0 bg-border dark:bg-slate-800" />
+        <div className="p-1.5">
+          <DropdownMenuItem
+            onClick={logout}
+            className="rounded-xl cursor-pointer px-3 py-2.5 text-red-500 dark:text-red-400 focus:bg-red-50 dark:focus:bg-red-950/40 focus:text-red-600 dark:focus:text-red-400 transition-colors"
+          >
+            <LogOut className="mr-3 h-3.5 w-3.5 flex-shrink-0" />
+            <span className="text-sm font-medium">Sign Out</span>
+          </DropdownMenuItem>
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );

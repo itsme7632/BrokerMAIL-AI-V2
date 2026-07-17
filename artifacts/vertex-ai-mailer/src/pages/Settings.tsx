@@ -426,71 +426,51 @@ export default function Settings() {
           {/* ── Profile + Gmail 2-column ──────────────────────────────────── */}
           <div className="grid lg:grid-cols-2 gap-6">
 
-            {/* ── Profile ───────────────────────────────────────────────────── */}
-            <div className="rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 overflow-hidden">
-              <CardHeader icon={User} iconColor="bg-secondary dark:bg-slate-700/80 text-muted-foreground dark:text-slate-300" label="Profile Information" />
-              <div className="p-6 space-y-5">
-                {/* Avatar + identity */}
-                <div className="flex items-center gap-4">
-                  <div className="relative flex-shrink-0">
-                    {user?.avatarUrl ? (
-                      <img src={user.avatarUrl} alt={user.name} className="h-14 w-14 rounded-full object-cover ring-2 ring-border dark:ring-slate-700" />
-                    ) : (
-                      <div className="h-14 w-14 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-lg ring-2 ring-border dark:ring-slate-700 shadow-lg">
-                        {initials}
-                      </div>
-                    )}
-                    <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-green-500 border-2 border-card dark:border-slate-900" title="Active" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-foreground dark:text-white text-base leading-tight">{user?.name}</p>
-                    <p className="text-sm text-muted-foreground dark:text-slate-400 mt-0.5 truncate">{user?.email}</p>
-                    <div className="flex items-center gap-2 mt-2 flex-wrap">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-500/10 border border-blue-500/20 text-blue-400">
-                        <Zap className="h-2.5 w-2.5" />
-                        {user?.role === "admin" ? "Admin" : "Agent"}
-                      </span>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-500/10 border border-green-500/20 text-green-400">
-                        <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
-                        Active
-                      </span>
-                      {user?.gmailConnected && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-muted dark:bg-slate-700/60 border border-border/80 dark:border-slate-600 text-muted-foreground dark:text-slate-300">
-                          <Mail className="h-2.5 w-2.5" />
-                          Gmail
-                        </span>
+            {/* ── My Profile shortcut ──────────────────────────────────────── */}
+            <Link href="/profile">
+              <div className="rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 overflow-hidden cursor-pointer group hover:border-blue-500/40 dark:hover:border-blue-500/30 hover:shadow-lg hover:shadow-blue-500/5 transition-all duration-200">
+                {/* Gradient accent */}
+                <div className="h-1 bg-gradient-to-r from-blue-600 via-indigo-500 to-purple-600" />
+                <div className="p-6">
+                  {/* Avatar row */}
+                  <div className="flex items-center gap-4 mb-5">
+                    <div className="relative flex-shrink-0">
+                      {user?.avatarUrl ? (
+                        <img src={user.avatarUrl} alt={user.name} className="h-14 w-14 rounded-full object-cover ring-2 ring-border dark:ring-slate-700" />
+                      ) : (
+                        <div className="h-14 w-14 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-lg ring-2 ring-border dark:ring-slate-700 shadow-lg">
+                          {initials}
+                        </div>
                       )}
+                      <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-green-500 border-2 border-card dark:border-slate-900" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-foreground dark:text-white text-base leading-tight">{user?.name}</p>
+                      <p className="text-sm text-muted-foreground dark:text-slate-400 mt-0.5 truncate">{user?.email}</p>
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-500/10 border border-blue-500/20 text-blue-400">
+                          <Zap className="h-2.5 w-2.5" />
+                          {user?.role === "admin" ? "Admin" : "Agent"}
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-500/10 border border-green-500/20 text-green-400">
+                          <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+                          Active
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Detail grid */}
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div className="rounded-xl bg-secondary/60 dark:bg-slate-800/50 border border-border dark:border-slate-700/60 px-3.5 py-3">
-                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Company</p>
-                    <p className="text-sm text-foreground dark:text-slate-200 font-medium truncate">
-                      {branding.companyName || <span className="text-slate-500 italic text-xs">Not configured</span>}
-                    </p>
-                  </div>
-                  <div className="rounded-xl bg-secondary/60 dark:bg-slate-800/50 border border-border dark:border-slate-700/60 px-3.5 py-3">
-                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Phone</p>
-                    <p className="text-sm text-foreground dark:text-slate-200 font-medium truncate">
-                      {branding.companyPhone || <span className="text-slate-500 italic text-xs">Not configured</span>}
-                    </p>
-                  </div>
-                  <div className="rounded-xl bg-secondary/60 dark:bg-slate-800/50 border border-border dark:border-slate-700/60 px-3.5 py-3">
-                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Member Since</p>
-                    <p className="text-sm text-foreground dark:text-slate-200 font-medium">{memberSince ?? <span className="text-slate-500 italic text-xs">Not configured</span>}</p>
-                  </div>
-                  <div className="rounded-xl bg-secondary/60 dark:bg-slate-800/50 border border-border dark:border-slate-700/60 px-3.5 py-3">
-                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Gmail Status</p>
-                    <p className="text-sm font-medium truncate" style={{ color: user?.gmailConnected ? "#4ade80" : "#94a3b8" }}>
-                      {user?.gmailConnected ? "Connected" : "Not connected"}
-                    </p>
+                  {/* CTA */}
+                  <div className="flex items-center justify-between rounded-xl bg-secondary/60 dark:bg-slate-800/50 border border-border dark:border-slate-700/60 px-4 py-3 group-hover:bg-blue-500/5 group-hover:border-blue-500/20 transition-all duration-200">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground dark:text-slate-100">My Profile</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Name, password, security &amp; preferences</p>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-blue-500 group-hover:translate-x-0.5 transition-all duration-200 flex-shrink-0" />
                   </div>
                 </div>
               </div>
-            </div>
+            </Link>
 
             {/* ── Gmail Integration ──────────────────────────────────────────── */}
             <div className="rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 overflow-hidden">
