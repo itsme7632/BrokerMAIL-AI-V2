@@ -6,7 +6,7 @@ import {
   LayoutDashboard, FileText, UploadCloud, Mail, Settings, ShieldAlert,
   Menu, X, Server, CreditCard, SendHorizonal, Megaphone, LayoutGrid,
   LogOut, Palette, HelpCircle, ChevronDown, Moon, Sun, PenLine, TicketCheck,
-  Zap, Sparkles, Map, MessageSquare, Bug, Lightbulb, Bell,
+  Zap, Sparkles, Map, MessageSquare, Bug, Lightbulb, Bell, Inbox,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -27,6 +27,7 @@ const NAV_GROUPS = [
   {
     label: "COMMUNICATION",
     items: [
+      { href: "/communications",    icon: Inbox,        label: "Communications",   exact: false },
       { href: "/compose",           icon: PenLine,      label: "Compose Email",    exact: true  },
       { href: "/templates",         icon: FileText,     label: "Templates",        exact: true  },
       { href: "/templates/gallery", icon: LayoutGrid,   label: "Template Gallery", exact: true  },
@@ -471,6 +472,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (!user) return null;
 
+  const isAdmin = location.startsWith("/admin");
+  const isComms = location.startsWith("/communications");
+
   return (
     <div className="flex min-h-screen w-full bg-slate-50 dark:bg-slate-950">
       {/* Desktop sidebar */}
@@ -492,12 +496,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopHeader onMobileMenuClick={() => setMobileOpen(true)} />
         <HeaderBanner />
-        <main className="flex-1 overflow-auto">
-          {/* Admin routes get full-width layout; all other pages stay centered */}
-          <div className={location.startsWith("/admin") ? "w-full px-5 py-5 min-w-0" : "max-w-6xl mx-auto w-full px-6 py-8"}>
+        {/* Communications gets its own scroll-per-panel layout; admin is full-width padded; others are centered */}
+        {isComms ? (
+          <main className="flex-1 overflow-hidden">
             {children}
-          </div>
-        </main>
+          </main>
+        ) : (
+          <main className="flex-1 overflow-auto">
+            <div className={isAdmin ? "w-full px-5 py-5 min-w-0" : "max-w-6xl mx-auto w-full px-6 py-8"}>
+              {children}
+            </div>
+          </main>
+        )}
       </div>
 
       {/* Global product-hub overlays (rendered once at root level) */}

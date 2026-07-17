@@ -1,0 +1,598 @@
+# BrokerMAIL AI - Build Communication Center (Enterprise Feature)
+
+IMPORTANT:
+
+I have attached a UI mockup as a visual reference.
+
+Use it as inspiration for:
+
+- Layout
+- Visual hierarchy
+- Three-column communication layout
+- Spacing
+- Card positioning
+
+Do NOT copy it pixel-for-pixel.
+
+Instead, adapt it into BrokerMAIL AI's existing design language so it feels native to the application.
+
+Maintain:
+
+• Existing dark theme
+• Existing sidebar
+• Existing typography
+• Existing colors
+• Existing animations
+• Existing component architecture
+
+==================================================
+VISION
+==================================================
+
+BrokerMAIL AI should no longer feel like an email sender.
+
+It should become a Communication Center for vehicle shipping brokers.
+
+This page will become one of the primary pages users spend their day in.
+
+Everything should revolve around customer conversations instead of individual emails.
+
+==================================================
+SIDEBAR
+==================================================
+
+Rename the communication section.
+
+COMMUNICATION
+
+• Communications
+• Compose Email
+• Templates
+
+Keep:
+
+Sent Emails
+
+Drafts (temporary)
+
+The existing Gmail Drafts page may remain temporarily until its functionality is merged into Communications.
+
+==================================================
+COMMUNICATIONS PAGE
+==================================================
+
+Create a brand-new page.
+
+Route:
+
+/communications
+
+Desktop layout:
+
+--------------------------------------------------------------
+
+Conversation List
+
+Conversation Viewer
+
+Customer / Lead Details
+
+--------------------------------------------------------------
+
+Responsive:
+
+Desktop = 3 columns
+
+Tablet = 2 columns
+
+Mobile = slide between panels
+
+==================================================
+LEFT PANEL
+==================================================
+
+Search bar
+
+Conversation filters
+
+Unread
+
+Needs Reply
+
+Starred
+
+Archived
+
+Spam
+
+Mailbox selector
+
+Conversation list.
+
+Each conversation card should display:
+
+Avatar
+
+Customer Name
+
+Email
+
+Subject
+
+Preview
+
+Time
+
+Unread Badge
+
+Mailbox
+
+Status
+
+Examples:
+
+Unread
+
+Needs Reply
+
+Replied
+
+AI Draft Ready
+
+Every row should have hover effects and selection states.
+
+==================================================
+CONVERSATION VIEW
+==================================================
+
+When a conversation is selected:
+
+Display the full conversation thread.
+
+Messages should look similar to Gmail or Outlook.
+
+Separate incoming and outgoing messages.
+
+Show:
+
+Sender
+
+Time
+
+Attachments
+
+Inline images
+
+HTML email rendering
+
+Quoted replies
+
+Message status
+
+Reply tracking
+
+Each email should have actions:
+
+Reply
+
+Reply All
+
+Forward
+
+Archive
+
+Delete
+
+Mark Read
+
+Copy
+
+Print
+
+==================================================
+REPLY COMPOSER
+==================================================
+
+At the bottom:
+
+Rich editor
+
+Formatting
+
+Attachments
+
+Variables
+
+Templates
+
+Signature
+
+Schedule Send
+
+AI Reply
+
+Buttons:
+
+Generate Reply
+
+Improve Reply
+
+Professional
+
+Friendly
+
+Negotiation
+
+Shorter
+
+Longer
+
+Follow-up
+
+Booking Reminder
+
+Payment Reminder
+
+==================================================
+RIGHT PANEL
+==================================================
+
+Customer Details
+
+Display:
+
+Avatar
+
+Customer Name
+
+Email
+
+Phone
+
+Company
+
+Vehicle
+
+Pickup
+
+Delivery
+
+Quote Amount
+
+Campaign
+
+Mailbox
+
+Lead Source
+
+Buttons:
+
+Open Lead
+
+Open Campaign
+
+Create Task
+
+View Activity
+
+==================================================
+CONVERSATION TIMELINE
+==================================================
+
+Under Customer Details create a timeline.
+
+Example:
+
+✓ Quote Sent
+
+✓ Delivered
+
+✓ Opened
+
+✓ Link Clicked
+
+✓ Customer Replied
+
+✓ AI Reply Generated
+
+✓ Broker Replied
+
+✓ Vehicle Booked
+
+Timeline should be chronological.
+
+==================================================
+EMAIL TRACKING
+==================================================
+
+Show:
+
+Delivered
+
+Opened
+
+Clicks
+
+Replies
+
+Bounce
+
+Last Activity
+
+Device
+
+Browser
+
+Location (if available)
+
+==================================================
+INCOMING MAIL
+==================================================
+
+Support:
+
+Gmail API
+
+IMAP
+
+SMTP
+
+Every connected mailbox should synchronize incoming emails.
+
+==================================================
+THREADING
+==================================================
+
+Group emails into conversations.
+
+Use:
+
+Message-ID
+
+In-Reply-To
+
+References
+
+Normalized Subject
+
+Never create duplicate conversations.
+
+==================================================
+DATABASE
+==================================================
+
+Create scalable models if needed.
+
+Conversations
+
+Messages
+
+Participants
+
+Attachments
+
+Conversation Labels
+
+Conversation Status
+
+Internal Notes
+
+Tasks
+
+==================================================
+NOTIFICATIONS
+==================================================
+
+Fix all notification routing.
+
+Examples:
+
+Customer replied
+
+↓
+
+Open exact conversation
+
+Email opened
+
+↓
+
+Open conversation
+
+Highlight email
+
+AI draft ready
+
+↓
+
+Open conversation
+
+Mailbox disconnected
+
+↓
+
+Open Mailboxes
+
+Notifications must always deep-link correctly.
+
+==================================================
+SEARCH
+==================================================
+
+Global conversation search.
+
+Search by:
+
+Customer
+
+Email
+
+Phone
+
+Vehicle
+
+Pickup
+
+Delivery
+
+Quote Number
+
+Campaign
+
+Body
+
+==================================================
+FILTERS
+==================================================
+
+Unread
+
+Read
+
+Needs Reply
+
+Has Attachment
+
+Campaign
+
+Mailbox
+
+Opened
+
+Clicked
+
+Assigned
+
+Date
+
+==================================================
+AI FEATURES
+==================================================
+
+AI should understand the entire conversation.
+
+Suggested replies.
+
+Rewrite.
+
+Translate.
+
+Summarize conversation.
+
+Extract customer intent.
+
+Detect urgency.
+
+Suggest next action.
+
+Generate follow-up.
+
+==================================================
+INTERNAL NOTES
+==================================================
+
+Allow brokers to write private notes.
+
+Notes should never be emailed.
+
+Visible only to team members.
+
+==================================================
+TASKS
+==================================================
+
+Create reminders from conversations.
+
+Example:
+
+Call customer tomorrow.
+
+Waiting for payment.
+
+Waiting for documents.
+
+Vehicle pickup tomorrow.
+
+==================================================
+EMPTY STATES
+==================================================
+
+Beautiful illustrations.
+
+Examples:
+
+No conversations
+
+Mailbox not connected
+
+Searching...
+
+No unread messages
+
+==================================================
+PERFORMANCE
+==================================================
+
+Lazy loading.
+
+Infinite scrolling.
+
+Virtualized conversation list.
+
+Optimistic UI.
+
+Realtime updates.
+
+==================================================
+DESIGN
+==================================================
+
+Follow the attached mockup closely for layout.
+
+Keep BrokerMAIL AI branding.
+
+Dark theme.
+
+Rounded cards.
+
+Premium spacing.
+
+Soft shadows.
+
+Modern SaaS design.
+
+==================================================
+IMPORTANT
+==================================================
+
+This should NOT feel like Gmail.
+
+It should feel like a CRM communication workspace built specifically for vehicle shipping brokers.
+
+Users should be able to manage every customer conversation without constantly switching back to Gmail.
+
+==================================================
+FUTURE READY
+==================================================
+
+Design the architecture so new communication channels can be added without redesigning the page.
+
+Future integrations:
+
+SMS
+
+WhatsApp
+
+Facebook Messenger
+
+Live Chat
+
+Phone Call Logs
+
+Slack
+
+Microsoft Teams
+
+Only email needs to work today.
+
+The architecture should already support future channels.

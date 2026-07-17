@@ -28,3 +28,6 @@ export * from "./bug-reports";
 export * from "./announcements";
 export * from "./user-release-reads";
 export * from "./notifications";
+export * from "./comm_conversations";
+export * from "./comm_messages";
+export * from "./comm_notes";
