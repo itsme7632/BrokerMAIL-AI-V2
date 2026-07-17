@@ -583,6 +583,27 @@ router.post("/auth/reset-password", async (req, res): Promise<void> => {
   res.json({ message: "Password updated successfully" });
 });
 
+// ─── Update Avatar ────────────────────────────────────────────────────────────
+
+router.patch("/users/avatar", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+  const { avatar } = req.body as { avatar?: string | null };
+
+  // Must be a data URL or null/undefined (to remove)
+  if (avatar && !avatar.startsWith("data:image/")) {
+    res.status(400).json({ error: "Invalid image format. Expected a data URL." });
+    return;
+  }
+
+  const [updated] = await db
+    .update(usersTable)
+    .set({ avatarUrl: avatar ?? null, updatedAt: new Date() })
+    .where(eq(usersTable.id, user.id))
+    .returning();
+
+  res.json(userShape(updated));
+});
+
 // ─── Update Profile ───────────────────────────────────────────────────────────
 
 router.patch("/users/profile", requireAuth, async (req, res): Promise<void> => {
