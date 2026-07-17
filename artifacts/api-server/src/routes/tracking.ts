@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
-import { db, draftsTable, emailTrackingEventsTable, emailQueueTable } from "@workspace/db";
+import { db, draftsTable, emailTrackingEventsTable, emailQueueTable, commConversationsTable } from "@workspace/db";
 import { eq, and, gte, desc, count } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { broadcastToUser } from "../lib/comm-events";
 
 const router: IRouter = Router();
 
@@ -133,10 +134,10 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
 
     // ── Step 4: Draft lookup by trackingId ────────────────────────────────
     let draft = await db
-      .select({ id: draftsTable.id, sentAt: draftsTable.sentAt, gmailDraftId: draftsTable.gmailDraftId })
+      .select({ id: draftsTable.id, sentAt: draftsTable.sentAt, gmailDraftId: draftsTable.gmailDraftId, leadId: draftsTable.leadId, userId: draftsTable.userId })
       .from(draftsTable)
       .where(eq(draftsTable.trackingId, trackingId))
-      .then((rows: Array<{ id: number; sentAt: Date | null; gmailDraftId: string | null }>) => rows[0]);
+      .then((rows: Array<{ id: number; sentAt: Date | null; gmailDraftId: string | null; leadId: number | null; userId: number }>) => rows[0]);
 
     // A row is an *unconfirmed Gmail draft* when its gmailDraftId is a raw Gmail API
     // draft ID (no synthetic prefix). Every SMTP/composer/recovery path always writes
@@ -210,7 +211,7 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
             trackingId,
             gmailDraftId: `smtp:recovered:${trackingId}`,
             sentAt:       new Date(),
-          }).returning({ id: draftsTable.id, sentAt: draftsTable.sentAt, gmailDraftId: draftsTable.gmailDraftId });
+          }).returning({ id: draftsTable.id, sentAt: draftsTable.sentAt, gmailDraftId: draftsTable.gmailDraftId, leadId: draftsTable.leadId, userId: draftsTable.userId });
 
           if (lazyDraft) {
             draft = lazyDraft;
@@ -343,6 +344,21 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
               ua,
               timestamp:      ts.toISOString(),
             }, "[TRACK/OPEN] 9. SUCCESS — Open event inserted and confirmed");
+            // Real-time: notify any open Communications page (fire-and-forget)
+            if (draft && draft.leadId) {
+              db.select({ id: commConversationsTable.id, userId: commConversationsTable.userId })
+                .from(commConversationsTable)
+                .where(eq(commConversationsTable.leadId, draft.leadId))
+                .limit(1)
+                .then(([conv]) => {
+                  if (conv) broadcastToUser(conv.userId, {
+                    type: "tracking_event",
+                    conversationId: conv.id,
+                    data: { eventType: "open" },
+                  });
+                })
+                .catch(() => {});
+            }
           } catch (insertErr) {
             logger.error({ trackingId, draftId: draft.id, insertErr },
               "[TRACK/OPEN] 9. EXIT PATH — FAILED to insert open event — DB error");
@@ -388,7 +404,7 @@ router.get("/track/click/:trackingId", async (req, res): Promise<void> => {
         logger.info({ trackingId, url }, "[TRACK/CLICK] Test email — click not recorded (isTest=true)");
       } else {
         const [draft] = await db
-          .select({ id: draftsTable.id })
+          .select({ id: draftsTable.id, leadId: draftsTable.leadId })
           .from(draftsTable)
           .where(eq(draftsTable.trackingId, trackingId));
 
@@ -404,6 +420,21 @@ router.get("/track/click/:trackingId", async (req, res): Promise<void> => {
             userAgent:   ua,
           });
           logger.info({ trackingId, draftId: draft.id, label, url, ip, timestamp: new Date().toISOString() }, "[TRACK/CLICK] Click recorded");
+          // Real-time: notify any open Communications page about this click event
+          if (draft.leadId) {
+            db.select({ id: commConversationsTable.id, userId: commConversationsTable.userId })
+              .from(commConversationsTable)
+              .where(eq(commConversationsTable.leadId, draft.leadId))
+              .limit(1)
+              .then(([conv]) => {
+                if (conv) broadcastToUser(conv.userId, {
+                  type: "tracking_event",
+                  conversationId: conv.id,
+                  data: { eventType: "click", url },
+                });
+              })
+              .catch(() => {});
+          }
         }
       }
     }

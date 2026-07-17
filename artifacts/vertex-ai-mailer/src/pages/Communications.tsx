@@ -18,6 +18,7 @@ import {
   Loader2, RefreshCw, Send, StickyNote, X,
   MessageSquare, Sparkles, ArrowUpRight,
   CornerDownLeft, Bold, Italic, Paperclip, ListTodo,
+  Wifi, WifiOff, Clock, Download, File,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -56,6 +57,7 @@ type Message = {
   isRead: boolean;
   sentAt: string | null;
   createdAt: string;
+  attachmentsMeta: string | null;
 };
 
 type Lead = {
@@ -86,6 +88,17 @@ type ConversationDetail = {
 type Stats = { total: number; unread: number; needsReply: number; starred: number };
 
 type MailboxOption = { id: string | number; email: string; type: "gmail" | "smtp" };
+
+type AttachmentMeta = { name: string; size: number; mimeType: string; partId?: string };
+
+type SyncStatus = {
+  isSyncing: boolean;
+  lastSyncAt: string | null;
+  nextSyncAt: string | null;
+  liveConnections: number;
+  mailboxes: Array<{ email: string; type: string; connected: boolean; lastSyncAt: string | null }>;
+  lastSyncResults: Array<{ mailbox: string; imported: number; error?: string }>;
+};
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
@@ -286,12 +299,227 @@ function ConvItem({
   );
 }
 
+// ─── SSE hook ─────────────────────────────────────────────────────────────────
+
+function useCommEvents() {
+  const [status, setStatus] = useState<"connecting" | "connected" | "disconnected">("connecting");
+  const queryClient = useQueryClient();
+  const esRef = useRef<EventSource | null>(null);
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const delayRef = useRef(2_000);
+
+  const connect = useCallback(() => {
+    const token = localStorage.getItem("auth_token") ?? "";
+    if (!token) { setStatus("disconnected"); return; }
+    if (retryRef.current) { clearTimeout(retryRef.current); retryRef.current = null; }
+    setStatus("connecting");
+
+    const es = new EventSource(`/api/communications/events?token=${encodeURIComponent(token)}`);
+    esRef.current = es;
+
+    es.onopen = () => { setStatus("connected"); delayRef.current = 2_000; };
+
+    es.onmessage = (e: MessageEvent) => {
+      try {
+        const ev: { type: string; conversationId?: number } = JSON.parse(e.data);
+        switch (ev.type) {
+          case "connected": setStatus("connected"); break;
+          case "new_message":
+          case "conversation_updated":
+          case "note_added":
+            if (ev.conversationId) queryClient.invalidateQueries({ queryKey: ["conv-detail", ev.conversationId] });
+            queryClient.invalidateQueries({ queryKey: ["conversations"] });
+            queryClient.invalidateQueries({ queryKey: ["comm-stats"] });
+            break;
+          case "sync_started":
+          case "sync_complete":
+            queryClient.invalidateQueries({ queryKey: ["conversations"] });
+            queryClient.invalidateQueries({ queryKey: ["comm-stats"] });
+            queryClient.invalidateQueries({ queryKey: ["comm-sync-status"] });
+            break;
+          case "tracking_event":
+            if (ev.conversationId) queryClient.invalidateQueries({ queryKey: ["conv-detail", ev.conversationId] });
+            break;
+        }
+      } catch { /* ignore parse errors */ }
+    };
+
+    es.onerror = () => {
+      es.close();
+      esRef.current = null;
+      setStatus("disconnected");
+      const delay = Math.min(delayRef.current, 30_000);
+      delayRef.current = Math.min(delay * 2, 30_000);
+      retryRef.current = setTimeout(connect, delay);
+    };
+  }, [queryClient]);
+
+  useEffect(() => {
+    connect();
+    return () => {
+      esRef.current?.close();
+      esRef.current = null;
+      if (retryRef.current) clearTimeout(retryRef.current);
+    };
+  }, [connect]);
+
+  return status;
+}
+
+// ─── Email-specific helpers ───────────────────────────────────────────────────
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1_048_576) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1_048_576).toFixed(1)} MB`;
+}
+
+function timeAgoShort(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60_000);
+  const h = Math.floor(diff / 3_600_000);
+  const d = Math.floor(diff / 86_400_000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  if (h < 24) return `${h}h ago`;
+  if (d === 1) return "Yesterday";
+  return `${d}d ago`;
+}
+
+// ─── HTML Email Renderer ──────────────────────────────────────────────────────
+// Renders HTML email in a sandboxed iframe; strips scripts + inline handlers.
+
+function HtmlEmailRenderer({ html, isOutbound }: { html: string; isOutbound: boolean }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(80);
+
+  const clean = html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/\s+on\w+\s*=/gi, " data-removed=");
+
+  const doc = [
+    "<!DOCTYPE html><html><head><meta charset='utf-8'><style>",
+    "*{box-sizing:border-box}",
+    `body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;line-height:1.5;color:${isOutbound ? "#fff" : "#1e293b"};background:transparent;word-break:break-word;overflow:hidden}`,
+    `img{max-width:100%;height:auto}a{color:${isOutbound ? "#93c5fd" : "#3b82f6"}}`,
+    "table{max-width:100%!important;border-collapse:collapse}p{margin:2px 0}",
+    `blockquote{margin:4px 0 4px 12px;padding-left:8px;border-left:3px solid ${isOutbound ? "rgba(255,255,255,.3)" : "#e2e8f0"};color:${isOutbound ? "rgba(255,255,255,.7)" : "#64748b"}}`,
+    `</style></head><body>${clean}</body></html>`,
+  ].join("");
+
+  const handleLoad = useCallback(() => {
+    try {
+      const el = iframeRef.current?.contentDocument?.documentElement;
+      if (el) setHeight(Math.max(40, Math.min(500, el.scrollHeight)));
+    } catch { /* sandboxed */ }
+  }, []);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      srcDoc={doc}
+      sandbox="allow-same-origin"
+      onLoad={handleLoad}
+      style={{ width: "100%", height: `${height}px`, border: "none", display: "block" }}
+      title="Email content"
+    />
+  );
+}
+
+// ─── Attachment List ──────────────────────────────────────────────────────────
+
+function AttachmentList({ metaJson, isOutbound }: { metaJson: string; isOutbound: boolean }) {
+  let items: AttachmentMeta[] = [];
+  try { items = JSON.parse(metaJson); } catch { return null; }
+  if (!items.length) return null;
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {items.map((att, i) => (
+        <div
+          key={i}
+          className={cn(
+            "flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-medium",
+            isOutbound
+              ? "bg-white/15 text-white"
+              : "bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300",
+          )}
+          title={att.name}
+        >
+          <File className="h-3 w-3 flex-shrink-0" />
+          <span className="truncate max-w-[100px]">{att.name}</span>
+          <span className="opacity-60 flex-shrink-0">{formatBytes(att.size)}</span>
+          <Download className="h-3 w-3 flex-shrink-0 opacity-50 hover:opacity-100 cursor-pointer" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Sync Status Widget ───────────────────────────────────────────────────────
+
+function SyncStatusWidget() {
+  const { data } = useQuery<SyncStatus>({
+    queryKey: ["comm-sync-status"],
+    queryFn: () => apiFetch("/api/communications/sync-status"),
+    staleTime: 20_000,
+    refetchInterval: 30_000,
+  });
+
+  if (!data) return null;
+
+  const nextIn = data.nextSyncAt
+    ? Math.max(0, Math.ceil((new Date(data.nextSyncAt).getTime() - Date.now()) / 60_000))
+    : null;
+
+  return (
+    <div className="mx-3 mb-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50">
+      {data.isSyncing ? (
+        <div className="flex items-center gap-2">
+          <Loader2 className="h-3 w-3 animate-spin text-blue-500 flex-shrink-0" />
+          <p className="text-[10px] font-medium text-blue-600 dark:text-blue-400">Syncing mailboxes…</p>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1 min-w-0">
+            <Clock className="h-2.5 w-2.5 text-slate-400 flex-shrink-0" />
+            <span className="text-[10px] text-slate-400 truncate">
+              {data.lastSyncAt ? `Synced ${timeAgoShort(data.lastSyncAt)}` : "Never synced"}
+            </span>
+          </div>
+          {nextIn !== null && (
+            <span className="text-[10px] text-slate-400 flex-shrink-0">
+              {nextIn === 0 ? "due now" : `next ${nextIn}m`}
+            </span>
+          )}
+        </div>
+      )}
+      {data.mailboxes.length > 0 && (
+        <div className="flex gap-1 mt-1.5 flex-wrap">
+          {data.mailboxes.map(mb => (
+            <div key={mb.email} className={cn(
+              "flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px]",
+              mb.connected
+                ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400"
+                : "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400",
+            )}>
+              <div className={cn("h-1.5 w-1.5 rounded-full flex-shrink-0",
+                mb.connected ? "bg-emerald-500" : "bg-red-500")} />
+              <span className="truncate max-w-[72px]">{mb.email.split("@")[0]}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Left Panel ───────────────────────────────────────────────────────────────
 
 function LeftPanel({
   filter, setFilter, search, setSearch,
   conversations, isLoading, selectedId, onSelect, stats, onRefresh, isSyncing,
-  mailboxes, selectedMailboxId, onMailboxChange,
+  mailboxes, selectedMailboxId, onMailboxChange, connectionStatus,
 }: {
   filter: FilterKey; setFilter: (f: FilterKey) => void;
   search: string; setSearch: (s: string) => void;
@@ -300,6 +528,7 @@ function LeftPanel({
   stats: Stats | undefined; onRefresh: () => void; isSyncing: boolean;
   mailboxes: MailboxOption[]; selectedMailboxId: string | number | null;
   onMailboxChange: (id: string | number | null) => void;
+  connectionStatus: "connecting" | "connected" | "disconnected";
 }) {
   const { toast } = useToast();
 
@@ -321,7 +550,28 @@ function LeftPanel({
       {/* Top bar: title + mailbox selector + refresh */}
       <div className="px-4 pt-4 pb-3 flex-shrink-0 space-y-3">
         <div className="flex items-center justify-between">
-          <h1 className="text-base font-bold text-slate-900 dark:text-slate-100">Communications</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-base font-bold text-slate-900 dark:text-slate-100">Communications</h1>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex cursor-default">
+                  {connectionStatus === "disconnected" ? (
+                    <WifiOff className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                  ) : (
+                    <Wifi className={cn("h-3.5 w-3.5 flex-shrink-0", {
+                      "text-emerald-500": connectionStatus === "connected",
+                      "text-amber-500 animate-pulse": connectionStatus === "connecting",
+                    })} />
+                  )}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                {connectionStatus === "connected" ? "Live updates active" :
+                 connectionStatus === "connecting" ? "Connecting to live updates…" :
+                 "Disconnected — reconnecting"}
+              </TooltipContent>
+            </Tooltip>
+          </div>
           <button
             onClick={onRefresh}
             disabled={isSyncing}
@@ -399,6 +649,9 @@ function LeftPanel({
           )}
         </div>
       </div>
+
+      {/* Sync status */}
+      <SyncStatusWidget />
 
       {/* Filter tabs */}
       <div className="px-3 pb-2 flex-shrink-0 space-y-0.5">
@@ -538,12 +791,12 @@ function MessageBubble({ msg, customerName }: { msg: Message; customerName: stri
             : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-tl-sm",
         )}>
           {msg.htmlBody ? (
-            <div
-              className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1"
-              dangerouslySetInnerHTML={{ __html: msg.htmlBody }}
-            />
+            <HtmlEmailRenderer html={msg.htmlBody} isOutbound={isOut} />
           ) : (
             <p className="whitespace-pre-wrap">{msg.body}</p>
+          )}
+          {msg.attachmentsMeta && (
+            <AttachmentList metaJson={msg.attachmentsMeta} isOutbound={isOut} />
           )}
         </div>
 
@@ -1094,6 +1347,8 @@ export default function Communications() {
   const [isSyncing, setIsSyncing] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  // Live updates via SSE
+  const connectionStatus = useCommEvents();
 
   // Fetch connected mailboxes (Gmail + SMTP)
   const { data: mailboxes = [] } = useQuery<MailboxOption[]>({
@@ -1195,6 +1450,7 @@ export default function Communications() {
           mailboxes={mailboxes}
           selectedMailboxId={selectedMailboxId}
           onMailboxChange={handleMailboxChange}
+          connectionStatus={connectionStatus}
         />
       </div>
 

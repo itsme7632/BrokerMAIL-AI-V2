@@ -24,6 +24,9 @@ export const commMessagesTable = pgTable("comm_messages", {
   // Deduplication key — Gmail internal ID ("gmail:<id>") or IMAP Message-ID header value.
   // Null for manually created messages.
   externalId: text("external_id"),
+  // JSON array of attachment metadata: [{ name, size, mimeType, partId? }]
+  // Null when the message has no attachments (or was created before this column existed).
+  attachmentsMeta: text("attachments_meta"),
   sentAt: timestamp("sent_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

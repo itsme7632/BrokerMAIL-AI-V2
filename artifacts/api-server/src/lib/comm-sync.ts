@@ -32,6 +32,23 @@ import { eq, and, inArray, isNotNull, sql } from "drizzle-orm";
 import { getGmailClient } from "./gmail";
 import { decrypt } from "./crypto";
 import { logger } from "./logger";
+import {
+  broadcastToUser,
+  broadcastAll,
+  markSyncStarted,
+  markSyncComplete,
+  type SyncMailboxResult,
+} from "./comm-events";
+
+// ─── Attachment metadata ──────────────────────────────────────────────────────
+
+export interface AttachmentMeta {
+  name: string;
+  size: number;
+  mimeType: string;
+  /** Gmail partId, used for server-side download. Undefined for IMAP. */
+  partId?: string;
+}
 
 // ─── Public result type ───────────────────────────────────────────────────────
 
@@ -93,9 +110,10 @@ function escapeRegex(s: string): string {
 
 // ─── Gmail body parser ────────────────────────────────────────────────────────
 
-function extractGmailBody(payload: any): { text: string; html: string } {
+function extractGmailBody(payload: any): { text: string; html: string; attachments: AttachmentMeta[] } {
   let text = "";
   let html = "";
+  const attachments: AttachmentMeta[] = [];
 
   function traverse(part: any): void {
     const mt: string = part.mimeType ?? "";
@@ -103,6 +121,18 @@ function extractGmailBody(payload: any): { text: string; html: string } {
       try { text = decodeBase64Url(part.body.data).slice(0, 50_000); } catch { }
     } else if (mt === "text/html" && part.body?.data && !html) {
       try { html = decodeBase64Url(part.body.data).slice(0, 100_000); } catch { }
+    } else if (
+      part.filename &&
+      (part.body?.size ?? 0) > 0 &&
+      !mt.startsWith("text/") &&
+      !mt.startsWith("multipart/")
+    ) {
+      attachments.push({
+        name:     String(part.filename),
+        size:     Number(part.body?.size ?? 0),
+        mimeType: mt || "application/octet-stream",
+        partId:   part.partId ? String(part.partId) : undefined,
+      });
     }
     if (Array.isArray(part.parts)) {
       for (const p of part.parts) traverse(p);
@@ -110,14 +140,15 @@ function extractGmailBody(payload: any): { text: string; html: string } {
   }
 
   traverse(payload);
-  return { text, html };
+  return { text, html, attachments };
 }
 
 // ─── IMAP body parser (minimal RFC 2822 / MIME) ───────────────────────────────
 
-function extractImapBody(source: string): { text: string; html: string } {
+function extractImapBody(source: string): { text: string; html: string; attachments: AttachmentMeta[] } {
+  const attachments: AttachmentMeta[] = [];
   const sep = source.search(/\r?\n\r?\n/);
-  if (sep === -1) return { text: "", html: "" };
+  if (sep === -1) return { text: "", html: "", attachments };
 
   const headerSection = source.slice(0, sep);
   const bodySection = source.slice(sep + (source.charAt(sep + 1) === "\r" ? 4 : 2));
@@ -140,14 +171,15 @@ function extractImapBody(source: string): { text: string; html: string } {
       return {
         text: decoded.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 50_000),
         html: decoded.slice(0, 100_000),
+        attachments,
       };
     }
-    return { text: decoded.slice(0, 50_000), html: "" };
+    return { text: decoded.slice(0, 50_000), html: "", attachments };
   }
 
   // Multipart — find boundary and split
   const bm = ct.match(/boundary="?([^";,\r\n]+)"?/i);
-  if (!bm) return { text: bodySection.slice(0, 2000), html: "" };
+  if (!bm) return { text: bodySection.slice(0, 2000), html: "", attachments };
 
   const boundary = bm[1]!.trim();
   const parts = bodySection.split(new RegExp(`--${escapeRegex(boundary)}(?:--)?`));
@@ -163,18 +195,35 @@ function extractImapBody(source: string): { text: string; html: string } {
     const ph = part.slice(0, pSep);
     const pb = part.slice(pSep + (part.charAt(pSep + 1) === "\r" ? 4 : 2)).trim();
 
-    const pct = parseHeader(ph, "Content-Type").toLowerCase();
+    const pct = parseHeader(ph, "Content-Type");
+    const pctLower = pct.toLowerCase();
     const pcte = parseHeader(ph, "Content-Transfer-Encoding").toLowerCase();
     const decoded = decode(pb, pcte);
+    const cd = parseHeader(ph, "Content-Disposition").toLowerCase();
 
-    if (pct.includes("text/plain") && !text) {
+    if (pctLower.includes("text/plain") && !text) {
       text = decoded.slice(0, 50_000);
-    } else if (pct.includes("text/html") && !html) {
+    } else if (pctLower.includes("text/html") && !html) {
       html = decoded.slice(0, 100_000);
+    } else if (cd.startsWith("attachment") || (cd.startsWith("inline") && !pctLower.startsWith("text/"))) {
+      // Extract attachment metadata from Content-Disposition or Content-Type filename param
+      const fn =
+        cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i)?.[1]?.trim() ??
+        pct.match(/name\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i)?.[1]?.trim();
+      if (fn) {
+        // Estimate decoded size (base64 → ~75% of encoded chars)
+        const rawLen = pb.replace(/\s/g, "").length;
+        const size = pcte === "base64" ? Math.round(rawLen * 0.75) : rawLen;
+        attachments.push({
+          name:     decodeURIComponent(fn),
+          size,
+          mimeType: pct.split(";")[0]?.trim() ?? "application/octet-stream",
+        });
+      }
     }
   }
 
-  return { text, html };
+  return { text, html, attachments };
 }
 
 // ─── Conversation threading ───────────────────────────────────────────────────
@@ -252,8 +301,9 @@ async function upsertMessage(opts: {
   text: string;
   html: string;
   sentAt: Date;
+  attachmentsMeta?: AttachmentMeta[];
 }): Promise<boolean> {
-  const { externalId, conversationId, userId, direction, fromEmail, fromName, toEmail, subject, text, html, sentAt } = opts;
+  const { externalId, conversationId, userId, direction, fromEmail, fromName, toEmail, subject, text, html, sentAt, attachmentsMeta } = opts;
 
   // Deduplication — skip if already present
   const [existing] = await db
@@ -279,7 +329,17 @@ async function upsertMessage(opts: {
     htmlBody: html || null,
     snippet,
     isRead: direction === "outbound",
+    attachmentsMeta: attachmentsMeta && attachmentsMeta.length > 0
+      ? JSON.stringify(attachmentsMeta)
+      : null,
     sentAt,
+  });
+
+  // Real-time: push the new message to any open browser tabs for this user
+  broadcastToUser(userId, {
+    type: "new_message",
+    conversationId,
+    data: { direction, fromEmail },
   });
 
   // Messages that arrived in the last 24 h are "unread" for the broker.
@@ -385,7 +445,7 @@ async function syncGmailInbox(user: User): Promise<SyncResult> {
 
         if (!customerEmail.includes("@")) continue;
 
-        const { text, html } = extractGmailBody(payload);
+        const { text, html, attachments } = extractGmailBody(payload);
         const references = refsStr.split(/\s+/).filter(Boolean);
         const externalId = `gmail:${id}`;
 
@@ -411,6 +471,7 @@ async function syncGmailInbox(user: User): Promise<SyncResult> {
           subject,
           text,
           html,
+          attachmentsMeta: attachments.length > 0 ? attachments : undefined,
           sentAt,
         });
 
@@ -503,7 +564,7 @@ async function scanImapFolder(
         const externalId = messageId || `imap:${mailbox.id}:${msg.seq}`;
         const references = refsStr.split(/\s+/).filter(Boolean);
 
-        const { text, html } = extractImapBody(source);
+        const { text, html, attachments } = extractImapBody(source);
 
         const conv = await findOrCreateConversation({
           userId,
@@ -527,6 +588,7 @@ async function scanImapFolder(
           subject,
           text,
           html,
+          attachmentsMeta: attachments.length > 0 ? attachments : undefined,
           sentAt,
         });
 
@@ -653,6 +715,7 @@ async function syncImapMailbox(mailbox: Mailbox, userId: number): Promise<SyncRe
  */
 export async function runCommSync(targetUserId?: number): Promise<SyncResult[]> {
   const results: SyncResult[] = [];
+  markSyncStarted();
 
   try {
     // ── Gmail users ──────────────────────────────────────────────────────────
@@ -718,6 +781,17 @@ export async function runCommSync(targetUserId?: number): Promise<SyncResult[]> 
   } catch (err) {
     logger.error({ err }, "[COMM-SYNC] runCommSync top-level error");
   }
+
+  const syncMailboxResults: SyncMailboxResult[] = results.map(r => ({
+    mailbox: r.mailbox,
+    imported: r.messagesImported,
+    error: r.error,
+  }));
+  markSyncComplete(syncMailboxResults);
+  broadcastAll({
+    type: "sync_complete",
+    data: { totalImported: syncMailboxResults.reduce((s, r) => s + r.imported, 0) },
+  });
 
   return results;
 }

@@ -5,9 +5,12 @@ import {
   draftsTable, leadsTable, campaignsTable, mailboxesTable,
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { verifyToken } from "../lib/auth";
 import { eq, and, desc, or, ilike, sql, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { runCommSync } from "../lib/comm-sync";
+import { registerSSE, broadcastToUser, getSyncState, getConnectionCount } from "../lib/comm-events";
+import { getCronState } from "../lib/monitoring-state";
 
 const router = Router();
 
@@ -267,6 +270,9 @@ router.patch("/communications/conversations/:id", requireAuth, async (req, res) 
 
   await db.update(commConversationsTable).set(updates).where(eq(commConversationsTable.id, convId));
 
+  // Real-time: push update to all browser tabs for this user
+  broadcastToUser(userId, { type: "conversation_updated", conversationId: convId, data: updates });
+
   return res.json({ success: true });
 });
 
@@ -290,6 +296,9 @@ router.post("/communications/conversations/:id/notes", requireAuth, async (req, 
     .insert(commNotesTable)
     .values({ conversationId: convId, userId, content: content.trim() })
     .returning();
+
+  // Real-time: push note to all browser tabs for this user
+  broadcastToUser(userId, { type: "note_added", conversationId: convId, data: { note } });
 
   return res.json({ note });
 });
@@ -349,6 +358,98 @@ router.post("/communications/sync", requireAuth, async (req, res) => {
     logger.error({ err, userId }, "[COMM-SYNC] Manual sync route error");
     return res.status(500).json({ error: "Sync failed" });
   }
+});
+
+// ─── GET /api/communications/events ──────────────────────────────────────────
+// SSE stream for real-time inbox updates.
+// Token passed as ?token= because EventSource doesn't support Authorization header.
+
+router.get("/communications/events", async (req, res) => {
+  const queryToken  = typeof req.query.token === "string" ? req.query.token : null;
+  const headerToken = req.headers.authorization?.startsWith("Bearer ")
+    ? req.headers.authorization.slice(7) : null;
+  const token = queryToken ?? headerToken;
+
+  if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const payload = verifyToken(token);
+  if (!payload) { res.status(401).json({ error: "Invalid or expired token" }); return; }
+
+  res.set({
+    "Content-Type":   "text/event-stream",
+    "Cache-Control":  "no-cache",
+    "Connection":     "keep-alive",
+    "X-Accel-Buffering": "no", // disable nginx buffering
+  });
+  res.flushHeaders();
+
+  // Send initial connected event
+  res.write(`data: ${JSON.stringify({ type: "connected", ts: new Date().toISOString() })}\n\n`);
+
+  const unregister = registerSSE(payload.userId, res);
+
+  // Keepalive comment every 25 s (prevents load-balancer 30s timeout)
+  const keepalive = setInterval(() => {
+    try { res.write(": ping\n\n"); } catch { clearInterval(keepalive); }
+  }, 25_000);
+
+  req.on("close", () => {
+    clearInterval(keepalive);
+    unregister();
+  });
+});
+
+// ─── GET /api/communications/sync-status ─────────────────────────────────────
+// Returns current sync progress, last/next sync times, and mailbox health.
+
+router.get("/communications/sync-status", requireAuth, async (req, res) => {
+  const user       = (req as any).user;
+  const syncState  = getSyncState();
+  const cronState  = getCronState("commSync");
+
+  const SYNC_INTERVAL_MS = 5 * 60_000;
+  const lastRunAt  = cronState?.lastRunAt ? new Date(cronState.lastRunAt) : null;
+  const nextSyncAt = lastRunAt ? new Date(lastRunAt.getTime() + SYNC_INTERVAL_MS) : null;
+
+  const mailboxes: Array<{
+    email: string; type: string; connected: boolean; lastSyncAt: string | null;
+  }> = [];
+
+  if (user.gmailConnected && user.gmailEmail) {
+    mailboxes.push({
+      email:      user.gmailEmail,
+      type:       "gmail",
+      connected:  !!(user.gmailAccessToken && user.gmailRefreshToken),
+      lastSyncAt: user.gmailCommSyncAt?.toISOString() ?? null,
+    });
+  }
+
+  const [box] = await db
+    .select({
+      smtpUser:      mailboxesTable.smtpUser,
+      imapHost:      mailboxesTable.imapHost,
+      lastCommSyncAt: mailboxesTable.lastCommSyncAt,
+    })
+    .from(mailboxesTable)
+    .where(eq(mailboxesTable.userId, user.id))
+    .limit(1);
+
+  if (box?.smtpUser) {
+    mailboxes.push({
+      email:      box.smtpUser,
+      type:       "smtp",
+      connected:  !!box.imapHost,
+      lastSyncAt: box.lastCommSyncAt?.toISOString() ?? null,
+    });
+  }
+
+  return res.json({
+    isSyncing:       syncState.isSyncing,
+    lastSyncAt:      syncState.lastSyncAt?.toISOString() ?? cronState?.lastSuccessAt ?? null,
+    nextSyncAt:      nextSyncAt?.toISOString() ?? null,
+    lastSyncResults: syncState.lastSyncResults,
+    mailboxes,
+    liveConnections: getConnectionCount(),
+  });
 });
 
 // ─── GET /api/communications/mailboxes ───────────────────────────────────────

@@ -46,3 +46,8 @@ export function touchCronError(key: keyof typeof state, err: unknown): void {
 export function getCronJobStates(): CronJobState[] {
   return Object.values(state);
 }
+
+/** Get the state of a single cron job by key, or null if not found. */
+export function getCronState(key: string): CronJobState | null {
+  return state[key] ?? null;
+}

@@ -1,0 +1,455 @@
+# BrokerMAIL AI - Complete Communications Engine (Real-Time + Missing Features)
+
+The Communications module is now functional, but I want to complete it into a production-ready communication platform.
+
+The goal is that users should NOT need to keep clicking Refresh.
+
+Communications should feel alive and update automatically.
+
+==================================================
+PART 1 — REAL-TIME COMMUNICATIONS
+==================================================
+
+Implement real-time updates.
+
+Whenever possible, use WebSockets (preferred) or Server-Sent Events (SSE).
+
+The frontend should subscribe immediately after login.
+
+When something changes, update the UI automatically without a page refresh.
+
+Real-time events include:
+
+• New incoming email
+• New outgoing email
+• Email opened
+• Email clicked
+• Reply received
+• Conversation archived
+• Conversation starred
+• Internal note added
+• Task created
+• Mailbox connected
+• Mailbox disconnected
+• Background sync completed
+
+Only update the affected conversation.
+
+Do NOT reload the entire page.
+
+==================================================
+PART 2 — BACKGROUND SYNCHRONIZATION
+==================================================
+
+Keep the existing scheduled sync.
+
+Improve it:
+
+• Background sync every few minutes.
+• Users should never need to press Refresh.
+
+When background sync imports messages:
+
+Immediately broadcast updates to connected browsers.
+
+The Refresh button should remain available as a manual sync option only.
+
+==================================================
+PART 3 — SYNC STATUS
+==================================================
+
+Add a sync status widget to the Communications page.
+
+Display:
+
+Last Synced
+
+Next Automatic Sync
+
+Mailbox Status
+
+Sync Progress
+
+Examples:
+
+✓ Gmail Connected
+
+✓ SMTP Connected
+
+Last Sync
+
+2 minutes ago
+
+Next Sync
+
+In 3 minutes
+
+If syncing:
+
+Syncing Gmail...
+
+Receiving messages...
+
+Updating conversations...
+
+Show progress spinner.
+
+==================================================
+PART 4 — INITIAL IMPORT
+==================================================
+
+On first mailbox connection:
+
+Import:
+
+Last 90 days
+
+or
+
+1000 most recent emails
+
+(whichever limit is reached first)
+
+Display progress.
+
+Never freeze the UI.
+
+Allow users to continue working while importing.
+
+==================================================
+PART 5 — INCREMENTAL IMPORT
+==================================================
+
+After initial sync:
+
+Only fetch newer messages.
+
+Never download the same emails twice.
+
+==================================================
+PART 6 — DEDUPLICATION
+==================================================
+
+Prevent duplicates using:
+
+Message-ID
+
+External ID
+
+Mailbox ID
+
+Conversation ID
+
+Reply references
+
+Refreshing repeatedly must never create duplicate conversations or messages.
+
+==================================================
+PART 7 — HTML EMAIL RENDERING
+==================================================
+
+Render incoming HTML emails safely.
+
+Sanitize HTML before displaying.
+
+Support:
+
+Inline images
+
+Buttons
+
+Tables
+
+Lists
+
+Responsive email layouts
+
+Dark mode compatibility where possible
+
+Never execute JavaScript from email content.
+
+==================================================
+PART 8 — ATTACHMENTS
+==================================================
+
+Support incoming attachments.
+
+Examples:
+
+PDF
+
+DOCX
+
+Images
+
+ZIP
+
+CSV
+
+Display:
+
+File name
+
+Size
+
+Download button
+
+Image preview for supported formats.
+
+==================================================
+PART 9 — CONVERSATION THREADS
+==================================================
+
+Improve threading.
+
+Use:
+
+Message-ID
+
+In-Reply-To
+
+References
+
+Normalized subject
+
+Display replies in one conversation.
+
+Newest message at the bottom.
+
+Collapse quoted history by default.
+
+Allow:
+
+Show previous messages
+
+==================================================
+PART 10 — LIVE TRACKING
+==================================================
+
+When tracking events occur:
+
+Email Opened
+
+↓
+
+Conversation updates instantly
+
+↓
+
+Timeline updates
+
+↓
+
+Notification appears
+
+↓
+
+Customer details refresh
+
+Same for:
+
+Clicks
+
+Replies
+
+Bounces
+
+==================================================
+PART 11 — CUSTOMER DETAILS
+==================================================
+
+Enrich the right panel.
+
+Display:
+
+Customer
+
+Company
+
+Phone
+
+Vehicle
+
+Pickup
+
+Delivery
+
+Campaign
+
+Mailbox
+
+Last Activity
+
+Conversation Count
+
+Emails Sent
+
+Emails Received
+
+Open Rate
+
+Click Rate
+
+==================================================
+PART 12 — INTERNAL NOTES
+==================================================
+
+Notes should update live.
+
+If another team member adds a note,
+
+every connected user should see it immediately.
+
+==================================================
+PART 13 — TASKS
+==================================================
+
+Tasks should also update live.
+
+Examples:
+
+Waiting for payment
+
+Call customer
+
+Documents pending
+
+Pickup tomorrow
+
+==================================================
+PART 14 — MAILBOX MANAGEMENT
+==================================================
+
+Support:
+
+One Gmail mailbox
+
+One SMTP/IMAP mailbox
+
+Only display mailboxes actually connected.
+
+Never show placeholder data.
+
+==================================================
+PART 15 — PERFORMANCE
+==================================================
+
+Virtualize long conversation lists.
+
+Lazy load messages.
+
+Infinite scroll.
+
+Background loading.
+
+Cache conversations locally.
+
+Only fetch changed conversations.
+
+==================================================
+PART 16 — USER EXPERIENCE
+==================================================
+
+Show skeleton loaders.
+
+Unread animation.
+
+Typing indicators (future-ready).
+
+Connection indicator.
+
+Offline mode.
+
+Reconnect automatically after connection loss.
+
+==================================================
+PART 17 — LOGGING
+==================================================
+
+Log every sync.
+
+Mailbox
+
+Messages scanned
+
+Messages imported
+
+Messages skipped
+
+Duplicates skipped
+
+Conversations created
+
+Conversations updated
+
+Sync duration
+
+Errors
+
+==================================================
+PART 18 — ADMIN MONITORING
+==================================================
+
+Create an Admin Communications Monitor.
+
+Display:
+
+Running sync jobs
+
+Last sync
+
+Mailbox health
+
+Failed syncs
+
+Queue length
+
+Import speed
+
+Errors
+
+==================================================
+PART 19 — TESTING
+==================================================
+
+Verify:
+
+✓ Gmail receives new mail → appears automatically.
+
+✓ SMTP/IMAP receives new mail → appears automatically.
+
+✓ No Refresh required.
+
+✓ Refresh still works as manual sync.
+
+✓ Historical emails imported.
+
+✓ Incremental sync works.
+
+✓ Attachments display correctly.
+
+✓ HTML emails render safely.
+
+✓ Duplicate emails are never created.
+
+✓ Conversation threading works correctly.
+
+✓ Real-time updates work across multiple browser tabs.
+
+==================================================
+IMPORTANT
+==================================================
+
+The Communications page should now feel similar to:
+
+• Gmail
+• Outlook
+• Front
+• Missive
+• HubSpot Conversations
+
+Users should feel like they are using a live communication platform, not a page that needs manual refreshing.
+
+Maintain the existing BrokerMAIL AI design language and architecture.
+
+Run backend/frontend TypeScript and production builds before marking the task complete.
