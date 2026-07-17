@@ -5,8 +5,9 @@ import { Logo } from "@/components/Logo";
 import {
   LayoutDashboard, FileText, UploadCloud, Mail, Settings, ShieldAlert,
   Menu, X, Server, CreditCard, SendHorizonal, Megaphone, LayoutGrid,
-  LogOut, Palette, HelpCircle, ChevronDown, Moon, Sun, PenLine, TicketCheck,
-  Zap, Sparkles, Map, MessageSquare, Bug, Bell, Inbox, User,
+  LogOut, Palette, HelpCircle, ChevronDown, ChevronRight, Moon, Sun,
+  PenLine, TicketCheck, Zap, Sparkles, Map, MessageSquare, Bug,
+  Bell, Inbox, User,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -21,44 +22,60 @@ import { HeaderBanner } from "@/components/product-hub/HeaderBanner";
 import { VersionPopup } from "@/components/product-hub/VersionPopup";
 import { SuggestFeatureButton } from "@/components/product-hub/SuggestFeatureButton";
 
-// ─── Nav groups ───────────────────────────────────────────────────────────────
+// ─── Nav group definitions ────────────────────────────────────────────────────
 
-const NAV_GROUPS = [
+type NavGroupDef = {
+  label: string;
+  icon: React.ElementType;
+  href?: string;       // if set, header is a nav link; no collapse
+  defaultOpen?: boolean;
+  items: Array<{
+    href: string; icon: React.ElementType; label: string;
+    exact: boolean; isWhatsNew?: boolean;
+  }>;
+};
+
+const NAV_GROUP_DEFS: NavGroupDef[] = [
   {
-    label: "COMMUNICATION",
+    label: "Communications",
+    icon: Inbox,
+    href: "/communications",   // header IS the nav link — no sub-items
+    items: [],
+  },
+  {
+    label: "Campaigns",
+    icon: Megaphone,
+    defaultOpen: false,
     items: [
-      { href: "/communications",    icon: Inbox,         label: "Communications",   exact: false },
+      { href: "/campaigns",         icon: Megaphone,   label: "Campaigns",        exact: false },
+      { href: "/templates",         icon: FileText,    label: "Templates",        exact: true  },
+      { href: "/templates/gallery", icon: LayoutGrid,  label: "Template Gallery", exact: true  },
+      { href: "/leads/import",      icon: UploadCloud, label: "Upload & Send",    exact: true  },
     ],
   },
   {
-    label: "CAMPAIGNS",
+    label: "Settings",
+    icon: Settings,
+    defaultOpen: false,
     items: [
-      { href: "/campaigns",         icon: Megaphone,     label: "Campaigns",        exact: false },
-      { href: "/compose",           icon: PenLine,       label: "Compose Email",    exact: true  },
-      { href: "/templates",         icon: FileText,      label: "Templates",        exact: true  },
-      { href: "/templates/gallery", icon: LayoutGrid,    label: "Template Gallery", exact: true  },
-      { href: "/leads/import",      icon: UploadCloud,   label: "Upload & Send",    exact: true  },
+      { href: "/profile",      icon: User,        label: "My Profile",       exact: true  },
+      { href: "/settings",     icon: Palette,     label: "Brand Settings",   exact: true  },
+      { href: "/mailbox",      icon: Server,      label: "Mailboxes",        exact: true  },
+      { href: "/plans",        icon: CreditCard,  label: "Billing & Plans",  exact: true  },
+      { href: "/suppressions", icon: ShieldAlert, label: "Suppression List", exact: true  },
+      { href: "/support",      icon: TicketCheck, label: "Support",          exact: false },
     ],
   },
   {
-    label: "SETTINGS",
+    label: "Updates",
+    icon: Sparkles,
+    defaultOpen: false,
     items: [
-      { href: "/profile",           icon: User,          label: "My Profile",       exact: true  },
-      { href: "/settings",          icon: Palette,       label: "Brand Settings",   exact: true  },
-      { href: "/mailbox",           icon: Server,        label: "Mailboxes",        exact: true  },
-      { href: "/plans",             icon: CreditCard,    label: "Billing & Plans",  exact: true  },
-      { href: "/suppressions",      icon: ShieldAlert,   label: "Suppression List", exact: true  },
-      { href: "/support",           icon: TicketCheck,   label: "Support",          exact: false },
-    ],
-  },
-  {
-    label: "UPDATES",
-    items: [
-      { href: "/notifications",        icon: Bell,          label: "Notifications", exact: true  },
-      { href: "/whats-new",            icon: Sparkles,      label: "What's New",    exact: true  },
-      { href: "/roadmap",              icon: Map,           label: "Roadmap",       exact: true  },
-      { href: "/product-hub/feedback", icon: MessageSquare, label: "Feedback",      exact: true  },
-      { href: "/report-bug",           icon: Bug,           label: "Report a Bug",  exact: true  },
+      { href: "/notifications",        icon: Bell,          label: "Notifications", exact: true },
+      { href: "/whats-new",            icon: Sparkles,      label: "What's New",    exact: true, isWhatsNew: true },
+      { href: "/roadmap",              icon: Map,           label: "Roadmap",       exact: true },
+      { href: "/product-hub/feedback", icon: MessageSquare, label: "Feedback",      exact: true },
+      { href: "/report-bug",           icon: Bug,           label: "Report a Bug",  exact: true },
     ],
   },
 ];
@@ -93,6 +110,106 @@ function NavItem({ href, icon: Icon, label, exact, badge }: {
         ) : null}
       </span>
     </Link>
+  );
+}
+
+// ─── Collapsible nav group ────────────────────────────────────────────────────
+
+function NavGroup({ group, whatsNewUnread }: { group: NavGroupDef; whatsNewUnread: number }) {
+  const [location] = useLocation();
+
+  const isSubItemActive = group.items.some(item =>
+    item.exact ? location === item.href : location.startsWith(item.href)
+  );
+
+  const storageKey = `sidebar_group_${group.label.toLowerCase()}`;
+
+  const [open, setOpen] = useState<boolean>(() => {
+    if (group.href) return false; // nav-link groups never collapse
+    try { return JSON.parse(localStorage.getItem(storageKey) ?? String(group.defaultOpen ?? false)); }
+    catch { return group.defaultOpen ?? false; }
+  });
+
+  // Auto-expand when the user navigates into a sub-item
+  useEffect(() => {
+    if (!group.href && isSubItemActive && !open) {
+      setOpen(true);
+      localStorage.setItem(storageKey, "true");
+    }
+  }, [isSubItemActive]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    localStorage.setItem(storageKey, String(next));
+  };
+
+  // ── Header-is-a-nav-link variant (e.g. Communications) ──
+  if (group.href) {
+    const isActive = location === group.href || location.startsWith(group.href);
+    return (
+      <div className="relative">
+        {isActive && (
+          <span aria-hidden="true" className="absolute inset-y-1 -left-3 w-[3px] rounded-r-full bg-blue-600 dark:bg-blue-500" />
+        )}
+        <Link href={group.href}>
+          <span className={cn(
+            "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 cursor-pointer select-none",
+            isActive
+              ? "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+              : "text-slate-700 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-700/60 dark:hover:text-slate-100"
+          )}>
+            <group.icon className={cn("h-4 w-4 flex-shrink-0", isActive ? "text-blue-600 dark:text-blue-400" : "text-slate-500 dark:text-slate-400")} />
+            <span className="flex-1 truncate">{group.label}</span>
+          </span>
+        </Link>
+      </div>
+    );
+  }
+
+  // ── Collapsible group variant ──
+  const showOpen = open || isSubItemActive;
+
+  return (
+    <div>
+      <button
+        onClick={toggle}
+        className={cn(
+          "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 select-none",
+          isSubItemActive
+            ? "text-blue-700 dark:text-blue-400"
+            : "text-slate-700 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-700/60 dark:hover:text-slate-100"
+        )}
+      >
+        <group.icon className={cn("h-4 w-4 flex-shrink-0", isSubItemActive ? "text-blue-600 dark:text-blue-400" : "text-slate-500 dark:text-slate-400")} />
+        <span className="flex-1 text-left truncate">{group.label}</span>
+        <ChevronRight className={cn(
+          "h-3.5 w-3.5 flex-shrink-0 text-slate-400 dark:text-slate-500 transition-transform duration-200",
+          showOpen && "rotate-90"
+        )} />
+      </button>
+
+      {/* CSS-grid animation — no JS height calculation needed */}
+      <div className={cn(
+        "grid transition-all duration-200 ease-in-out",
+        showOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+      )}>
+        <div className="overflow-hidden">
+          <div className="pt-0.5 pl-3 pr-0 pb-1 space-y-0.5">
+            {group.items.map(item => (
+              <NavItem
+                key={item.href}
+                href={item.href}
+                icon={item.icon}
+                label={item.label}
+                exact={item.exact}
+                badge={item.isWhatsNew ? (whatsNewUnread || undefined) : undefined}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -366,28 +483,19 @@ function Sidebar({ onClose }: { onClose?: () => void }) {
         )}
       </div>
 
-      {/* ── Dashboard link (standalone, no section header) — pinned, never scrolls */}
-      <div className="px-3 pt-3 pb-1 flex-shrink-0">
+      {/* ── Standalone primary actions — always visible, never scroll */}
+      <div className="px-3 pt-3 pb-2 flex-shrink-0 space-y-0.5">
         <NavItem href="/dashboard" icon={LayoutDashboard} label="Dashboard" exact />
+        <NavItem href="/compose"   icon={PenLine}         label="Compose Email" exact />
       </div>
 
-      {/* ── Grouped nav — scrolls independently, scrollbar hidden on all browsers */}
-      <nav className="flex-1 overflow-y-auto no-scrollbar px-0 py-2 space-y-4">
-        {NAV_GROUPS.map(group => (
-          <div key={group.label}>
-            <p className="px-4 pb-1 text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-              {group.label}
-            </p>
-            <div className="px-3 space-y-0.5">
-              {group.items.map(item => (
-                <NavItem
-                  key={item.href}
-                  {...item}
-                  badge={item.href === "/whats-new" ? (whatsNewUnread || undefined) : undefined}
-                />
-              ))}
-            </div>
-          </div>
+      {/* ── Divider ── */}
+      <div className="mx-3 border-t border-slate-100 dark:border-slate-700/60 mb-2 flex-shrink-0" />
+
+      {/* ── Collapsible groups — scrolls independently, scrollbar hidden on all browsers */}
+      <nav className="flex-1 overflow-y-auto no-scrollbar px-3 py-1 space-y-0.5">
+        {NAV_GROUP_DEFS.map(group => (
+          <NavGroup key={group.label} group={group} whatsNewUnread={whatsNewUnread} />
         ))}
       </nav>
 

@@ -318,4 +318,29 @@ router.get("/communications/stats", requireAuth, async (req, res) => {
   res.json(stats ?? { total: 0, unread: 0, needsReply: 0, starred: 0 });
 });
 
+// ─── GET /api/communications/mailboxes ───────────────────────────────────────
+// Returns the user's connected mailboxes (Gmail + SMTP) in a unified format.
+
+router.get("/communications/mailboxes", requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  const result: Array<{ id: string | number; email: string; type: "gmail" | "smtp" }> = [];
+
+  // Gmail mailbox (stored on the user record)
+  if (user.gmailConnected && user.gmailEmail) {
+    result.push({ id: "gmail", email: user.gmailEmail, type: "gmail" });
+  }
+
+  // SMTP mailbox (one per user)
+  const [box] = await db
+    .select({ id: mailboxesTable.id, smtpUser: mailboxesTable.smtpUser })
+    .from(mailboxesTable)
+    .where(eq(mailboxesTable.userId, user.id));
+
+  if (box?.smtpUser) {
+    result.push({ id: box.id, email: box.smtpUser, type: "smtp" });
+  }
+
+  res.json(result);
+});
+
 export default router;

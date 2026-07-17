@@ -1,0 +1,145 @@
+There are still a few navigation UX issues that need to be addressed.
+
+==================================================
+1. COLLAPSIBLE SIDEBAR SECTIONS
+==================================================
+
+The sidebar is still displaying every submenu item all the time.
+
+Instead, I want collapsible navigation groups.
+
+Structure:
+
+🏠 Dashboard
+
+✉ Compose Email
+
+----------------------------------
+
+💬 Communications >
+
+📣 Campaigns >
+
+⚙ Settings >
+
+✨ Updates >
+
+Clicking a section expands it.
+
+Example:
+
+⚙ Settings ▼
+
+    My Profile
+
+    Brand Settings
+
+    Mailboxes
+
+    Billing & Plans
+
+    Suppression List
+
+    Support
+
+Click again to collapse.
+
+Requirements:
+
+- Smooth expand/collapse animation
+- Remember expanded state in localStorage
+- Use the existing design system
+- No page reloads
+
+==================================================
+2. COMPOSE EMAIL
+==================================================
+
+Move Compose Email out of Campaigns.
+
+Place it directly below Dashboard.
+
+This is a primary action and should always be visible.
+
+Order:
+
+Dashboard
+
+Compose Email
+
+Communications
+
+Campaigns
+
+Settings
+
+Updates
+
+==================================================
+3. MAILBOX SELECTOR
+==================================================
+
+The mailbox selector currently shows hardcoded placeholder mailboxes.
+
+Remove all hardcoded values.
+
+Load mailbox options dynamically from the user's connected mailboxes.
+
+BrokerMAIL AI currently supports:
+
+- One Gmail mailbox
+- One SMTP mailbox
+
+Display only mailboxes that actually exist.
+
+Examples:
+
+Only Gmail connected:
+
+All Mailboxes
+
+frank@gmail.com
+
+Only SMTP connected:
+
+All Mailboxes
+
+sales@vertexcarship.com
+
+Both connected:
+
+All Mailboxes
+
+frank@gmail.com
+
+sales@vertexcarship.com
+
+If no mailboxes exist:
+
+No Mailboxes Connected
+
+Connect Gmail
+
+Connect SMTP
+
+Do NOT display fake data.
+
+==================================================
+4. COMMUNICATION FILTERS
+==================================================
+
+The mailbox dropdown should filter conversations by the selected mailbox.
+
+Changing the mailbox should immediately refresh the conversation list.
+
+==================================================
+5. CODE QUALITY
+==================================================
+
+Reuse existing navigation components.
+
+Do not duplicate logic.
+
+Maintain the current design language.
+
+Run frontend and backend TypeScript checks after changes.

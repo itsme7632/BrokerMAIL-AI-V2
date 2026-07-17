@@ -85,6 +85,8 @@ type ConversationDetail = {
 
 type Stats = { total: number; unread: number; needsReply: number; starred: number };
 
+type MailboxOption = { id: string | number; email: string; type: "gmail" | "smtp" };
+
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
 function authHeaders(): Record<string, string> {
@@ -289,14 +291,16 @@ function ConvItem({
 function LeftPanel({
   filter, setFilter, search, setSearch,
   conversations, isLoading, selectedId, onSelect, stats, onRefresh,
+  mailboxes, selectedMailboxId, onMailboxChange,
 }: {
   filter: FilterKey; setFilter: (f: FilterKey) => void;
   search: string; setSearch: (s: string) => void;
   conversations: Conversation[]; isLoading: boolean;
   selectedId: number | null; onSelect: (id: number) => void;
   stats: Stats | undefined; onRefresh: () => void;
+  mailboxes: MailboxOption[]; selectedMailboxId: string | number | null;
+  onMailboxChange: (id: string | number | null) => void;
 }) {
-  const [mailbox, setMailbox] = useState("All Mailboxes");
   const { toast } = useToast();
 
   const handleChip = (key: string) => {
@@ -306,6 +310,11 @@ function LeftPanel({
       toast({ title: "Coming soon", description: "This filter will be available with full inbox sync." });
     }
   };
+
+  const safeMailboxes = mailboxes ?? [];
+  const selectedMailboxLabel = selectedMailboxId === null
+    ? "All Mailboxes"
+    : safeMailboxes.find(m => m.id === selectedMailboxId)?.email ?? "All Mailboxes";
 
   return (
     <div className="flex flex-col h-full border-r border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900">
@@ -322,29 +331,54 @@ function LeftPanel({
           </button>
         </div>
 
-        {/* Mailbox selector */}
+        {/* Mailbox selector — dynamic from API */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors">
               <div className="flex items-center gap-2">
                 <Server className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
-                <span className="truncate">{mailbox}</span>
+                <span className="truncate">{selectedMailboxLabel}</span>
               </div>
               <ChevronDown className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56">
-            {["All Mailboxes", "broker@gmail.com", "sales@domain.com", "support@domain.com"].map(m => (
-              <DropdownMenuItem
-                key={m}
-                onClick={() => setMailbox(m)}
-                className={cn("text-xs gap-2", mailbox === m && "text-blue-600 dark:text-blue-400 font-medium")}
-              >
-                <Server className="h-3 w-3 text-slate-400" />
-                {m}
-                {mailbox === m && <CheckCircle2 className="h-3 w-3 ml-auto text-blue-500" />}
-              </DropdownMenuItem>
-            ))}
+          <DropdownMenuContent align="start" className="w-64">
+            {/* All Mailboxes */}
+            <DropdownMenuItem
+              onClick={() => onMailboxChange(null)}
+              className={cn("text-xs gap-2", selectedMailboxId === null && "text-blue-600 dark:text-blue-400 font-medium")}
+            >
+              <Server className="h-3 w-3 text-slate-400 flex-shrink-0" />
+              <span className="flex-1">All Mailboxes</span>
+              {selectedMailboxId === null && <CheckCircle2 className="h-3 w-3 text-blue-500 flex-shrink-0" />}
+            </DropdownMenuItem>
+
+            {safeMailboxes.length === 0 ? (
+              <>
+                <DropdownMenuSeparator />
+                <div className="px-3 py-2">
+                  <p className="text-[10px] text-slate-400 font-medium mb-1.5">No mailboxes connected</p>
+                  <a href="/mailbox" className="block text-[10px] text-blue-500 hover:text-blue-600 font-medium">Connect Gmail →</a>
+                  <a href="/mailbox" className="block text-[10px] text-blue-500 hover:text-blue-600 font-medium mt-0.5">Connect SMTP →</a>
+                </div>
+              </>
+            ) : (
+              <>
+                <DropdownMenuSeparator />
+                {safeMailboxes.map(mb => (
+                  <DropdownMenuItem
+                    key={String(mb.id)}
+                    onClick={() => onMailboxChange(mb.id)}
+                    className={cn("text-xs gap-2", selectedMailboxId === mb.id && "text-blue-600 dark:text-blue-400 font-medium")}
+                  >
+                    <Server className={cn("h-3 w-3 flex-shrink-0", mb.type === "gmail" ? "text-rose-400" : "text-slate-400")} />
+                    <span className="flex-1 truncate">{mb.email}</span>
+                    <span className="text-[9px] uppercase tracking-wide text-slate-400">{mb.type}</span>
+                    {selectedMailboxId === mb.id && <CheckCircle2 className="h-3 w-3 text-blue-500 flex-shrink-0" />}
+                  </DropdownMenuItem>
+                ))}
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -1051,15 +1085,37 @@ export default function Communications() {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedMailboxId, setSelectedMailboxId] = useState<string | number | null>(null);
   // Mobile panel: "list" | "thread" | "details"
   const [mobilePanel, setMobilePanel] = useState<"list" | "thread" | "details">("list");
   // Desktop: show right panel
   const [showDetails, setShowDetails] = useState(true);
   const queryClient = useQueryClient();
 
+  // Fetch connected mailboxes (Gmail + SMTP)
+  const { data: mailboxes = [] } = useQuery<MailboxOption[]>({
+    queryKey: ["comm-mailboxes"],
+    queryFn: () => apiFetch("/api/communications/mailboxes"),
+    staleTime: 5 * 60_000,
+  });
+
+  // Build conversations URL with optional mailboxId filter
+  const convsUrl = () => {
+    const params = new URLSearchParams({
+      filter,
+      search,
+      limit: "50",
+    });
+    // Only numeric IDs map to mailboxId in the DB; "gmail" has no DB mailboxId yet
+    if (selectedMailboxId !== null && typeof selectedMailboxId === "number") {
+      params.set("mailboxId", String(selectedMailboxId));
+    }
+    return `/api/communications/conversations?${params.toString()}`;
+  };
+
   const { data: convData, isLoading } = useQuery<{ data: Conversation[]; total: number }>({
-    queryKey: ["conversations", filter, search],
-    queryFn: () => apiFetch(`/api/communications/conversations?filter=${filter}&search=${encodeURIComponent(search)}&limit=50`),
+    queryKey: ["conversations", filter, search, selectedMailboxId],
+    queryFn: () => apiFetch(convsUrl()),
     staleTime: 30_000,
   });
 
@@ -1079,6 +1135,12 @@ export default function Communications() {
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ["conversations"] });
     queryClient.invalidateQueries({ queryKey: ["comm-stats"] });
+  };
+
+  const handleMailboxChange = (id: string | number | null) => {
+    setSelectedMailboxId(id);
+    setSelectedId(null); // clear selection when switching mailbox
+    queryClient.invalidateQueries({ queryKey: ["conversations"] });
   };
 
   // Auto-select first on desktop when list loads
@@ -1106,6 +1168,9 @@ export default function Communications() {
           onSelect={handleSelect}
           stats={stats}
           onRefresh={handleRefresh}
+          mailboxes={mailboxes}
+          selectedMailboxId={selectedMailboxId}
+          onMailboxChange={handleMailboxChange}
         />
       </div>
 
