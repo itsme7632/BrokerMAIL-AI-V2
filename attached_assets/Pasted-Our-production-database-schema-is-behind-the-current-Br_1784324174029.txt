@@ -1,0 +1,138 @@
+Our production database schema is behind the current BrokerMAIL AI codebase.
+
+IMPORTANT RULES:
+
+- DO NOT connect to or modify the production database.
+- DO NOT change any application logic unless it is required because of a schema mismatch.
+- DO NOT remove or recreate existing production tables.
+- ONLY generate the missing Drizzle schema updates and migration files required to bring production in sync with the current codebase.
+
+Your job is to perform a full schema audit.
+
+Compare the latest BrokerMAIL AI codebase against the current Drizzle schema and determine every database object required by the Communications system and the latest profile/sync features.
+
+Verify and generate migrations for all missing objects.
+
+Specifically verify the following:
+
+────────────────────────
+USERS TABLE
+────────────────────────
+
+Verify these columns exist.
+
+If missing, add them:
+
+- gmail_comm_sync_at
+- any other columns referenced by the latest code but missing from the schema
+
+────────────────────────
+MAILBOXES TABLE
+────────────────────────
+
+Verify these columns exist.
+
+If missing, add them:
+
+- last_comm_sync_at
+- any other columns referenced by the latest code
+
+────────────────────────
+COMMUNICATIONS TABLES
+────────────────────────
+
+Verify these tables exist exactly as required by the current code.
+
+If any are missing, create them:
+
+- comm_conversations
+- comm_messages
+- comm_notes
+
+For comm_messages verify every required column exists, including (but not limited to):
+
+- external_id
+- attachments_meta
+
+Also verify:
+
+- foreign keys
+- indexes
+- constraints
+- timestamps
+- conversation relationships
+- mailbox relationships
+- user relationships
+
+Everything required by the current Communications feature must be present.
+
+────────────────────────
+FULL SCHEMA AUDIT
+────────────────────────
+
+Do NOT stop after adding the three known missing objects.
+
+Search the entire codebase for every Drizzle table referenced by:
+
+- Communications
+- Inbox
+- Real-time sync
+- SSE
+- Gmail Sync
+- IMAP Sync
+- Attachments
+- Tracking
+- Notes
+- Conversations
+
+If any table, column, index, enum, constraint, or relation required by the code is missing from the schema, include it in the migration.
+
+────────────────────────
+MIGRATION REQUIREMENTS
+────────────────────────
+
+Generate clean Drizzle migration files only.
+
+The migration should:
+
+- preserve existing production data
+- never drop existing data
+- never recreate existing tables
+- only create missing tables
+- only add missing columns
+- create missing indexes
+- create missing foreign keys
+- be safe for an existing production database
+- be idempotent whenever possible
+
+────────────────────────
+VALIDATION
+────────────────────────
+
+After generating the migration:
+
+1. Run pnpm typecheck
+2. Run pnpm build
+3. Verify zero TypeScript errors
+4. Verify zero build errors
+5. Verify the schema fully matches every table and column referenced by the current codebase.
+
+────────────────────────
+OUTPUT
+────────────────────────
+
+Finally provide a deployment summary containing:
+
+1. Every migration file created.
+2. Every table created.
+3. Every column added.
+4. Every index added.
+5. Every foreign key added.
+6. Any schema mismatches found and fixed.
+7. Confirmation that no application logic was changed except where absolutely required for schema compatibility.
+
+Commit ONLY the schema and migration changes.
+
+Do not modify production.
+
+I will deploy these migration files manually to the production server after reviewing them.
