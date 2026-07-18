@@ -735,6 +735,8 @@ router.post("/communications/sync", requireAuth, async (req, res) => {
     .catch(err => {
       logger.error({ err, userId }, "[COMM-SYNC] Manual sync background error");
     });
+
+  return; // satisfy TS7030 — all code paths must return a value
 });
 
 // ─── GET /api/communications/events ──────────────────────────────────────────
