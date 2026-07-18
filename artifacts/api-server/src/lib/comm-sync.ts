@@ -540,7 +540,12 @@ async function scanImapFolder(
     r.messagesScanned += range.length;
     markSyncProgress(userId, r.mailbox, folder, r.messagesScanned, r.messagesImported);
 
-    const messages = await client.fetchAll(range.join(","), { source: true });
+    const messages = await Promise.race([
+      client.fetchAll(range.join(","), { source: true }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("fetchAll timed out after 120s")), 120_000)
+      ),
+    ]);
 
     for (const msg of messages) {
       const source = msg.source?.toString() ?? "";
@@ -805,18 +810,18 @@ export async function runCommSync(targetUserId?: number): Promise<SyncResult[]> 
     }
   } catch (err) {
     logger.error({ err }, "[COMM-SYNC] runCommSync top-level error");
+  } finally {
+    const syncMailboxResults: SyncMailboxResult[] = results.map(r => ({
+      mailbox: r.mailbox,
+      imported: r.messagesImported,
+      error: r.error,
+    }));
+    markSyncComplete(syncMailboxResults);
+    broadcastAll({
+      type: "sync_complete",
+      data: { totalImported: syncMailboxResults.reduce((s, r) => s + r.imported, 0) },
+    });
   }
-
-  const syncMailboxResults: SyncMailboxResult[] = results.map(r => ({
-    mailbox: r.mailbox,
-    imported: r.messagesImported,
-    error: r.error,
-  }));
-  markSyncComplete(syncMailboxResults);
-  broadcastAll({
-    type: "sync_complete",
-    data: { totalImported: syncMailboxResults.reduce((s, r) => s + r.imported, 0) },
-  });
 
   return results;
 }

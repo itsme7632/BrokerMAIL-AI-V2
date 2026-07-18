@@ -104,6 +104,8 @@ type Stats = {
   starred: number;
   archived: number;
   spam: number;
+  inbox?: number;
+  sent?: number;
 };
 
 type MailboxOption = { id: string | number; email: string; type: "gmail" | "smtp" };
@@ -135,7 +137,7 @@ type SyncProgressState = {
 };
 
 type BulkAction = "mark_read" | "mark_unread" | "archive" | "spam" | "delete" | "star" | "unstar";
-type FilterKey  = "all" | "unread" | "needs_reply" | "starred" | "archived" | "spam";
+type FilterKey  = "all" | "inbox" | "sent" | "unread" | "needs_reply" | "starred" | "archived" | "spam";
 type ReplyMode  = "reply" | "reply_all" | "forward" | "note";
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
@@ -237,7 +239,8 @@ function formatBytes(bytes: number): string {
 // ─── Filter tabs ──────────────────────────────────────────────────────────────
 
 const FILTERS: { key: FilterKey; label: string; icon: React.ElementType }[] = [
-  { key: "all",         label: "Inbox",       icon: Inbox },
+  { key: "inbox",       label: "Inbox",       icon: Inbox },
+  { key: "sent",        label: "Sent",        icon: Send },
   { key: "unread",      label: "Unread",      icon: Mail },
   { key: "needs_reply", label: "Needs Reply", icon: CornerDownLeft },
   { key: "starred",     label: "Starred",     icon: Star },
@@ -606,6 +609,26 @@ function NoteItem({ note, convId, currentUserId, onChanged }: {
 function SyncStatusWidget({ liveProgress, isSyncingLive }: {
   liveProgress: SyncProgressState | null; isSyncingLive: boolean;
 }) {
+  const startedAtRef = useRef<number | null>(null);
+  const [elapsedSec, setElapsedSec] = useState(0);
+
+  useEffect(() => {
+    if (isSyncingLive) {
+      if (!startedAtRef.current) { startedAtRef.current = Date.now(); setElapsedSec(0); }
+      const iv = setInterval(() => {
+        setElapsedSec(Math.floor((Date.now() - startedAtRef.current!) / 1000));
+      }, 1_000);
+      return () => clearInterval(iv);
+    } else {
+      startedAtRef.current = null;
+      setElapsedSec(0);
+    }
+  }, [isSyncingLive]);
+
+  const elapsedStr = elapsedSec >= 60
+    ? `${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s`
+    : elapsedSec > 0 ? `${elapsedSec}s` : "";
+
   const { data } = useQuery<SyncStatus>({
     queryKey: ["comm-sync-status"],
     queryFn: () => apiFetch("/api/communications/sync-status"),
@@ -652,7 +675,7 @@ function SyncStatusWidget({ liveProgress, isSyncingLive }: {
               )}
               {(scanned > 0 || imported > 0) && (
                 <p className="text-[9px] text-blue-500 dark:text-blue-400">
-                  {imported} imported · {scanned} scanned
+                  {imported} imported · {scanned} scanned{elapsedStr ? ` · ⏱ ${elapsedStr}` : ""}
                 </p>
               )}
             </div>
@@ -1028,7 +1051,9 @@ function LeftPanel({
       <div className="px-3 pb-2 flex-shrink-0 space-y-0.5">
         {FILTERS.map(f => {
           const count =
-            f.key === "unread"      ? stats?.unread
+            f.key === "inbox"       ? stats?.inbox
+            : f.key === "sent"      ? stats?.sent
+            : f.key === "unread"    ? stats?.unread
             : f.key === "needs_reply" ? stats?.needsReply
             : f.key === "starred"   ? stats?.starred
             : f.key === "archived"  ? stats?.archived
@@ -1062,7 +1087,7 @@ function LeftPanel({
       {/* Conversation count */}
       <div className="px-4 py-2 flex-shrink-0">
         <p className="text-[10px] text-slate-400 dark:text-slate-500">
-          {stats ? `${filter === "all" ? stats.total : ""} conversation${stats.total === 1 ? "" : "s"}` : "Loading…"}
+          {conversations.length > 0 ? `${conversations.length} conversation${conversations.length === 1 ? "" : "s"}` : ""}
         </p>
       </div>
 
@@ -1091,15 +1116,17 @@ function LeftPanel({
             </div>
             <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
               {search ? "No matching conversations"
-               : filter !== "all" ? `No ${filter.replace("_", " ")} conversations`
-               : "No conversations yet"}
+               : filter === "inbox" ? "No inbox messages yet"
+               : filter === "sent" ? "No sent messages yet"
+               : `No ${filter.replace("_", " ")} conversations`}
             </p>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
               {search ? "Try a different search term"
-               : filter === "all" ? "Send your first campaign to get started"
-               : `Nothing here — check your inbox`}
+               : filter === "inbox" ? "All caught up — inbound messages appear here"
+               : filter === "sent" ? "Your outbound messages will appear here"
+               : `Nothing here yet`}
             </p>
-            {filter === "all" && safeMailboxes.length === 0 && (
+            {filter === "inbox" && safeMailboxes.length === 0 && (
               <a href="/mailbox" className="mt-3 text-xs text-blue-500 hover:text-blue-600 font-medium">
                 Connect a mailbox to sync emails →
               </a>
@@ -1125,9 +1152,10 @@ function LeftPanel({
 
 // ─── Reply Composer ───────────────────────────────────────────────────────────
 
-function ReplyComposer({ conv, messages, currentUserId, onNoteAdded }: {
+function ReplyComposer({ conv, messages, currentUserId, onNoteAdded, aiBodySuggestion, onAiBodyUsed }: {
   conv: Conversation; messages: Message[];
   currentUserId: number; onNoteAdded: () => void;
+  aiBodySuggestion?: string; onAiBodyUsed?: () => void;
 }) {
   const [mode, setMode]         = useState<ReplyMode>("reply");
   const [body, setBody]         = useState("");
@@ -1141,6 +1169,15 @@ function ReplyComposer({ conv, messages, currentUserId, onNoteAdded }: {
   const fileRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Accept AI-generated body suggestion
+  useEffect(() => {
+    if (aiBodySuggestion) {
+      setBody(aiBodySuggestion);
+      if (mode === "note") setMode("reply");
+      onAiBodyUsed?.();
+    }
+  }, [aiBodySuggestion]);
 
   const handleModeChange = (m: ReplyMode) => {
     setMode(m);
@@ -1399,6 +1436,7 @@ function AIAssistPanel({ convId, onClose, onUseReply }: {
   const [loading, setLoading]   = useState(false);
   const [result, setResult]     = useState("");
   const [activeType, setActiveType] = useState<string | null>(null);
+  const [language, setLanguage] = useState("Spanish");
   const { toast } = useToast();
 
   const run = async (type: string) => {
@@ -1406,7 +1444,11 @@ function AIAssistPanel({ convId, onClose, onUseReply }: {
     try {
       const { result: r } = await apiFetch<{ result: string }>("/api/communications/ai-assist", {
         method: "POST",
-        body: JSON.stringify({ type, conversationId: convId }),
+        body: JSON.stringify({
+          type,
+          conversationId: convId,
+          language: type === "translate" ? language : undefined,
+        }),
       });
       setResult(r);
     } catch (e: any) {
@@ -1428,11 +1470,14 @@ function AIAssistPanel({ convId, onClose, onUseReply }: {
         </button>
       </div>
 
-      <div className="p-3 space-y-2 flex-shrink-0 border-b border-slate-100 dark:border-slate-800">
+      <div className="p-3 space-y-1.5 flex-shrink-0 border-b border-slate-100 dark:border-slate-800">
         {[
-          { key: "summarize",     label: "Summarize Thread", icon: FileText },
-          { key: "suggest_reply", label: "Suggest Reply",    icon: Reply },
-          { key: "extract_intent",label: "Extract Intent",   icon: TrendingUp },
+          { key: "summarize",     label: "Summarize Thread",      icon: FileText },
+          { key: "suggest_reply", label: "Suggest Reply",         icon: Reply },
+          { key: "extract_intent",label: "Extract Intent",        icon: TrendingUp },
+          { key: "sentiment",     label: "Sentiment Analysis",    icon: Zap },
+          { key: "rewrite",       label: "Rewrite Last Message",  icon: RotateCcw },
+          { key: "translate",     label: "Translate Thread",      icon: Languages },
         ].map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -1451,6 +1496,17 @@ function AIAssistPanel({ convId, onClose, onUseReply }: {
             {label}
           </button>
         ))}
+        {activeType === "translate" && (
+          <select
+            value={language}
+            onChange={e => setLanguage(e.target.value)}
+            className="w-full text-xs border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 mt-1"
+          >
+            {["Spanish","French","German","Italian","Portuguese","Chinese","Japanese","Korean","Arabic","Russian"].map(l => (
+              <option key={l} value={l}>{l}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">
@@ -1761,14 +1817,18 @@ function MiddlePanel({
                 >
                   <Copy className="h-3.5 w-3.5" /> Copy Email
                 </DropdownMenuItem>
-                {conv.customerEmail.includes("gmail") && (
-                  <DropdownMenuItem
-                    onClick={() => window.open(`https://mail.google.com/mail/u/0/#search/${encodeURIComponent(conv.customerEmail)}`, "_blank")}
-                    className="gap-2 text-xs"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" /> Open in Gmail
-                  </DropdownMenuItem>
-                )}
+                <DropdownMenuItem
+                  onClick={() => window.open(`https://mail.google.com/mail/u/0/#search/${encodeURIComponent(conv.customerEmail)}`, "_blank")}
+                  className="gap-2 text-xs"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" /> Open in Gmail
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => window.open(`mailto:${conv.customerEmail}?subject=${encodeURIComponent(conv.subject)}`, "_blank")}
+                  className="gap-2 text-xs"
+                >
+                  <Mail className="h-3.5 w-3.5" /> Open in Mail Client
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => updateMutation.mutate({ status: "spam" })} className="gap-2 text-xs text-amber-600 focus:text-amber-700">
                   <AlertTriangle className="h-3.5 w-3.5" /> Mark as Spam
@@ -1847,6 +1907,8 @@ function MiddlePanel({
         messages={messages}
         currentUserId={currentUserId}
         onNoteAdded={() => queryClient.invalidateQueries({ queryKey: ["conv-detail", selectedId] })}
+        aiBodySuggestion={aiReply}
+        onAiBodyUsed={() => setAiReply("")}
       />
 
       {/* AI panel overlay */}
@@ -1854,7 +1916,7 @@ function MiddlePanel({
         <AIAssistPanel
           convId={conv.id}
           onClose={() => setShowAI(false)}
-          onUseReply={text => { setShowAI(false); /* handled inside ReplyComposer */ }}
+          onUseReply={text => { setShowAI(false); setAiReply(text); }}
         />
       )}
     </div>
@@ -2077,7 +2139,7 @@ export default function Communications() {
   const { user } = useAuth();
   const currentUserId = user?.id ?? 0;
 
-  const [filter, setFilter]           = useState<FilterKey>("all");
+  const [filter, setFilter]           = useState<FilterKey>("inbox");
   const [search, setSearch]           = useState("");
   const [selectedId, setSelectedId]   = useState<number | null>(null);
   const [selectedMailboxId, setSelectedMailboxId] = useState<string | number | null>(null);
@@ -2182,26 +2244,19 @@ export default function Communications() {
 
   const handleRefresh = async () => {
     if (isSyncing) return;
-    setIsSyncing(true);
-    setLiveProgress(null);
     try {
-      const result = await apiFetch<{ totalImported: number; totalCreated: number; errors: string[] }>(
+      const resp = await apiFetch<{ started: boolean; message?: string }>(
         "/api/communications/sync",
         { method: "POST" },
       );
-      queryClient.invalidateQueries({ queryKey: ["conversations"] });
-      queryClient.invalidateQueries({ queryKey: ["comm-stats"] });
-      queryClient.invalidateQueries({ queryKey: ["comm-mailboxes"] });
-      const n = result.totalImported;
-      toast({
-        title: "Sync complete",
-        description: n > 0 ? `Imported ${n} new message${n === 1 ? "" : "s"}` : "Your inbox is up to date",
-      });
+      if (resp.started) {
+        setIsSyncing(true); // SSE sync_complete will reset this
+        setLiveProgress(null);
+      } else {
+        toast({ title: "Sync in progress", description: resp.message ?? "Already syncing, please wait" });
+      }
     } catch (e: any) {
       toast({ variant: "destructive", title: "Sync failed", description: e.message });
-    } finally {
-      setIsSyncing(false);
-      setTimeout(() => setLiveProgress(null), 3000);
     }
   };
 

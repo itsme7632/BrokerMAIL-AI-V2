@@ -143,7 +143,16 @@ router.get("/communications/conversations", requireAuth, async (req, res) => {
   else if (filter === "starred") conditions.push(eq(commConversationsTable.starred, true));
   else if (filter === "archived") conditions.push(eq(commConversationsTable.status, "archived"));
   else if (filter === "spam")    conditions.push(eq(commConversationsTable.status, "spam"));
+  else if (filter === "inbox") {
+    conditions.push(sql`${commConversationsTable.status} NOT IN ('archived', 'spam')`);
+    conditions.push(sql`(SELECT direction FROM comm_messages WHERE conversation_id = ${commConversationsTable.id} ORDER BY COALESCE(sent_at, created_at) DESC NULLS LAST LIMIT 1) = 'inbound'`);
+  }
+  else if (filter === "sent") {
+    conditions.push(sql`${commConversationsTable.status} NOT IN ('archived', 'spam')`);
+    conditions.push(sql`(SELECT direction FROM comm_messages WHERE conversation_id = ${commConversationsTable.id} ORDER BY COALESCE(sent_at, created_at) DESC NULLS LAST LIMIT 1) = 'outbound'`);
+  }
   else {
+    // "all" — active conversations (not archived or spam)
     conditions.push(sql`${commConversationsTable.status} NOT IN ('archived', 'spam')`);
   }
 
@@ -163,12 +172,23 @@ router.get("/communications/conversations", requireAuth, async (req, res) => {
           or(
             ilike(leadsTable.vehicle, q),
             ilike(leadsTable.notes, q),
+            ilike(leadsTable.pickup, q),
+            ilike(leadsTable.delivery, q),
+            ilike(sql`coalesce(${leadsTable.price}, '')`, q),
           ),
         )
       )
       .limit(200);
 
     const leadIds = matchingLeads.map(l => l.id);
+
+    // Also match campaign names
+    const matchingCampaigns = await db
+      .select({ id: campaignsTable.id })
+      .from(campaignsTable)
+      .where(and(eq(campaignsTable.userId, userId), ilike(campaignsTable.name, q)))
+      .limit(100);
+    const campaignIds = matchingCampaigns.map(c => c.id);
 
     const searchConditions = [
       ilike(commConversationsTable.customerName, q),
@@ -178,6 +198,9 @@ router.get("/communications/conversations", requireAuth, async (req, res) => {
     ];
     if (leadIds.length > 0) {
       searchConditions.push(inArray(commConversationsTable.leadId, leadIds));
+    }
+    if (campaignIds.length > 0) {
+      searchConditions.push(inArray(commConversationsTable.campaignId, campaignIds));
     }
     conditions.push(or(...searchConditions)!);
   }
@@ -607,11 +630,13 @@ router.get("/communications/stats", requireAuth, async (req, res) => {
       starred:    sql<number>`count(*) filter (where ${commConversationsTable.starred} = true AND ${commConversationsTable.status} NOT IN ('archived', 'spam'))::int`,
       archived:   sql<number>`count(*) filter (where ${commConversationsTable.status} = 'archived')::int`,
       spam:       sql<number>`count(*) filter (where ${commConversationsTable.status} = 'spam')::int`,
+      inbox:      sql<number>`count(*) filter (where ${commConversationsTable.status} NOT IN ('archived', 'spam') AND (SELECT direction FROM comm_messages WHERE conversation_id = ${commConversationsTable.id} ORDER BY COALESCE(sent_at, created_at) DESC NULLS LAST LIMIT 1) = 'inbound')::int`,
+      sent:       sql<number>`count(*) filter (where ${commConversationsTable.status} NOT IN ('archived', 'spam') AND (SELECT direction FROM comm_messages WHERE conversation_id = ${commConversationsTable.id} ORDER BY COALESCE(sent_at, created_at) DESC NULLS LAST LIMIT 1) = 'outbound')::int`,
     })
     .from(commConversationsTable)
     .where(eq(commConversationsTable.userId, userId));
 
-  res.json(stats ?? { total: 0, unread: 0, needsReply: 0, starred: 0, archived: 0, spam: 0 });
+  res.json(stats ?? { total: 0, unread: 0, needsReply: 0, starred: 0, archived: 0, spam: 0, inbox: 0, sent: 0 });
 });
 
 // ─── POST /api/communications/ai-assist ──────────────────────────────────────
@@ -622,7 +647,7 @@ router.post("/communications/ai-assist", requireAuth, async (req, res) => {
     type?: string; conversationId?: number; text?: string; language?: string;
   };
 
-  const validTypes = ["summarize", "suggest_reply", "extract_intent", "rewrite", "translate"];
+  const validTypes = ["summarize", "suggest_reply", "extract_intent", "rewrite", "translate", "sentiment"];
   if (!type || !validTypes.includes(type)) {
     return res.status(400).json({ error: `type must be one of: ${validTypes.join(", ")}` });
   }
@@ -665,6 +690,8 @@ router.post("/communications/ai-assist", requireAuth, async (req, res) => {
       prompt = `Rewrite the following text to be more professional and clear, while keeping the same meaning:\n\n${text ?? context}`;
     } else if (type === "translate") {
       prompt = `Translate the following text to ${language ?? "Spanish"}:\n\n${text ?? context}`;
+    } else if (type === "sentiment") {
+      prompt = `Analyze the sentiment of this email thread. Provide:\n- Overall tone: [positive/neutral/negative/mixed]\n- Customer emotion: [e.g., interested, frustrated, confused, excited]\n- Urgency level: [low/medium/high]\n- Buying intent: [low/medium/high]\n- Key insight: [one sentence about the customer's attitude]\n\nThread:\n${context}`;
     }
 
     const completion = await openai.chat.completions.create({
@@ -690,25 +717,24 @@ router.post("/communications/ai-assist", requireAuth, async (req, res) => {
 
 router.post("/communications/sync", requireAuth, async (req, res) => {
   const userId = (req as any).user.id as number;
+  const state  = getSyncState();
 
-  try {
-    const results = await runCommSync(userId);
-
-    const totalImported = results.reduce((s, r) => s + r.messagesImported, 0);
-    const totalCreated  = results.reduce((s, r) => s + r.conversationsCreated, 0);
-    const totalUpdated  = results.reduce((s, r) => s + r.conversationsUpdated, 0);
-    const errors        = results.filter(r => r.error).map(r => `${r.mailbox}: ${r.error}`);
-
-    logger.info(
-      { userId, totalImported, totalCreated, totalUpdated, mailboxCount: results.length },
-      "[COMM-SYNC] Manual sync complete",
-    );
-
-    return res.json({ success: true, results, totalImported, totalCreated, totalUpdated, errors });
-  } catch (err) {
-    logger.error({ err, userId }, "[COMM-SYNC] Manual sync route error");
-    return res.status(500).json({ error: "Sync failed" });
+  if (state.isSyncing) {
+    return res.json({ started: false, message: "Sync already in progress" });
   }
+
+  // Respond immediately — progress and completion flow through SSE
+  res.json({ started: true });
+
+  // Run sync in background (do NOT await — must not block the response)
+  runCommSync(userId)
+    .then(results => {
+      const total = results.reduce((s, r) => s + r.messagesImported, 0);
+      logger.info({ userId, total, mailboxCount: results.length }, "[COMM-SYNC] Manual sync complete");
+    })
+    .catch(err => {
+      logger.error({ err, userId }, "[COMM-SYNC] Manual sync background error");
+    });
 });
 
 // ─── GET /api/communications/events ──────────────────────────────────────────
