@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useAuth } from "@/context/AuthContext";
@@ -9,9 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import {
-  Search, Star, Archive, Inbox, ChevronRight, ChevronLeft, ChevronDown,
+  Search, Star, Archive, Inbox, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Reply, Forward, MoreHorizontal, Mail, Phone, Truck,
   MapPin, DollarSign, Megaphone, Server, Tag,
   CheckCircle2, Eye, MousePointerClick, AlertTriangle,
@@ -19,10 +18,9 @@ import {
   MessageSquare, Sparkles, ArrowUpRight,
   CornerDownLeft, Bold, Italic, Paperclip, ListTodo,
   Wifi, WifiOff, Clock, Download, File,
-  Trash2, Edit2, ReplyAll, CheckSquare, Square, Minus,
-  Copy, ExternalLink, Ban, RotateCcw, Check, ChevronUp,
+  Trash2, Edit2, ReplyAll, Check,
+  Copy, ExternalLink, Ban, RotateCcw,
   TrendingUp, AlertCircle, Zap, Languages, FileText,
-  CalendarClock, Plus, Info,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -31,6 +29,17 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+type FilterKey =
+  | "all" | "inbox" | "sent" | "drafts" | "unread"
+  | "needs_reply" | "starred" | "archived" | "spam"
+  | "trash" | "system";
+
+type ReplyMode = "reply" | "reply_all" | "forward" | "note";
+
+type BulkAction =
+  | "mark_read" | "mark_unread" | "archive" | "spam"
+  | "trash" | "restore" | "delete" | "star" | "unstar";
 
 type Conversation = {
   id: number;
@@ -41,7 +50,7 @@ type Conversation = {
   customerName: string;
   customerEmail: string;
   customerPhone: string | null;
-  status: string;
+  status: string; // unread|read|needs_reply|replied|archived|spam|trash|system
   starred: boolean;
   messageCount: number;
   unreadCount: number;
@@ -51,43 +60,44 @@ type Conversation = {
 type Message = {
   id: number;
   conversationId: number;
-  direction: "outbound" | "inbound";
+  direction: "inbound" | "outbound";
   fromEmail: string;
   fromName: string | null;
-  toEmail: string;
+  toEmail: string | null;
   subject: string | null;
   body: string;
   htmlBody: string | null;
   snippet: string | null;
   isRead: boolean;
+  draftId: string | null;
+  externalId: string | null;
+  attachmentsMeta: string | null;
   sentAt: string | null;
   createdAt: string;
-  attachmentsMeta: string | null;
+};
+
+type Note = {
+  id: number;
+  conversationId: number;
+  userId: number;
+  authorName: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type Lead = {
   id: number;
-  name: string;
-  email: string;
   vehicle: string | null;
   route: string | null;
   pickup: string | null;
   delivery: string | null;
   price: string | null;
-  notes: string | null;
   quoteId: string | null;
   status: string | null;
 };
 
 type Campaign = { id: number; name: string };
-
-type Note = {
-  id: number;
-  content: string;
-  createdAt: string;
-  userId: number;
-  authorName: string;
-};
 
 type ConversationDetail = {
   conversation: Conversation;
@@ -97,6 +107,10 @@ type ConversationDetail = {
   campaign: Campaign | null;
 };
 
+type MailboxOption = { id: string | number; email: string; type: "gmail" | "smtp"; connected?: boolean };
+
+type AttachmentMeta = { partId?: string; name: string; mimeType: string; size: number };
+
 type Stats = {
   total: number;
   unread: number;
@@ -104,57 +118,43 @@ type Stats = {
   starred: number;
   archived: number;
   spam: number;
+  trash?: number;
+  system?: number;
   inbox?: number;
   sent?: number;
 };
 
-type MailboxOption = { id: string | number; email: string; type: "gmail" | "smtp" };
-
-type AttachmentMeta = { name: string; size: number; mimeType: string; partId?: string };
+type SyncProgressState = {
+  mailbox?: string; folder?: string;
+  imported: number; scanned: number;
+  totalMailboxes?: number; completedMailboxes?: number;
+};
 
 type SyncStatus = {
   isSyncing: boolean;
   lastSyncAt: string | null;
   nextSyncAt: string | null;
+  lastSyncResults: { mailbox: string; imported: number; error?: string }[];
+  mailboxes: { email: string; type: string; connected: boolean; lastSyncAt?: string | null }[];
   liveConnections: number;
-  mailboxes: Array<{ email: string; type: string; connected: boolean; lastSyncAt: string | null }>;
-  lastSyncResults: Array<{ mailbox: string; imported: number; error?: string }>;
-  currentMailbox: string | null;
-  currentFolder: string | null;
+  currentMailbox?: string;
+  currentFolder?: string;
   scanned: number;
   imported: number;
-  totalMailboxes: number;
-  completedMailboxes: number;
 };
-
-type SyncProgressState = {
-  mailbox: string;
-  folder: string | null;
-  scanned: number;
-  imported: number;
-  mailboxDone?: boolean;
-  error?: string;
-};
-
-type BulkAction = "mark_read" | "mark_unread" | "archive" | "spam" | "delete" | "star" | "unstar";
-type FilterKey  = "all" | "inbox" | "sent" | "unread" | "needs_reply" | "starred" | "archived" | "spam";
-type ReplyMode  = "reply" | "reply_all" | "forward" | "note";
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
 function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem("auth_token") ?? "";
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const token = localStorage.getItem("auth_token");
+  return token ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
 }
 
-async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    ...opts,
-    headers: { "Content-Type": "application/json", ...authHeaders(), ...(opts?.headers ?? {}) },
-  });
+async function apiFetch<T = unknown>(url: string, opts?: RequestInit): Promise<T> {
+  const res = await fetch(url, { headers: authHeaders(), ...opts });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as any).error ?? `HTTP ${res.status}`);
+    const d = await res.json().catch(() => ({}));
+    throw new Error((d as any).error ?? `HTTP ${res.status}`);
   }
   return res.json() as Promise<T>;
 }
@@ -163,172 +163,181 @@ async function apiFetch<T>(url: string, opts?: RequestInit): Promise<T> {
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
-  const mins  = Math.floor(diff / 60_000);
-  const hours = Math.floor(diff / 3_600_000);
-  const days  = Math.floor(diff / 86_400_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m`;
-  if (hours < 24) return `${hours}h`;
-  if (days === 1) return "Yesterday";
-  if (days < 7) return `${days}d`;
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const m = Math.floor(diff / 60_000);
+  if (m < 1)  return "just now";
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 7)  return `${d}d`;
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function timeAgoShort(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60_000);
-  const h = Math.floor(diff / 3_600_000);
-  const d = Math.floor(diff / 86_400_000);
-  if (m < 1) return "just now";
+  if (m < 1)  return "just now";
   if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
-  if (d === 1) return "Yesterday";
-  return `${d}d ago`;
+  return `${Math.floor(h / 24)}d ago`;
 }
 
 function fullTime(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit", hour12: true,
+  return new Date(iso).toLocaleString(undefined, {
+    weekday: "short", month: "short", day: "numeric",
+    hour: "numeric", minute: "2-digit",
   });
 }
 
 function dayLabel(iso: string): string {
   const d = new Date(iso);
   const today = new Date();
-  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
   if (d.toDateString() === today.toDateString()) return "Today";
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
   if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: d.getFullYear() !== today.getFullYear() ? "numeric" : undefined });
+  return d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 }
 
-function initials(name: string): string {
-  return name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
+function initials(name: string | null | undefined): string {
+  if (!name) return "?";
+  return name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 }
+
+const AVATAR_COLORS = [
+  "from-violet-500 to-purple-600",
+  "from-blue-500 to-cyan-600",
+  "from-emerald-500 to-teal-600",
+  "from-rose-500 to-pink-600",
+  "from-amber-500 to-orange-600",
+  "from-indigo-500 to-blue-600",
+  "from-teal-500 to-green-600",
+  "from-fuchsia-500 to-violet-600",
+];
 
 function avatarColor(email: string): string {
-  const colors = [
-    "from-blue-500 to-indigo-600",
-    "from-violet-500 to-purple-600",
-    "from-emerald-500 to-teal-600",
-    "from-rose-500 to-pink-600",
-    "from-amber-500 to-orange-600",
-    "from-cyan-500 to-sky-600",
-  ];
-  let hash = 0;
-  for (let i = 0; i < email.length; i++) hash = (hash * 31 + email.charCodeAt(i)) & 0xffff;
-  return colors[hash % colors.length];
+  let h = 0;
+  for (let i = 0; i < email.length; i++) h = (h * 31 + email.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
-function statusBadge(status: string) {
+function statusBadge(status: string): { label: string; cls: string } | null {
   switch (status) {
-    case "unread":      return { label: "Unread",      cls: "bg-blue-500 text-white" };
-    case "needs_reply": return { label: "Needs Reply", cls: "bg-amber-500 text-white" };
-    case "replied":     return { label: "Replied",     cls: "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30" };
+    case "needs_reply": return { label: "Needs Reply", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" };
+    case "replied":     return { label: "Replied",     cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" };
     case "archived":    return { label: "Archived",    cls: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" };
-    default:            return null;
+    case "spam":        return { label: "Spam",        cls: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" };
+    case "trash":       return { label: "Trash",       cls: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" };
+    case "system":      return { label: "Notification", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" };
+    default: return null;
   }
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1_048_576) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1_048_576).toFixed(1)} MB`;
+function formatBytes(b: number): string {
+  if (b < 1024) return `${b}B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)}KB`;
+  return `${(b / 1024 / 1024).toFixed(1)}MB`;
 }
 
-// ─── Filter tabs ──────────────────────────────────────────────────────────────
+/** Strip quoted reply content from HTML email body. Returns primary and quoted parts. */
+function extractQuotedContent(html: string): { primary: string; quoted: string | null } {
+  if (!html) return { primary: html, quoted: null };
 
-const FILTERS: { key: FilterKey; label: string; icon: React.ElementType }[] = [
-  { key: "inbox",       label: "Inbox",       icon: Inbox },
-  { key: "sent",        label: "Sent",        icon: Send },
-  { key: "unread",      label: "Unread",      icon: Mail },
-  { key: "needs_reply", label: "Needs Reply", icon: CornerDownLeft },
-  { key: "starred",     label: "Starred",     icon: Star },
-  { key: "archived",    label: "Archived",    icon: Archive },
-  { key: "spam",        label: "Spam",        icon: AlertTriangle },
-];
+  // Strategy 1: Gmail's quote wrapper div
+  const gmailIdx = html.search(/(<div[^>]*class="[^"]*gmail_quote[^"]*")/i);
+  if (gmailIdx > 80) {
+    return { primary: html.slice(0, gmailIdx).replace(/<br\s*\/?>\s*$/i, "").trim(), quoted: html.slice(gmailIdx) };
+  }
 
-// ─── Collapsible section ──────────────────────────────────────────────────────
+  // Strategy 2: Trailing blockquote (Outlook/IMAP style)
+  const lastBq = html.lastIndexOf("<blockquote");
+  if (lastBq > 200) {
+    const beforeBq = html.slice(0, lastBq).trim();
+    if (beforeBq.replace(/<[^>]*>/g, "").trim().length > 40) {
+      return { primary: beforeBq, quoted: html.slice(lastBq) };
+    }
+  }
+
+  // Strategy 3: "On <date>, <name> wrote:" separator
+  const m = html.match(/^([\s\S]{80,}?)(?:<br\s*\/?>\s*){1,2}(On .{10,200} wrote:|-----Original Message-----)/i);
+  if (m?.[1] && m[1].length < html.length * 0.9) {
+    return { primary: m[1].trim(), quoted: html.slice(m[1].length) };
+  }
+
+  return { primary: html, quoted: null };
+}
+
+// ─── Panel section helper ─────────────────────────────────────────────────────
 
 function usePanelSection(key: string, defaultOpen: boolean) {
-  const storageKey = `comm_panel_${key}`;
   const [open, setOpen] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(storageKey) ?? String(defaultOpen)); }
-    catch { return defaultOpen; }
+    try { return JSON.parse(localStorage.getItem(`panel-${key}`) ?? String(defaultOpen)); } catch { return defaultOpen; }
   });
   const toggle = () => setOpen((v: boolean) => {
-    const next = !v;
-    localStorage.setItem(storageKey, String(next));
-    return next;
+    localStorage.setItem(`panel-${key}`, String(!v));
+    return !v;
   });
-  return [open as boolean, toggle] as const;
+  return [open as boolean, toggle as () => void] as const;
 }
 
-function PanelSection({ title, sectionKey, defaultOpen = false, children, action }: {
-  title: string; sectionKey: string; defaultOpen?: boolean;
-  children: React.ReactNode; action?: React.ReactNode;
+function PanelSection({ title, sectionKey, defaultOpen, children }: {
+  title: string; sectionKey: string; defaultOpen: boolean; children: React.ReactNode;
 }) {
   const [open, toggle] = usePanelSection(sectionKey, defaultOpen);
   return (
-    <div className="border-b border-slate-100 dark:border-slate-800/80">
+    <div className="border-b border-slate-100 dark:border-slate-800 last:border-none">
       <button
         onClick={toggle}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group"
+        className="w-full flex items-center justify-between px-4 py-3 text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
       >
-        <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors">
-          {title}
-        </span>
-        <div className="flex items-center gap-1">
-          {action && <span onClick={e => e.stopPropagation()}>{action}</span>}
-          <ChevronDown className={cn("h-3.5 w-3.5 text-slate-400 dark:text-slate-500 transition-transform duration-200", open && "rotate-180")} />
-        </div>
+        {title}
+        {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
       </button>
-      {open && <div className="px-4 pb-4">{children}</div>}
+      {open && <div className="px-4 pb-3">{children}</div>}
     </div>
   );
 }
 
-// ─── SSE Hook ─────────────────────────────────────────────────────────────────
+// ─── SSE Hook ────────────────────────────────────────────────────────────────
 
 function useCommEvents(
   onSyncProgress?: (p: SyncProgressState) => void,
   onSyncStarted?: () => void,
   onSyncComplete?: () => void,
-) {
+): "connecting" | "connected" | "disconnected" {
   const [status, setStatus] = useState<"connecting" | "connected" | "disconnected">("connecting");
+  const esRef     = useRef<EventSource | null>(null);
+  const retryRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const delayRef  = useRef(2_000);
   const queryClient = useQueryClient();
-  const esRef   = useRef<EventSource | null>(null);
-  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const delayRef = useRef(2_000);
 
   const connect = useCallback(() => {
-    const token = localStorage.getItem("auth_token") ?? "";
-    if (!token) { setStatus("disconnected"); return; }
-    if (retryRef.current) { clearTimeout(retryRef.current); retryRef.current = null; }
+    esRef.current?.close();
     setStatus("connecting");
-
+    const token = localStorage.getItem("auth_token");
+    if (!token) { setStatus("disconnected"); return; }
     const es = new EventSource(`/api/communications/events?token=${encodeURIComponent(token)}`);
     esRef.current = es;
-
     es.onopen = () => { setStatus("connected"); delayRef.current = 2_000; };
-
-    es.onmessage = (e: MessageEvent) => {
+    es.onmessage = (e) => {
       try {
-        const ev: { type: string; conversationId?: number; data?: any } = JSON.parse(e.data);
+        const ev = JSON.parse(e.data);
         switch (ev.type) {
           case "connected":
             setStatus("connected");
             break;
 
           case "new_message":
-            if (ev.conversationId) queryClient.invalidateQueries({ queryKey: ["conv-detail", ev.conversationId] });
+            if (ev.conversationId) {
+              queryClient.invalidateQueries({ queryKey: ["conv-detail", ev.conversationId] });
+            }
             queryClient.invalidateQueries({ queryKey: ["conversations"] });
             queryClient.invalidateQueries({ queryKey: ["comm-stats"] });
             break;
 
           case "read_updated":
             if (ev.conversationId) {
-              // Optimistically update the conversation list cache
               queryClient.setQueriesData<{ data: Conversation[]; total: number }>(
                 { queryKey: ["conversations"] },
                 (old) => {
@@ -337,8 +346,8 @@ function useCommEvents(
                     ...old,
                     data: old.data.map(c =>
                       c.id === ev.conversationId
-                        ? { ...c, status: ev.data?.status ?? "read", unreadCount: ev.data?.unreadCount ?? 0 }
-                        : c
+                        ? { ...c, status: c.status === "unread" ? "read" : c.status, unreadCount: 0 }
+                        : c,
                     ),
                   };
                 },
@@ -361,7 +370,6 @@ function useCommEvents(
                 },
               );
               if (ev.data?.ids) {
-                // Bulk action — full refetch
                 queryClient.invalidateQueries({ queryKey: ["conversations"] });
               }
             } else if (ev.data?.ids) {
@@ -423,7 +431,7 @@ function useCommEvents(
 
 // ─── HtmlEmailRenderer ────────────────────────────────────────────────────────
 
-function HtmlEmailRenderer({ html, isOutbound }: { html: string; isOutbound: boolean }) {
+function HtmlEmailRenderer({ html, isDark }: { html: string; isDark?: boolean }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(80);
 
@@ -434,17 +442,17 @@ function HtmlEmailRenderer({ html, isOutbound }: { html: string; isOutbound: boo
   const doc = [
     "<!DOCTYPE html><html><head><meta charset='utf-8'><style>",
     "*{box-sizing:border-box}",
-    `body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;line-height:1.5;color:${isOutbound ? "#fff" : "#1e293b"};background:transparent;word-break:break-word;overflow:hidden}`,
-    `img{max-width:100%;height:auto}a{color:${isOutbound ? "#93c5fd" : "#3b82f6"}}`,
+    `body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;line-height:1.5;color:${isDark ? "#fff" : "#1e293b"};background:transparent;word-break:break-word;overflow:hidden}`,
+    `img{max-width:100%;height:auto}a{color:${isDark ? "#93c5fd" : "#3b82f6"}}`,
     "table{max-width:100%!important;border-collapse:collapse}p{margin:2px 0}",
-    `blockquote{margin:4px 0 4px 12px;padding-left:8px;border-left:3px solid ${isOutbound ? "rgba(255,255,255,.3)" : "#e2e8f0"};color:${isOutbound ? "rgba(255,255,255,.7)" : "#64748b"}}`,
+    `blockquote{margin:4px 0 4px 12px;padding-left:8px;border-left:3px solid ${isDark ? "rgba(255,255,255,.3)" : "#e2e8f0"};color:${isDark ? "rgba(255,255,255,.7)" : "#64748b"}}`,
     `</style></head><body>${clean}</body></html>`,
   ].join("");
 
   const handleLoad = useCallback(() => {
     try {
       const el = iframeRef.current?.contentDocument?.documentElement;
-      if (el) setHeight(Math.max(40, Math.min(500, el.scrollHeight)));
+      if (el) setHeight(Math.max(40, Math.min(600, el.scrollHeight)));
     } catch { /* sandboxed */ }
   }, []);
 
@@ -462,33 +470,26 @@ function HtmlEmailRenderer({ html, isOutbound }: { html: string; isOutbound: boo
 
 // ─── AttachmentList ───────────────────────────────────────────────────────────
 
-function AttachmentList({ metaJson, isOutbound }: { metaJson: string; isOutbound: boolean }) {
+function AttachmentList({ metaJson }: { metaJson: string }) {
   let items: AttachmentMeta[] = [];
   try { items = JSON.parse(metaJson); } catch { return null; }
   if (!items.length) return null;
 
   return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
+    <div className="mt-3 flex flex-wrap gap-1.5">
       {items.map((att, i) => {
         const isImage = att.mimeType.startsWith("image/");
         return (
           <button
             key={i}
             onClick={() => window.open(`#attachment-${att.partId ?? i}`, "_blank")}
-            className={cn(
-              "flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-medium transition-opacity hover:opacity-80",
-              isOutbound
-                ? "bg-white/15 text-white"
-                : "bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300",
-            )}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/80 transition-colors"
             title={`${att.name} (${formatBytes(att.size)})`}
           >
-            {isImage
-              ? <Eye className="h-3 w-3 flex-shrink-0" />
-              : <File className="h-3 w-3 flex-shrink-0" />}
-            <span className="truncate max-w-[100px]">{att.name}</span>
+            {isImage ? <Eye className="h-3 w-3 flex-shrink-0 text-slate-400" /> : <File className="h-3 w-3 flex-shrink-0 text-slate-400" />}
+            <span className="truncate max-w-[120px]">{att.name}</span>
             <span className="opacity-60 flex-shrink-0">{formatBytes(att.size)}</span>
-            <Download className="h-3 w-3 flex-shrink-0 opacity-50 hover:opacity-100" />
+            <Download className="h-3 w-3 flex-shrink-0 opacity-40" />
           </button>
         );
       })}
@@ -545,7 +546,7 @@ function NoteItem({ note, convId, currentUserId, onChanged }: {
     <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-xl px-3 py-2.5">
       <div className="flex items-start justify-between gap-2 mb-1">
         <div className="flex items-center gap-1.5 min-w-0">
-          <div className="h-4.5 w-4.5 rounded-full bg-amber-200 dark:bg-amber-800/60 flex items-center justify-center flex-shrink-0">
+          <div className="h-4 w-4 rounded-full bg-amber-200 dark:bg-amber-800/60 flex items-center justify-center flex-shrink-0">
             <StickyNote className="h-2.5 w-2.5 text-amber-700 dark:text-amber-400" />
           </div>
           <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 truncate">
@@ -604,31 +605,15 @@ function NoteItem({ note, convId, currentUserId, onChanged }: {
   );
 }
 
-// ─── Sync Status Widget ───────────────────────────────────────────────────────
+// ─── Account Health Panel (replaces SyncStatusWidget) ─────────────────────────
 
-function SyncStatusWidget({ liveProgress, isSyncingLive }: {
-  liveProgress: SyncProgressState | null; isSyncingLive: boolean;
+function AccountHealthPanel({ liveProgress, isSyncingLive, onSync, isSyncing }: {
+  liveProgress: SyncProgressState | null;
+  isSyncingLive: boolean;
+  onSync: () => void;
+  isSyncing: boolean;
 }) {
-  const startedAtRef = useRef<number | null>(null);
-  const [elapsedSec, setElapsedSec] = useState(0);
-
-  useEffect(() => {
-    if (isSyncingLive) {
-      if (!startedAtRef.current) { startedAtRef.current = Date.now(); setElapsedSec(0); }
-      const iv = setInterval(() => {
-        setElapsedSec(Math.floor((Date.now() - startedAtRef.current!) / 1000));
-      }, 1_000);
-      return () => clearInterval(iv);
-    } else {
-      startedAtRef.current = null;
-      setElapsedSec(0);
-      return;
-    }
-  }, [isSyncingLive]);
-
-  const elapsedStr = elapsedSec >= 60
-    ? `${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s`
-    : elapsedSec > 0 ? `${elapsedSec}s` : "";
+  const [expanded, setExpanded] = useState(false);
 
   const { data } = useQuery<SyncStatus>({
     queryKey: ["comm-sync-status"],
@@ -639,69 +624,109 @@ function SyncStatusWidget({ liveProgress, isSyncingLive }: {
 
   if (!data) return null;
 
-  const isSyncing = isSyncingLive || data.isSyncing;
-  const nextIn = data.nextSyncAt
-    ? Math.max(0, Math.ceil((new Date(data.nextSyncAt).getTime() - Date.now()) / 60_000))
-    : null;
-
-  const currentMailbox = liveProgress?.mailbox ?? data.currentMailbox;
-  const currentFolder  = liveProgress?.folder  ?? data.currentFolder;
-  const imported       = liveProgress?.imported ?? data.imported;
-  const scanned        = liveProgress?.scanned  ?? data.scanned;
-
+  const isSyncingNow = isSyncingLive || data.isSyncing;
   const errors = data.lastSyncResults.filter(r => r.error);
+  const currentMailbox = liveProgress?.mailbox ?? (isSyncingNow ? data.currentMailbox : null);
+  const imported = liveProgress?.imported ?? (isSyncingNow ? data.imported : 0);
+  const scanned  = liveProgress?.scanned  ?? (isSyncingNow ? data.scanned  : 0);
+  const hasIssues = errors.length > 0 && !isSyncingNow;
 
   return (
     <div className={cn(
-      "mx-3 mb-2 rounded-xl border transition-all",
-      isSyncing
-        ? "px-3 py-2.5 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/40"
-        : "px-3 py-2 bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-700/50",
+      "mx-3 mb-3 rounded-xl border overflow-hidden transition-all",
+      isSyncingNow
+        ? "border-blue-200 dark:border-blue-800/50"
+        : hasIssues
+          ? "border-red-200 dark:border-red-800/50"
+          : "border-slate-200 dark:border-slate-700/60",
     )}>
-      {isSyncing ? (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Loader2 className="h-3 w-3 animate-spin text-blue-500 flex-shrink-0" />
-            <p className="text-[10px] font-semibold text-blue-700 dark:text-blue-400">Syncing mailboxes…</p>
-          </div>
-          {currentMailbox && (
-            <div className="space-y-1">
-              <p className="text-[9px] text-blue-600 dark:text-blue-400 truncate">
-                <span className="font-medium">Mailbox:</span> {currentMailbox.replace(/^(Gmail|IMAP):/, "")}
-              </p>
-              {currentFolder && (
-                <p className="text-[9px] text-blue-500 dark:text-blue-400 truncate">
-                  <span className="font-medium">Folder:</span> {currentFolder}
-                </p>
-              )}
-              {(scanned > 0 || imported > 0) && (
-                <p className="text-[9px] text-blue-500 dark:text-blue-400">
-                  {imported} imported · {scanned} scanned{elapsedStr ? ` · ⏱ ${elapsedStr}` : ""}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1 min-w-0">
-            <Clock className="h-2.5 w-2.5 text-slate-400 flex-shrink-0" />
-            <span className="text-[10px] text-slate-400 truncate">
-              {data.lastSyncAt ? `Synced ${timeAgoShort(data.lastSyncAt)}` : "Never synced"}
-            </span>
-          </div>
-          {nextIn !== null && (
-            <span className="text-[10px] text-slate-400 flex-shrink-0">
-              {nextIn === 0 ? "due now" : `next ${nextIn}m`}
-            </span>
+      {/* Header row */}
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className={cn(
+          "w-full flex items-center gap-2 px-3 py-2 text-left transition-colors",
+          isSyncingNow
+            ? "bg-blue-50 dark:bg-blue-900/20"
+            : hasIssues
+              ? "bg-red-50 dark:bg-red-900/20"
+              : "bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800",
+        )}
+      >
+        {isSyncingNow ? (
+          <Loader2 className="h-3 w-3 text-blue-500 animate-spin flex-shrink-0" />
+        ) : hasIssues ? (
+          <AlertCircle className="h-3 w-3 text-red-500 flex-shrink-0" />
+        ) : (
+          <CheckCircle2 className="h-3 w-3 text-emerald-500 flex-shrink-0" />
+        )}
+        <span className={cn(
+          "text-[10px] font-semibold flex-1",
+          isSyncingNow ? "text-blue-700 dark:text-blue-400"
+            : hasIssues  ? "text-red-700 dark:text-red-400"
+            : "text-slate-600 dark:text-slate-400",
+        )}>
+          {isSyncingNow ? "Syncing mailboxes…" : hasIssues ? "Sync error" : "All accounts connected"}
+        </span>
+        <button
+          onClick={e => { e.stopPropagation(); onSync(); }}
+          disabled={isSyncing}
+          className="p-1 rounded hover:bg-white/60 dark:hover:bg-slate-700/40 text-slate-400 disabled:opacity-40 transition-colors"
+          title="Sync now"
+        >
+          <RefreshCw className={cn("h-2.5 w-2.5", isSyncing && "animate-spin")} />
+        </button>
+        {!isSyncingNow && (
+          expanded ? <ChevronUp className="h-3 w-3 text-slate-400" /> : <ChevronDown className="h-3 w-3 text-slate-400" />
+        )}
+      </button>
+
+      {/* Sync progress bar */}
+      {isSyncingNow && currentMailbox && (
+        <div className="px-3 py-2 bg-blue-50/80 dark:bg-blue-900/15 border-t border-blue-100 dark:border-blue-900/30">
+          <p className="text-[10px] text-blue-700 dark:text-blue-400 font-medium truncate">
+            {currentMailbox.replace(/^(Gmail|IMAP):/, "")}
+          </p>
+          {(scanned > 0 || imported > 0) && (
+            <p className="text-[9px] text-blue-500 dark:text-blue-400 mt-0.5">
+              {imported} imported · {scanned} scanned
+            </p>
           )}
         </div>
       )}
 
-      {errors.length > 0 && !isSyncing && (
-        <div className="mt-1.5 space-y-0.5">
+      {/* Expanded: per-mailbox status */}
+      {(expanded || isSyncingNow) && data.mailboxes.length > 0 && (
+        <div className="divide-y divide-slate-100 dark:divide-slate-800/60">
+          {data.mailboxes.map(mb => (
+            <div key={mb.email} className="px-3 py-2 flex items-center gap-2 bg-white dark:bg-slate-900">
+              <div className={cn(
+                "h-2 w-2 rounded-full flex-shrink-0",
+                mb.connected ? "bg-emerald-500" : "bg-red-500",
+              )} />
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-medium text-slate-700 dark:text-slate-300 truncate">{mb.email}</p>
+                {mb.lastSyncAt && (
+                  <p className="text-[9px] text-slate-400">{timeAgoShort(mb.lastSyncAt)}</p>
+                )}
+              </div>
+              <span className={cn(
+                "text-[8px] font-bold uppercase px-1.5 py-0.5 rounded flex-shrink-0",
+                mb.type === "gmail"
+                  ? "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
+                  : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
+              )}>
+                {mb.type}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Errors */}
+      {hasIssues && expanded && (
+        <div className="px-3 py-1.5 bg-red-50 dark:bg-red-900/10 border-t border-red-100 dark:border-red-900/20">
           {errors.map((e, i) => (
-            <div key={i} className="flex items-center gap-1 text-[9px] text-red-500 dark:text-red-400">
+            <div key={i} className="flex items-center gap-1 text-[9px] text-red-600 dark:text-red-400 py-0.5">
               <AlertCircle className="h-2.5 w-2.5 flex-shrink-0" />
               <span className="truncate">{e.mailbox.replace(/^(Gmail|IMAP):/, "")}: {e.error}</span>
             </div>
@@ -709,20 +734,13 @@ function SyncStatusWidget({ liveProgress, isSyncingLive }: {
         </div>
       )}
 
-      {data.mailboxes.length > 0 && (
-        <div className="flex gap-1 mt-1.5 flex-wrap">
-          {data.mailboxes.map(mb => (
-            <div key={mb.email} className={cn(
-              "flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px]",
-              mb.connected
-                ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400"
-                : "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400",
-            )}>
-              <div className={cn("h-1.5 w-1.5 rounded-full flex-shrink-0",
-                mb.connected ? "bg-emerald-500" : "bg-red-500")} />
-              <span className="truncate max-w-[72px]">{mb.email.split("@")[0]}</span>
-            </div>
-          ))}
+      {/* No mailboxes empty state */}
+      {data.mailboxes.length === 0 && !isSyncingNow && (
+        <div className="px-3 py-3 bg-white dark:bg-slate-900">
+          <p className="text-[10px] text-slate-400 mb-1.5">No mailboxes connected</p>
+          <a href="/mailbox" className="text-[10px] text-blue-500 hover:text-blue-600 font-medium">
+            Connect Gmail or SMTP →
+          </a>
         </div>
       )}
     </div>
@@ -731,11 +749,12 @@ function SyncStatusWidget({ liveProgress, isSyncingLive }: {
 
 // ─── Bulk Action Bar ──────────────────────────────────────────────────────────
 
-function BulkActionBar({ selectedIds, total, onAction, onSelectAll, onClear }: {
+function BulkActionBar({ selectedIds, total, onAction, onSelectAll, onClear, currentFilter }: {
   selectedIds: Set<number>; total: number;
   onAction: (action: BulkAction) => void;
   onSelectAll: () => void;
   onClear: () => void;
+  currentFilter: FilterKey;
 }) {
   const count = selectedIds.size;
   return (
@@ -769,29 +788,42 @@ function BulkActionBar({ selectedIds, total, onAction, onSelectAll, onClear }: {
           </TooltipTrigger>
           <TooltipContent>Star</TooltipContent>
         </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button onClick={() => onAction("archive")} className="p-1.5 rounded hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 transition-colors">
-              <Archive className="h-3.5 w-3.5" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Archive</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button onClick={() => onAction("spam")} className="p-1.5 rounded hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 transition-colors">
-              <Ban className="h-3.5 w-3.5" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Mark Spam</TooltipContent>
-        </Tooltip>
+        {currentFilter !== "archived" && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button onClick={() => onAction("archive")} className="p-1.5 rounded hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 transition-colors">
+                <Archive className="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Archive</TooltipContent>
+          </Tooltip>
+        )}
+        {currentFilter === "trash" ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button onClick={() => onAction("restore")} className="p-1.5 rounded hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 transition-colors">
+                <RotateCcw className="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Restore</TooltipContent>
+          </Tooltip>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button onClick={() => onAction("trash")} className="p-1.5 rounded hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 transition-colors">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Move to Trash</TooltipContent>
+          </Tooltip>
+        )}
         <Tooltip>
           <TooltipTrigger asChild>
             <button onClick={() => onAction("delete")} className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 transition-colors">
-              <Trash2 className="h-3.5 w-3.5" />
+              <X className="h-3.5 w-3.5" />
             </button>
           </TooltipTrigger>
-          <TooltipContent>Delete</TooltipContent>
+          <TooltipContent>Delete Permanently</TooltipContent>
         </Tooltip>
         {count < total && (
           <Tooltip>
@@ -817,8 +849,9 @@ function ConvItem({
   onClick: () => void; onToggleSelect: (id: number) => void;
   showCheckboxes: boolean;
 }) {
-  const color  = avatarColor(conv.customerEmail);
-  const badge  = statusBadge(conv.status);
+  const isSystem = conv.status === "system";
+  const color    = isSystem ? "from-amber-500 to-orange-600" : avatarColor(conv.customerEmail);
+  const badge    = statusBadge(conv.status);
   const isUnread = conv.status === "unread";
   const [hovering, setHovering] = useState(false);
 
@@ -826,9 +859,13 @@ function ConvItem({
     <div
       className={cn(
         "w-full text-left border-b border-slate-100 dark:border-slate-800/60 transition-colors group relative flex items-stretch",
-        isActive
-          ? "bg-blue-50 dark:bg-blue-900/20 border-l-2 border-l-blue-500"
-          : "hover:bg-slate-50 dark:hover:bg-slate-800/40 border-l-2 border-l-transparent",
+        isSystem
+          ? isActive
+            ? "bg-amber-50 dark:bg-amber-900/20 border-l-2 border-l-amber-500"
+            : "bg-amber-50/40 dark:bg-amber-900/10 border-l-2 border-l-amber-300 dark:border-l-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+          : isActive
+            ? "bg-blue-50 dark:bg-blue-900/20 border-l-2 border-l-blue-500"
+            : "hover:bg-slate-50 dark:hover:bg-slate-800/40 border-l-2 border-l-transparent",
       )}
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
@@ -851,18 +888,18 @@ function ConvItem({
         </div>
       </div>
 
-      <button className="flex-1 text-left px-3 py-3.5 min-w-0" onClick={onClick}>
+      <button className="flex-1 text-left px-3 py-3 min-w-0" onClick={onClick}>
         <div className="flex items-start gap-2.5">
           <Avatar className="h-9 w-9 flex-shrink-0 mt-0.5">
             <AvatarFallback className={`bg-gradient-to-br ${color} text-white text-xs font-semibold`}>
-              {initials(conv.customerName)}
+              {isSystem ? <AlertTriangle className="h-4 w-4" /> : initials(conv.customerName)}
             </AvatarFallback>
           </Avatar>
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-1.5">
               <span className={cn("text-sm truncate", isUnread ? "font-semibold text-slate-900 dark:text-slate-100" : "font-medium text-slate-700 dark:text-slate-300")}>
-                {conv.customerName}
+                {isSystem ? "System Notification" : conv.customerName}
               </span>
               <span className="text-[10px] text-slate-400 flex-shrink-0">{timeAgo(conv.lastMessageAt)}</span>
             </div>
@@ -870,10 +907,16 @@ function ConvItem({
               {conv.subject}
             </p>
             <div className="flex items-center gap-1.5 mt-1.5">
-              <span className="text-[10px] text-slate-400 truncate flex-1">{conv.customerEmail}</span>
+              {isSystem ? (
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                  <AlertTriangle className="h-2.5 w-2.5" /> Delivery notification
+                </span>
+              ) : (
+                <span className="text-[10px] text-slate-400 truncate flex-1">{conv.customerEmail}</span>
+              )}
               <div className="flex items-center gap-1 flex-shrink-0">
                 {conv.starred && <Star className="h-3 w-3 fill-amber-400 text-amber-400" />}
-                {badge && (
+                {badge && !["unread", "read", "replied"].includes(conv.status) && (
                   <span className={cn("px-1.5 py-0.5 rounded text-[9px] font-semibold leading-none", badge.cls)}>
                     {badge.label}
                   </span>
@@ -893,6 +936,36 @@ function ConvItem({
 }
 
 // ─── Left Panel ───────────────────────────────────────────────────────────────
+
+const FILTER_GROUPS: {
+  label?: string;
+  items: { key: FilterKey; label: string; icon: React.ElementType }[];
+}[] = [
+  {
+    items: [
+      { key: "inbox",       label: "Inbox",       icon: Inbox },
+      { key: "starred",     label: "Starred",     icon: Star },
+      { key: "sent",        label: "Sent",        icon: Send },
+      { key: "drafts",      label: "Drafts",      icon: FileText },
+      { key: "all",         label: "All Mail",    icon: MoreHorizontal },
+    ],
+  },
+  {
+    label: "Categories",
+    items: [
+      { key: "unread",      label: "Unread",      icon: Mail },
+      { key: "needs_reply", label: "Needs Reply", icon: CornerDownLeft },
+    ],
+  },
+  {
+    items: [
+      { key: "archived",    label: "Archived",    icon: Archive },
+      { key: "spam",        label: "Spam",        icon: Ban },
+      { key: "trash",       label: "Trash",       icon: Trash2 },
+      { key: "system",      label: "Notifications", icon: AlertTriangle },
+    ],
+  },
+];
 
 function LeftPanel({
   filter, setFilter, search, setSearch,
@@ -920,16 +993,25 @@ function LeftPanel({
     ? "All Mailboxes"
     : safeMailboxes.find(m => m.id === selectedMailboxId)?.email ?? "All Mailboxes";
 
-  const total = (convData: { data: Conversation[]; total: number } | undefined) => convData?.total ?? 0;
   const showCheckboxes = selectedIds.size > 0;
 
-  const handleSelectAll = () => {
-    conversations.forEach(c => onToggleSelect(c.id));
-  };
-  const handleClear = () => {
-    conversations.forEach(c => {
-      if (selectedIds.has(c.id)) onToggleSelect(c.id);
-    });
+  const handleSelectAll = () => conversations.forEach(c => onToggleSelect(c.id));
+  const handleClear = () => conversations.forEach(c => { if (selectedIds.has(c.id)) onToggleSelect(c.id); });
+
+  const countFor = (key: FilterKey): number | undefined => {
+    if (!stats) return undefined;
+    switch (key) {
+      case "inbox":       return stats.inbox;
+      case "sent":        return stats.sent;
+      case "unread":      return stats.unread;
+      case "needs_reply": return stats.needsReply;
+      case "starred":     return stats.starred;
+      case "archived":    return stats.archived;
+      case "spam":        return stats.spam;
+      case "trash":       return stats.trash;
+      case "system":      return stats.system;
+      default:            return undefined;
+    }
   };
 
   return (
@@ -938,7 +1020,7 @@ function LeftPanel({
       <div className="px-4 pt-4 pb-3 flex-shrink-0 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h1 className="text-base font-bold text-slate-900 dark:text-slate-100">Communications</h1>
+            <h1 className="text-base font-bold text-slate-900 dark:text-slate-100">Mail</h1>
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="inline-flex cursor-default">
@@ -959,12 +1041,18 @@ function LeftPanel({
             </Tooltip>
           </div>
           <button
-            onClick={onRefresh}
-            disabled={isSyncing}
-            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors disabled:opacity-50"
-            title={isSyncing ? "Syncing…" : "Sync mailboxes"}
+            onClick={() => {
+              const params = new URLSearchParams({ filter, search, limit: "50" });
+              if (selectedMailboxId !== null && typeof selectedMailboxId === "number") {
+                params.set("mailboxId", String(selectedMailboxId));
+              }
+              queryClient.invalidateQueries({ queryKey: ["conversations"] });
+              queryClient.invalidateQueries({ queryKey: ["comm-stats"] });
+            }}
+            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors"
+            title="Refresh"
           >
-            <RefreshCw className={cn("h-4 w-4", isSyncing && "animate-spin")} />
+            <RefreshCw className="h-4 w-4" />
           </button>
         </div>
 
@@ -1005,15 +1093,6 @@ function LeftPanel({
                 ))}
               </>
             )}
-            {safeMailboxes.length === 0 && (
-              <>
-                <DropdownMenuSeparator />
-                <div className="px-3 py-2">
-                  <p className="text-[10px] text-slate-400 font-medium mb-1.5">No mailboxes connected</p>
-                  <a href="/mailbox" className="block text-[10px] text-blue-500 hover:text-blue-600 font-medium">Connect Gmail or SMTP →</a>
-                </div>
-              </>
-            )}
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -1023,7 +1102,7 @@ function LeftPanel({
           <Input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Name, email, subject, vehicle…"
+            placeholder="Search conversations…"
             className="pl-8 h-8 text-xs rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60"
           />
           {search && (
@@ -1034,8 +1113,13 @@ function LeftPanel({
         </div>
       </div>
 
-      {/* Sync status */}
-      <SyncStatusWidget liveProgress={liveProgress} isSyncingLive={isSyncing} />
+      {/* Account health panel */}
+      <AccountHealthPanel
+        liveProgress={liveProgress}
+        isSyncingLive={isSyncing}
+        onSync={onRefresh}
+        isSyncing={isSyncing}
+      />
 
       {/* Bulk action bar */}
       {selectedIds.size > 0 && (
@@ -1045,59 +1129,57 @@ function LeftPanel({
           onAction={onBulkAction}
           onSelectAll={handleSelectAll}
           onClear={handleClear}
+          currentFilter={filter}
         />
       )}
 
-      {/* Filter tabs */}
-      <div className="px-3 pb-2 flex-shrink-0 space-y-0.5">
-        {FILTERS.map(f => {
-          const count =
-            f.key === "inbox"       ? stats?.inbox
-            : f.key === "sent"      ? stats?.sent
-            : f.key === "unread"    ? stats?.unread
-            : f.key === "needs_reply" ? stats?.needsReply
-            : f.key === "starred"   ? stats?.starred
-            : f.key === "archived"  ? stats?.archived
-            : f.key === "spam"      ? stats?.spam
-            : undefined;
-          return (
-            <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
-              className={cn(
-                "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
-                filter === f.key
-                  ? "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-                  : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800",
-              )}
-            >
-              <f.icon className={cn("h-3.5 w-3.5 flex-shrink-0", filter === f.key ? "text-blue-500" : "text-slate-400")} />
-              <span className="flex-1 text-left">{f.label}</span>
-              {count !== undefined && count > 0 && (
-                <span className="h-4 min-w-4 px-1 rounded-full bg-blue-600 text-white text-[9px] font-bold flex items-center justify-center">
-                  {count > 99 ? "99+" : count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {/* Filter nav */}
+      <div className="px-2 pb-2 flex-shrink-0 space-y-0.5 overflow-y-auto flex-1">
+        {FILTER_GROUPS.map((group, gi) => (
+          <div key={gi} className={gi > 0 ? "mt-1 pt-1 border-t border-slate-100 dark:border-slate-800/60" : ""}>
+            {group.label && (
+              <p className="px-3 py-1 text-[9px] font-semibold text-slate-400 dark:text-slate-600 uppercase tracking-wider">
+                {group.label}
+              </p>
+            )}
+            {group.items.map(f => {
+              const count = countFor(f.key);
+              return (
+                <button
+                  key={f.key}
+                  onClick={() => setFilter(f.key)}
+                  className={cn(
+                    "w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                    filter === f.key
+                      ? "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                      : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800",
+                  )}
+                >
+                  <f.icon className={cn("h-3.5 w-3.5 flex-shrink-0", filter === f.key ? "text-blue-500" : "text-slate-400")} />
+                  <span className="flex-1 text-left">{f.label}</span>
+                  {count !== undefined && count > 0 && (
+                    <span className="h-4 min-w-4 px-1 rounded-full bg-blue-600 text-white text-[9px] font-bold flex items-center justify-center">
+                      {count > 99 ? "99+" : count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ))}
 
-      <div className="mx-3 border-t border-slate-100 dark:border-slate-800 flex-shrink-0" />
+        {/* Divider before conversation list */}
+        <div className="border-t border-slate-100 dark:border-slate-800 mt-2 pt-2">
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 px-3 pb-1">
+            {conversations.length > 0 ? `${conversations.length} conversation${conversations.length === 1 ? "" : "s"}` : ""}
+          </p>
+        </div>
 
-      {/* Conversation count */}
-      <div className="px-4 py-2 flex-shrink-0">
-        <p className="text-[10px] text-slate-400 dark:text-slate-500">
-          {conversations.length > 0 ? `${conversations.length} conversation${conversations.length === 1 ? "" : "s"}` : ""}
-        </p>
-      </div>
-
-      {/* List */}
-      <div className="flex-1 overflow-y-auto">
+        {/* Conversation list */}
         {isLoading ? (
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {Array(6).fill(0).map((_, i) => (
-              <div key={i} className="px-3 py-3.5 flex items-start gap-2.5">
+              <div key={i} className="px-3 py-3 flex items-start gap-2.5">
                 <Skeleton className="h-9 w-9 rounded-full flex-shrink-0" />
                 <div className="flex-1 space-y-1.5">
                   <Skeleton className="h-3.5 w-32" />
@@ -1108,24 +1190,30 @@ function LeftPanel({
             ))}
           </div>
         ) : conversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-            <div className="h-14 w-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-3">
-              {filter === "spam" ? <Ban className="h-7 w-7 text-slate-300 dark:text-slate-600" />
-               : filter === "archived" ? <Archive className="h-7 w-7 text-slate-300 dark:text-slate-600" />
-               : filter === "starred" ? <Star className="h-7 w-7 text-slate-300 dark:text-slate-600" />
-               : <MessageSquare className="h-7 w-7 text-slate-300 dark:text-slate-600" />}
+          <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+            <div className="h-12 w-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-3">
+              {filter === "spam"    ? <Ban className="h-6 w-6 text-slate-300 dark:text-slate-600" />
+               : filter === "archived" ? <Archive className="h-6 w-6 text-slate-300 dark:text-slate-600" />
+               : filter === "starred"  ? <Star className="h-6 w-6 text-slate-300 dark:text-slate-600" />
+               : filter === "trash"    ? <Trash2 className="h-6 w-6 text-slate-300 dark:text-slate-600" />
+               : filter === "system"   ? <AlertTriangle className="h-6 w-6 text-slate-300 dark:text-slate-600" />
+               : <MessageSquare className="h-6 w-6 text-slate-300 dark:text-slate-600" />}
             </div>
             <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-              {search ? "No matching conversations"
-               : filter === "inbox" ? "No inbox messages yet"
-               : filter === "sent" ? "No sent messages yet"
-               : `No ${filter.replace("_", " ")} conversations`}
+              {search ? "No matches" :
+               filter === "inbox"    ? "Inbox is empty" :
+               filter === "sent"     ? "No sent messages" :
+               filter === "drafts"   ? "No drafts" :
+               filter === "trash"    ? "Trash is empty" :
+               filter === "system"   ? "No notifications" :
+               `No ${filter.replace("_", " ")} conversations`}
             </p>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-              {search ? "Try a different search term"
-               : filter === "inbox" ? "All caught up — inbound messages appear here"
-               : filter === "sent" ? "Your outbound messages will appear here"
-               : `Nothing here yet`}
+              {search ? "Try a different search term" :
+               filter === "inbox"  ? "Inbound emails appear here" :
+               filter === "trash"  ? "Deleted conversations will appear here" :
+               filter === "system" ? "Delivery failures and bounce notices appear here" :
+               "Nothing here yet"}
             </p>
             {filter === "inbox" && safeMailboxes.length === 0 && (
               <a href="/mailbox" className="mt-3 text-xs text-blue-500 hover:text-blue-600 font-medium">
@@ -1153,10 +1241,12 @@ function LeftPanel({
 
 // ─── Reply Composer ───────────────────────────────────────────────────────────
 
-function ReplyComposer({ conv, messages, currentUserId, onNoteAdded, aiBodySuggestion, onAiBodyUsed }: {
+type ComposerTrigger = { mode: ReplyMode; ts: number } | null;
+
+function ReplyComposer({ conv, messages, currentUserId, onNoteAdded, composerTrigger }: {
   conv: Conversation; messages: Message[];
   currentUserId: number; onNoteAdded: () => void;
-  aiBodySuggestion?: string; onAiBodyUsed?: () => void;
+  composerTrigger: ComposerTrigger;
 }) {
   const [mode, setMode]         = useState<ReplyMode>("reply");
   const [body, setBody]         = useState("");
@@ -1167,18 +1257,19 @@ function ReplyComposer({ conv, messages, currentUserId, onNoteAdded, aiBodySugge
   const [files, setFiles]       = useState<File[]>([]);
   const [sending, setSending]   = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const fileRef    = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Accept AI-generated body suggestion
+  // React to external reply triggers (from ThreadEmailCard reply buttons)
   useEffect(() => {
-    if (aiBodySuggestion) {
-      setBody(aiBodySuggestion);
-      if (mode === "note") setMode("reply");
-      onAiBodyUsed?.();
-    }
-  }, [aiBodySuggestion]);
+    if (!composerTrigger) return;
+    handleModeChange(composerTrigger.mode);
+    setExpanded(true);
+    setTimeout(() => textareaRef.current?.focus(), 60);
+  }, [composerTrigger?.ts]);
 
   const handleModeChange = (m: ReplyMode) => {
     setMode(m);
@@ -1233,7 +1324,7 @@ function ReplyComposer({ conv, messages, currentUserId, onNoteAdded, aiBodySugge
         }
       });
 
-      setBody(""); setFiles([]); setToField(conv.customerEmail);
+      setBody(""); setFiles([]); setToField(conv.customerEmail); setExpanded(false);
       toast({ title: "Reply sent" });
       queryClient.invalidateQueries({ queryKey: ["conv-detail", conv.id] });
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
@@ -1252,7 +1343,7 @@ function ReplyComposer({ conv, messages, currentUserId, onNoteAdded, aiBodySugge
         method: "POST",
         body: JSON.stringify({ content: body }),
       });
-      setBody("");
+      setBody(""); setExpanded(false);
       toast({ title: "Note saved" });
       onNoteAdded();
     } catch (e: any) {
@@ -1262,30 +1353,82 @@ function ReplyComposer({ conv, messages, currentUserId, onNoteAdded, aiBodySugge
     }
   };
 
+  const isSystem = conv.status === "system";
   const tabClass = (m: ReplyMode) => cn(
-    "flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium border-b-2 transition-colors",
+    "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border-b-2 transition-colors",
     mode === m
-      ? m === "note"
-        ? "border-amber-500 text-amber-600 dark:text-amber-400"
-        : "border-blue-500 text-blue-600 dark:text-blue-400"
+      ? m === "note" ? "border-amber-500 text-amber-600 dark:text-amber-400"
+                     : "border-blue-500 text-blue-600 dark:text-blue-400"
       : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200",
   );
 
+  // Collapsed: just a click-to-reply bar (Gmail style)
+  if (!expanded) {
+    return (
+      <div
+        className="mx-6 mb-4 mt-2 flex-shrink-0"
+        onClick={() => { setExpanded(true); setTimeout(() => textareaRef.current?.focus(), 60); }}
+      >
+        <div className={cn(
+          "flex items-center gap-3 px-4 py-2.5 rounded-2xl border cursor-text shadow-sm transition-shadow hover:shadow-md",
+          isSystem
+            ? "bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/40"
+            : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700",
+        )}>
+          <Avatar className="h-7 w-7 flex-shrink-0">
+            <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white text-[9px] font-semibold">
+              Me
+            </AvatarFallback>
+          </Avatar>
+          <span className="text-sm text-slate-400 dark:text-slate-500 flex-1">
+            {isSystem ? "Add internal note…" : `Reply to ${conv.customerName}…`}
+          </span>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button
+              onClick={e => { e.stopPropagation(); setMode("reply"); setExpanded(true); setTimeout(() => textareaRef.current?.focus(), 60); }}
+              className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 transition-colors"
+              title="Reply"
+            >
+              <Reply className="h-3.5 w-3.5" />
+            </button>
+            {!isSystem && (
+              <button
+                onClick={e => { e.stopPropagation(); setMode("forward"); setExpanded(true); setTimeout(() => textareaRef.current?.focus(), 60); }}
+                className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 transition-colors"
+                title="Forward"
+              >
+                <Forward className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Expanded composer
   return (
-    <div className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0">
+    <div className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0 sticky bottom-0 z-10">
       {/* Mode tabs */}
       <div className="flex border-b border-slate-100 dark:border-slate-800 overflow-x-auto">
-        <button onClick={() => handleModeChange("reply")} className={tabClass("reply")}>
-          <Reply className="h-3.5 w-3.5" /> Reply
-        </button>
-        <button onClick={() => handleModeChange("reply_all")} className={tabClass("reply_all")}>
-          <ReplyAll className="h-3.5 w-3.5" /> Reply All
-        </button>
-        <button onClick={() => handleModeChange("forward")} className={tabClass("forward")}>
-          <Forward className="h-3.5 w-3.5" /> Forward
-        </button>
+        {!isSystem && (
+          <>
+            <button onClick={() => handleModeChange("reply")} className={tabClass("reply")}>
+              <Reply className="h-3.5 w-3.5" /> Reply
+            </button>
+            <button onClick={() => handleModeChange("reply_all")} className={tabClass("reply_all")}>
+              <ReplyAll className="h-3.5 w-3.5" /> Reply All
+            </button>
+            <button onClick={() => handleModeChange("forward")} className={tabClass("forward")}>
+              <Forward className="h-3.5 w-3.5" /> Forward
+            </button>
+          </>
+        )}
         <button onClick={() => handleModeChange("note")} className={tabClass("note")}>
           <StickyNote className="h-3.5 w-3.5" /> Note
+        </button>
+        <button onClick={() => setExpanded(false)} className="ml-auto p-1.5 m-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400">
+          <ChevronDown className="h-3.5 w-3.5" />
         </button>
       </div>
 
@@ -1309,9 +1452,7 @@ function ReplyComposer({ conv, messages, currentUserId, onNoteAdded, aiBodySugge
               <button
                 onClick={() => setShowCc(v => !v)}
                 className="text-[10px] text-slate-400 hover:text-slate-600 transition-colors flex-shrink-0"
-              >
-                CC
-              </button>
+              >CC</button>
             </div>
             {showCc && (
               <div className="flex items-center gap-2">
@@ -1389,6 +1530,7 @@ function ReplyComposer({ conv, messages, currentUserId, onNoteAdded, aiBodySugge
         )}
 
         <Textarea
+          ref={textareaRef}
           value={body}
           onChange={e => setBody(e.target.value)}
           placeholder={
@@ -1397,7 +1539,7 @@ function ReplyComposer({ conv, messages, currentUserId, onNoteAdded, aiBodySugge
             : `Reply to ${conv.customerName}…`
           }
           className={cn(
-            "min-h-[72px] resize-none text-sm rounded-xl border-slate-200 dark:border-slate-700 bg-transparent focus-visible:ring-1",
+            "min-h-[80px] resize-none text-sm rounded-xl border-slate-200 dark:border-slate-700 bg-transparent focus-visible:ring-1",
             mode === "note" ? "focus-visible:ring-amber-400" : "focus-visible:ring-blue-400",
           )}
         />
@@ -1419,9 +1561,7 @@ function ReplyComposer({ conv, messages, currentUserId, onNoteAdded, aiBodySugge
               ? <Loader2 className="h-3 w-3 animate-spin" />
               : mode === "note" ? <StickyNote className="h-3 w-3" />
               : <Send className="h-3 w-3" />}
-            {mode === "note" ? "Save Note"
-             : mode === "forward" ? "Forward"
-             : "Send Reply"}
+            {mode === "note" ? "Save Note" : mode === "forward" ? "Forward" : "Send Reply"}
           </Button>
         </div>
       </div>
@@ -1473,12 +1613,12 @@ function AIAssistPanel({ convId, onClose, onUseReply }: {
 
       <div className="p-3 space-y-1.5 flex-shrink-0 border-b border-slate-100 dark:border-slate-800">
         {[
-          { key: "summarize",     label: "Summarize Thread",      icon: FileText },
-          { key: "suggest_reply", label: "Suggest Reply",         icon: Reply },
-          { key: "extract_intent",label: "Extract Intent",        icon: TrendingUp },
-          { key: "sentiment",     label: "Sentiment Analysis",    icon: Zap },
-          { key: "rewrite",       label: "Rewrite Last Message",  icon: RotateCcw },
-          { key: "translate",     label: "Translate Thread",      icon: Languages },
+          { key: "summarize",      label: "Summarize Thread",     icon: FileText },
+          { key: "suggest_reply",  label: "Suggest Reply",        icon: Reply },
+          { key: "extract_intent", label: "Extract Intent",       icon: TrendingUp },
+          { key: "sentiment",      label: "Sentiment Analysis",   icon: Zap },
+          { key: "rewrite",        label: "Rewrite Last Message", icon: RotateCcw },
+          { key: "translate",      label: "Translate Thread",     icon: Languages },
         ].map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -1527,7 +1667,7 @@ function AIAssistPanel({ convId, onClose, onUseReply }: {
         ) : !loading ? (
           <div className="flex flex-col items-center justify-center h-full text-center py-8">
             <Sparkles className="h-8 w-8 text-slate-200 dark:text-slate-700 mb-2" />
-            <p className="text-xs text-slate-400">Choose an action above to get AI insights on this conversation.</p>
+            <p className="text-xs text-slate-400">Choose an action above to get AI insights.</p>
           </div>
         ) : null}
       </div>
@@ -1535,69 +1675,194 @@ function AIAssistPanel({ convId, onClose, onUseReply }: {
   );
 }
 
-// ─── Message Bubble ───────────────────────────────────────────────────────────
+// ─── Thread Email Card (Gmail-style collapsible) ──────────────────────────────
 
-function MessageBubble({ msg, customerName, onReply }: {
-  msg: Message; customerName: string; onReply?: () => void;
+function ThreadEmailCard({
+  msg, isExpanded, onToggle, isLatest, isSystem, customerName, onReply,
+}: {
+  msg: Message;
+  isExpanded: boolean;
+  onToggle: () => void;
+  isLatest: boolean;
+  isSystem: boolean;
+  customerName: string;
+  onReply?: (mode: ReplyMode) => void;
 }) {
-  const isOut = msg.direction === "outbound";
-  const time  = msg.sentAt ?? msg.createdAt;
+  const [showQuoted, setShowQuoted] = useState(false);
+  const isOut   = msg.direction === "outbound";
+  const isUnread = !msg.isRead && !isOut;
+  const time    = msg.sentAt ?? msg.createdAt;
+  const color   = isOut ? "from-blue-500 to-indigo-600"
+    : isSystem ? "from-amber-500 to-orange-600"
+    : avatarColor(msg.fromEmail);
 
-  return (
-    <div className={cn("flex gap-3 group", isOut ? "flex-row-reverse" : "flex-row")}>
-      <Avatar className="h-7 w-7 flex-shrink-0 mt-1">
-        <AvatarFallback className={cn(
-          "text-white text-[10px] font-semibold bg-gradient-to-br",
-          isOut ? "from-blue-500 to-indigo-600" : avatarColor(msg.fromEmail),
-        )}>
-          {isOut ? "You" : initials(msg.fromName ?? customerName)}
-        </AvatarFallback>
-      </Avatar>
+  const { primary: primaryHtml, quoted: quotedHtml } = useMemo(
+    () => msg.htmlBody ? extractQuotedContent(msg.htmlBody) : { primary: null, quoted: null },
+    [msg.htmlBody],
+  );
 
-      <div className={cn("flex flex-col max-w-[72%]", isOut ? "items-end" : "items-start")}>
-        <div className={cn("flex items-center gap-2 mb-1", isOut ? "flex-row-reverse" : "flex-row")}>
-          <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
-            {isOut ? "You" : (msg.fromName ?? customerName)}
+  // ── Collapsed row ──
+  if (!isExpanded) {
+    return (
+      <div
+        onClick={onToggle}
+        className="flex items-center gap-3 px-6 py-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group/collapsed border-b border-slate-100 dark:border-slate-800/40 last:border-none"
+      >
+        <Avatar className="h-7 w-7 flex-shrink-0">
+          <AvatarFallback className={`bg-gradient-to-br ${color} text-white text-[9px] font-semibold`}>
+            {isOut ? "Me" : initials(msg.fromName ?? customerName)}
+          </AvatarFallback>
+        </Avatar>
+        <div className="flex-1 min-w-0 flex items-baseline gap-3">
+          <span className={cn(
+            "text-sm flex-shrink-0",
+            isUnread ? "font-semibold text-slate-900 dark:text-slate-100" : "font-normal text-slate-600 dark:text-slate-400",
+          )}>
+            {isOut ? "Me" : (msg.fromName ?? customerName)}
           </span>
-          <span className="text-[10px] text-slate-400">{fullTime(time)}</span>
+          <span className="text-sm text-slate-400 dark:text-slate-500 truncate flex-1">
+            {msg.snippet ?? msg.body.slice(0, 100)}
+          </span>
         </div>
+        {isUnread && (
+          <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" title="Unread" />
+        )}
+        <span className="text-[11px] text-slate-400 flex-shrink-0">{timeAgo(time)}</span>
+      </div>
+    );
+  }
 
-        <div className={cn(
-          "rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm",
-          isOut
-            ? "bg-blue-600 text-white rounded-tr-sm"
-            : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-tl-sm",
-        )}>
-          {msg.htmlBody
-            ? <HtmlEmailRenderer html={msg.htmlBody} isOutbound={isOut} />
-            : <p className="whitespace-pre-wrap">{msg.body}</p>}
-          {msg.attachmentsMeta && <AttachmentList metaJson={msg.attachmentsMeta} isOutbound={isOut} />}
-        </div>
-
-        <div className={cn(
-          "flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity",
-          isOut ? "flex-row-reverse" : "flex-row",
-        )}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button onClick={onReply} className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 transition-colors">
-                <Reply className="h-3 w-3" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Reply</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => { navigator.clipboard.writeText(msg.body); }}
-                className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 transition-colors"
+  // ── Expanded card ──
+  return (
+    <div className="py-5 group/expanded border-b border-slate-100 dark:border-slate-800/40 last:border-none">
+      {/* Email header — click to collapse */}
+      <div className="flex items-start gap-3 px-6 cursor-pointer" onClick={onToggle}>
+        <Avatar className="h-9 w-9 flex-shrink-0 mt-0.5">
+          <AvatarFallback className={`bg-gradient-to-br ${color} text-white text-xs font-semibold`}>
+            {isOut ? "Me" : initials(msg.fromName ?? customerName)}
+          </AvatarFallback>
+        </Avatar>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  {isOut ? "Me" : (msg.fromName ?? customerName)}
+                </span>
+                {isSystem && (
+                  <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                    <AlertTriangle className="h-2.5 w-2.5" /> System
+                  </span>
+                )}
+                {isUnread && (
+                  <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
+                )}
+              </div>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <p
+                    className="text-[11px] text-slate-400 mt-0.5 cursor-default"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    {isOut ? `to ${msg.toEmail ?? customerName}` : `from ${msg.fromEmail}`}
+                  </p>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs text-left">
+                  <p className="text-[11px]">From: {msg.fromEmail}</p>
+                  {msg.toEmail && <p className="text-[11px]">To: {msg.toEmail}</p>}
+                  {msg.subject && <p className="text-[11px]">Subject: {msg.subject}</p>}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <span className="text-[11px] text-slate-400">{fullTime(time)}</span>
+              {/* Action buttons — visible on hover */}
+              <div
+                className="flex items-center gap-0.5 opacity-0 group-hover/expanded:opacity-100 transition-opacity"
+                onClick={e => e.stopPropagation()}
               >
-                <Copy className="h-3 w-3" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Copy text</TooltipContent>
-          </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => onReply?.("reply")}
+                      className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition-colors"
+                    >
+                      <Reply className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Reply</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(msg.body)}
+                      className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition-colors"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Copy text</TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* Email body */}
+      <div className="ml-[60px] mr-6 mt-4">
+        {msg.htmlBody ? (
+          <>
+            <HtmlEmailRenderer html={primaryHtml ?? msg.htmlBody} />
+            {quotedHtml && (
+              <div className="mt-3">
+                <button
+                  onClick={() => setShowQuoted(v => !v)}
+                  className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  {showQuoted
+                    ? <><ChevronUp className="h-3 w-3" /> Hide quoted text</>
+                    : <><ChevronDown className="h-3 w-3" /> Show quoted text</>}
+                </button>
+                {showQuoted && (
+                  <div className="mt-2 pl-3 border-l-2 border-slate-200 dark:border-slate-700">
+                    <HtmlEmailRenderer html={quotedHtml} />
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+            {msg.body}
+          </p>
+        )}
+
+        {msg.attachmentsMeta && <AttachmentList metaJson={msg.attachmentsMeta} />}
+
+        {/* Reply action buttons on the latest message */}
+        {isLatest && !isSystem && (
+          <div className="flex flex-wrap gap-2 mt-5">
+            <button
+              onClick={() => onReply?.("reply")}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-sm text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-full hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            >
+              <Reply className="h-3.5 w-3.5" /> Reply
+            </button>
+            <button
+              onClick={() => onReply?.("reply_all")}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-sm text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-full hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            >
+              <ReplyAll className="h-3.5 w-3.5" /> Reply all
+            </button>
+            <button
+              onClick={() => onReply?.("forward")}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-sm text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-full hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            >
+              <Forward className="h-3.5 w-3.5" /> Forward
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1612,12 +1877,15 @@ function MiddlePanel({
   onOpenDetails: () => void; showDetailsButton: boolean;
   currentUserId: number;
 }) {
-  const bottomRef  = useRef<HTMLDivElement>(null);
+  const bottomRef   = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
-  const { toast } = useToast();
-  const [showAI, setShowAI]     = useState(false);
-  const [aiReply, setAiReply]   = useState("");
+  const { toast }   = useToast();
+  const [showAI, setShowAI]         = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [composerTrigger, setComposerTrigger] = useState<ComposerTrigger>(null);
+
+  // Expanded message IDs — default to expanding the latest message
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
   const { data, isLoading } = useQuery<ConversationDetail>({
     queryKey: ["conv-detail", selectedId],
@@ -1625,6 +1893,19 @@ function MiddlePanel({
     enabled: selectedId !== null,
     staleTime: 30_000,
   });
+
+  // When conversation changes or messages load, auto-expand the latest message
+  useEffect(() => {
+    if (data?.messages && data.messages.length > 0) {
+      const latestId = data.messages[data.messages.length - 1].id;
+      setExpandedIds(new Set([latestId]));
+    }
+  }, [data?.conversation?.id, data?.messages?.length]);
+
+  // Scroll to bottom when messages load
+  useEffect(() => {
+    if (data) setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 150);
+  }, [data?.messages?.length]);
 
   const updateMutation = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
@@ -1647,9 +1928,19 @@ function MiddlePanel({
     },
   });
 
-  useEffect(() => {
-    if (data) setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-  }, [data?.messages?.length]);
+  const toggleExpanded = (id: number) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  // Trigger reply from a ThreadEmailCard
+  const handleThreadReply = (mode: ReplyMode) => {
+    setComposerTrigger({ mode, ts: Date.now() });
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+  };
 
   if (!selectedId) {
     return (
@@ -1682,11 +1973,14 @@ function MiddlePanel({
         <div className="h-14 px-4 flex items-center border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0">
           <Skeleton className="h-5 w-48" />
         </div>
-        <div className="flex-1 p-5 space-y-4">
+        <div className="flex-1 p-5 space-y-6">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className={cn("flex gap-3", i % 2 === 0 ? "flex-row-reverse" : "flex-row")}>
-              <Skeleton className="h-7 w-7 rounded-full flex-shrink-0" />
-              <Skeleton className="h-20 w-64 rounded-2xl" />
+            <div key={i} className="flex gap-3 px-6">
+              <Skeleton className="h-9 w-9 rounded-full flex-shrink-0" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-36" />
+                <Skeleton className="h-16 w-full rounded-xl" />
+              </div>
             </div>
           ))}
         </div>
@@ -1697,37 +1991,40 @@ function MiddlePanel({
   if (!data) return null;
 
   const { conversation: conv, messages, notes } = data;
+  const isSystem = conv.status === "system";
 
-  // Merge messages and notes chronologically
+  // ── Thread: chronologically merge messages + notes ──
   type ThreadItem =
     | { kind: "message"; msg: Message; time: string }
-    | { kind: "note"; note: Note; time: string };
+    | { kind: "note";    note: Note;   time: string };
 
   const threadItems: ThreadItem[] = [
-    ...messages.map(msg => ({ kind: "message" as const, msg, time: msg.sentAt ?? msg.createdAt })),
-    ...notes.map(note => ({ kind: "note" as const, note, time: note.createdAt })),
+    ...messages.map(msg  => ({ kind: "message" as const, msg,  time: msg.sentAt ?? msg.createdAt })),
+    ...notes.map(note => ({ kind: "note"    as const, note, time: note.createdAt })),
   ].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
 
-  // Group by day
   let lastDayLabel = "";
 
   return (
     <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-950 relative">
       {/* Thread header */}
-      <div className="flex items-center gap-2 px-4 h-14 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0">
+      <div className={cn(
+        "flex items-center gap-2 px-4 h-14 border-b border-slate-200 dark:border-slate-700 flex-shrink-0",
+        isSystem
+          ? "bg-amber-50 dark:bg-amber-900/20"
+          : "bg-white dark:bg-slate-900",
+      )}>
         <button onClick={onBack} className="lg:hidden p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400">
           <ChevronLeft className="h-4 w-4" />
         </button>
 
-        <Avatar className="h-8 w-8 flex-shrink-0">
-          <AvatarFallback className={`bg-gradient-to-br ${avatarColor(conv.customerEmail)} text-white text-xs font-semibold`}>
-            {initials(conv.customerName)}
-          </AvatarFallback>
-        </Avatar>
+        {isSystem && <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" />}
 
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{conv.customerName}</p>
-          <p className="text-xs text-slate-400 truncate">{conv.subject}</p>
+          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{conv.subject}</p>
+          <p className="text-xs text-slate-400 truncate">
+            {isSystem ? "System Notification" : `${conv.customerName} · ${messages.length} message${messages.length !== 1 ? "s" : ""}`}
+          </p>
         </div>
 
         {/* Action toolbar */}
@@ -1741,7 +2038,7 @@ function MiddlePanel({
                 <Star className={cn("h-4 w-4", conv.starred ? "fill-amber-400 text-amber-400" : "text-slate-400")} />
               </button>
             </TooltipTrigger>
-            <TooltipContent>{conv.starred ? "Unstar (S)" : "Star (S)"}</TooltipContent>
+            <TooltipContent>{conv.starred ? "Unstar" : "Star"}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -1812,6 +2109,10 @@ function MiddlePanel({
                   <CheckCircle2 className="h-3.5 w-3.5" /> Mark Replied
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => updateMutation.mutate({ status: "trash" })} className="gap-2 text-xs">
+                  <Trash2 className="h-3.5 w-3.5" /> Move to Trash
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => { navigator.clipboard.writeText(conv.customerEmail); toast({ title: "Email copied" }); }}
                   className="gap-2 text-xs"
@@ -1824,18 +2125,12 @@ function MiddlePanel({
                 >
                   <ExternalLink className="h-3.5 w-3.5" /> Open in Gmail
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => window.open(`mailto:${conv.customerEmail}?subject=${encodeURIComponent(conv.subject)}`, "_blank")}
-                  className="gap-2 text-xs"
-                >
-                  <Mail className="h-3.5 w-3.5" /> Open in Mail Client
-                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => updateMutation.mutate({ status: "spam" })} className="gap-2 text-xs text-amber-600 focus:text-amber-700">
                   <AlertTriangle className="h-3.5 w-3.5" /> Mark as Spam
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setDeleteConfirm(true)} className="gap-2 text-xs text-red-500 focus:text-red-600">
-                  <Trash2 className="h-3.5 w-3.5" /> Delete Conversation
+                  <Trash2 className="h-3.5 w-3.5" /> Delete Permanently
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1854,62 +2149,107 @@ function MiddlePanel({
         </div>
       </div>
 
-      {/* Thread */}
-      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-1">
-        {threadItems.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-slate-400">
-            <Mail className="h-10 w-10 mb-2 opacity-30" />
-            <p className="text-sm">No messages in this thread yet</p>
+      {/* System notification banner */}
+      {isSystem && (
+        <div className="px-6 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800/40 flex-shrink-0">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">Delivery Notification</p>
+              <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                This message is a system notification — it may indicate a delivery failure or bounce. No reply is needed.
+              </p>
+            </div>
           </div>
-        ) : (
-          threadItems.map((item, idx) => {
-            const label = dayLabel(item.time);
-            const showSep = label !== lastDayLabel;
-            if (showSep) lastDayLabel = label;
+        </div>
+      )}
 
-            return (
-              <div key={item.kind === "message" ? `msg-${item.msg.id}` : `note-${item.note.id}`}>
-                {showSep && (
-                  <div className="flex items-center gap-3 py-3">
-                    <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium px-2">{label}</span>
-                    <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
-                  </div>
-                )}
+      {/* Thread body */}
+      <div className="flex-1 overflow-y-auto">
+        {/* Subject heading */}
+        <div className="px-6 pt-5 pb-3">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 leading-snug">{conv.subject}</h2>
+          {messages.length > 1 && (
+            <button
+              onClick={() => {
+                // Collapse all; or if all expanded, collapse all
+                if (expandedIds.size === messages.length) {
+                  setExpandedIds(new Set([messages[messages.length - 1].id]));
+                } else {
+                  setExpandedIds(new Set(messages.map(m => m.id)));
+                }
+              }}
+              className="text-[11px] text-blue-500 hover:text-blue-600 mt-1 transition-colors"
+            >
+              {expandedIds.size === messages.length
+                ? "Collapse older messages"
+                : `Expand all ${messages.length} messages`}
+            </button>
+          )}
+        </div>
 
-                {item.kind === "message" ? (
-                  <div className="py-2">
-                    <MessageBubble
+        {/* Thread items (messages + notes) */}
+        <div className="bg-white dark:bg-slate-900 rounded-xl mx-4 mb-2 border border-slate-200 dark:border-slate-700/60 overflow-hidden">
+          {threadItems.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+              <Mail className="h-10 w-10 mb-2 opacity-30" />
+              <p className="text-sm">No messages in this thread yet</p>
+            </div>
+          ) : (
+            threadItems.map((item, idx) => {
+              const label = dayLabel(item.time);
+              const showSep = label !== lastDayLabel;
+              if (showSep) lastDayLabel = label;
+
+              return (
+                <div key={item.kind === "message" ? `msg-${item.msg.id}` : `note-${item.note.id}`}>
+                  {showSep && (
+                    <div className="flex items-center gap-3 px-6 py-2 bg-slate-50 dark:bg-slate-800/50">
+                      <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">{label}</span>
+                      <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
+                    </div>
+                  )}
+
+                  {item.kind === "message" ? (
+                    <ThreadEmailCard
                       msg={item.msg}
+                      isExpanded={expandedIds.has(item.msg.id)}
+                      onToggle={() => toggleExpanded(item.msg.id)}
+                      isLatest={idx === threadItems.length - 1 || (
+                        item.kind === "message" &&
+                        item.msg.id === messages[messages.length - 1].id
+                      )}
+                      isSystem={isSystem}
                       customerName={conv.customerName}
-                      onReply={() => {}}
+                      onReply={handleThreadReply}
                     />
-                  </div>
-                ) : (
-                  <div className="py-1.5 mx-4 group/note">
-                    <NoteItem
-                      note={item.note}
-                      convId={conv.id}
-                      currentUserId={currentUserId}
-                      onChanged={() => queryClient.invalidateQueries({ queryKey: ["conv-detail", selectedId] })}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
+                  ) : (
+                    <div className="px-6 py-3 group/note border-b border-slate-100 dark:border-slate-800/40 last:border-none">
+                      <NoteItem
+                        note={item.note}
+                        convId={conv.id}
+                        currentUserId={currentUserId}
+                        onChanged={() => queryClient.invalidateQueries({ queryKey: ["conv-detail", selectedId] })}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
         <div ref={bottomRef} />
       </div>
 
-      {/* Reply composer */}
+      {/* Reply composer — sticky at bottom */}
       <ReplyComposer
         conv={conv}
         messages={messages}
         currentUserId={currentUserId}
         onNoteAdded={() => queryClient.invalidateQueries({ queryKey: ["conv-detail", selectedId] })}
-        aiBodySuggestion={aiReply}
-        onAiBodyUsed={() => setAiReply("")}
+        composerTrigger={composerTrigger}
       />
 
       {/* AI panel overlay */}
@@ -1917,7 +2257,19 @@ function MiddlePanel({
         <AIAssistPanel
           convId={conv.id}
           onClose={() => setShowAI(false)}
-          onUseReply={text => { setShowAI(false); setAiReply(text); }}
+          onUseReply={text => {
+            setShowAI(false);
+            setComposerTrigger({ mode: "reply", ts: Date.now() });
+            // Brief delay to let composer open, then inject body
+            setTimeout(() => {
+              const ta = document.querySelector<HTMLTextAreaElement>(".comm-reply-textarea");
+              if (ta) {
+                const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+                nativeInputValueSetter?.call(ta, text);
+                ta.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+            }, 100);
+          }}
         />
       )}
     </div>
@@ -1963,16 +2315,16 @@ function RightPanel({ selectedId, onClose, showCloseButton, currentUserId }: {
   const color = avatarColor(conv.customerEmail);
 
   const fields = [
-    { icon: Mail,       label: "Email",    value: conv.customerEmail, copyable: true },
-    { icon: Phone,      label: "Phone",    value: conv.customerPhone, tel: true },
-    { icon: Truck,      label: "Vehicle",  value: lead?.vehicle },
-    { icon: MapPin,     label: "Route",    value: lead?.route },
-    { icon: MapPin,     label: "Pickup",   value: lead?.pickup },
-    { icon: MapPin,     label: "Delivery", value: lead?.delivery },
-    { icon: DollarSign, label: "Quote",    value: lead?.price },
-    { icon: Tag,        label: "Quote ID", value: lead?.quoteId },
-    { icon: Megaphone,  label: "Campaign", value: campaign?.name },
-    { icon: CheckCircle2, label: "Status", value: lead?.status },
+    { icon: Mail,         label: "Email",    value: conv.customerEmail, copyable: true },
+    { icon: Phone,        label: "Phone",    value: conv.customerPhone, tel: true },
+    { icon: Truck,        label: "Vehicle",  value: lead?.vehicle },
+    { icon: MapPin,       label: "Route",    value: lead?.route },
+    { icon: MapPin,       label: "Pickup",   value: lead?.pickup },
+    { icon: MapPin,       label: "Delivery", value: lead?.delivery },
+    { icon: DollarSign,   label: "Quote",    value: lead?.price },
+    { icon: Tag,          label: "Quote ID", value: lead?.quoteId },
+    { icon: Megaphone,    label: "Campaign", value: campaign?.name },
+    { icon: CheckCircle2, label: "Status",   value: lead?.status },
   ].filter(f => f.value) as { icon: any; label: string; value: string; copyable?: boolean; tel?: boolean }[];
 
   return (
@@ -2140,29 +2492,24 @@ export default function Communications() {
   const { user } = useAuth();
   const currentUserId = user?.id ?? 0;
 
-  const [filter, setFilter]           = useState<FilterKey>("inbox");
-  const [search, setSearch]           = useState("");
-  const [selectedId, setSelectedId]   = useState<number | null>(null);
+  const [filter, setFilter]                   = useState<FilterKey>("inbox");
+  const [search, setSearch]                   = useState("");
+  const [selectedId, setSelectedId]           = useState<number | null>(null);
   const [selectedMailboxId, setSelectedMailboxId] = useState<string | number | null>(null);
-  const [mobilePanel, setMobilePanel] = useState<"list" | "thread" | "details">("list");
-  const [showDetails, setShowDetails] = useState(true);
-  const [isSyncing, setIsSyncing]     = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [liveProgress, setLiveProgress] = useState<SyncProgressState | null>(null);
+  const [mobilePanel, setMobilePanel]         = useState<"list" | "thread" | "details">("list");
+  const [showDetails, setShowDetails]         = useState(true);
+  const [isSyncing, setIsSyncing]             = useState(false);
+  const [selectedIds, setSelectedIds]         = useState<Set<number>>(new Set());
+  const [liveProgress, setLiveProgress]       = useState<SyncProgressState | null>(null);
 
   const queryClient = useQueryClient();
-  const { toast } = useToast();
+  const { toast }   = useToast();
 
-  const handleSyncProgress = useCallback((p: SyncProgressState) => {
-    setLiveProgress(p);
-  }, []);
-  const handleSyncStarted = useCallback(() => {
-    setIsSyncing(true);
-    setLiveProgress(null);
-  }, []);
+  const handleSyncProgress = useCallback((p: SyncProgressState) => setLiveProgress(p), []);
+  const handleSyncStarted  = useCallback(() => { setIsSyncing(true); setLiveProgress(null); }, []);
   const handleSyncComplete = useCallback(() => {
     setIsSyncing(false);
-    setTimeout(() => setLiveProgress(null), 2000);
+    setTimeout(() => setLiveProgress(null), 2_000);
   }, []);
 
   const connectionStatus = useCommEvents(handleSyncProgress, handleSyncStarted, handleSyncComplete);
@@ -2195,25 +2542,27 @@ export default function Communications() {
 
   const conversations = convData?.data ?? [];
 
-  // Optimistic mark-as-read when selecting a conversation
+  // Optimistic mark-as-read when selecting a conversation (inbound unread only)
   const handleSelect = (id: number) => {
     setSelectedId(id);
     setMobilePanel("thread");
-    // Optimistically mark as read in the list
-    queryClient.setQueriesData<{ data: Conversation[]; total: number }>(
-      { queryKey: ["conversations"] },
-      (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          data: old.data.map(c =>
-            c.id === id ? { ...c, status: c.status === "unread" ? "read" : c.status, unreadCount: 0 } : c
-          ),
-        };
-      },
-    );
-    // Also refresh stats after a short delay (the server marks as read on GET)
-    setTimeout(() => queryClient.invalidateQueries({ queryKey: ["comm-stats"] }), 500);
+    const conv = conversations.find(c => c.id === id);
+    // Only apply optimistic update if the conversation actually has unread inbound messages
+    if (conv && conv.unreadCount > 0 && conv.status === "unread") {
+      queryClient.setQueriesData<{ data: Conversation[]; total: number }>(
+        { queryKey: ["conversations"] },
+        (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            data: old.data.map(c =>
+              c.id === id ? { ...c, status: "read", unreadCount: 0 } : c,
+            ),
+          };
+        },
+      );
+      setTimeout(() => queryClient.invalidateQueries({ queryKey: ["comm-stats"] }), 500);
+    }
   };
 
   const handleToggleSelect = (id: number) => {
@@ -2251,7 +2600,7 @@ export default function Communications() {
         { method: "POST" },
       );
       if (resp.started) {
-        setIsSyncing(true); // SSE sync_complete will reset this
+        setIsSyncing(true);
         setLiveProgress(null);
       } else {
         toast({ title: "Sync in progress", description: resp.message ?? "Already syncing, please wait" });

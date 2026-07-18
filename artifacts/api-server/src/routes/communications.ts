@@ -138,22 +138,31 @@ router.get("/communications/conversations", requireAuth, async (req, res) => {
 
   const conditions = [eq(commConversationsTable.userId, userId)];
 
-  if (filter === "unread")       conditions.push(eq(commConversationsTable.status, "unread"));
+  if (filter === "unread")        conditions.push(eq(commConversationsTable.status, "unread"));
   else if (filter === "needs_reply") conditions.push(eq(commConversationsTable.status, "needs_reply"));
-  else if (filter === "starred") conditions.push(eq(commConversationsTable.starred, true));
+  else if (filter === "starred")  conditions.push(eq(commConversationsTable.starred, true));
   else if (filter === "archived") conditions.push(eq(commConversationsTable.status, "archived"));
-  else if (filter === "spam")    conditions.push(eq(commConversationsTable.status, "spam"));
+  else if (filter === "spam")     conditions.push(eq(commConversationsTable.status, "spam"));
+  else if (filter === "trash")    conditions.push(eq(commConversationsTable.status, "trash"));
+  else if (filter === "system")   conditions.push(eq(commConversationsTable.status, "system"));
+  else if (filter === "drafts") {
+    // Conversations that are drafts (outbound-only threads not yet replied to)
+    conditions.push(sql`${commConversationsTable.status} NOT IN ('archived', 'spam', 'trash', 'system')`);
+    conditions.push(sql`(SELECT direction FROM comm_messages WHERE conversation_id = ${commConversationsTable.id} ORDER BY COALESCE(sent_at, created_at) DESC NULLS LAST LIMIT 1) = 'outbound'`);
+    conditions.push(sql`${commConversationsTable.messageCount} = 1`);
+  }
   else if (filter === "inbox") {
-    conditions.push(sql`${commConversationsTable.status} NOT IN ('archived', 'spam')`);
+    // Inbox: has an inbound message as the most recent; exclude special folders
+    conditions.push(sql`${commConversationsTable.status} NOT IN ('archived', 'spam', 'trash', 'system')`);
     conditions.push(sql`(SELECT direction FROM comm_messages WHERE conversation_id = ${commConversationsTable.id} ORDER BY COALESCE(sent_at, created_at) DESC NULLS LAST LIMIT 1) = 'inbound'`);
   }
   else if (filter === "sent") {
-    conditions.push(sql`${commConversationsTable.status} NOT IN ('archived', 'spam')`);
+    conditions.push(sql`${commConversationsTable.status} NOT IN ('archived', 'spam', 'trash', 'system')`);
     conditions.push(sql`(SELECT direction FROM comm_messages WHERE conversation_id = ${commConversationsTable.id} ORDER BY COALESCE(sent_at, created_at) DESC NULLS LAST LIMIT 1) = 'outbound'`);
   }
   else {
-    // "all" — active conversations (not archived or spam)
-    conditions.push(sql`${commConversationsTable.status} NOT IN ('archived', 'spam')`);
+    // "all" — every active conversation (not archived, spam, trash, or system)
+    conditions.push(sql`${commConversationsTable.status} NOT IN ('archived', 'spam', 'trash', 'system')`);
   }
 
   if (mailboxId)  conditions.push(eq(commConversationsTable.mailboxId,  parseInt(mailboxId, 10)));
@@ -247,7 +256,7 @@ router.patch("/communications/conversations/bulk", requireAuth, async (req, res)
   if (!Array.isArray(ids) || ids.length === 0) {
     return res.status(400).json({ error: "ids must be a non-empty array" });
   }
-  const validActions = ["mark_read", "mark_unread", "archive", "spam", "delete", "star", "unstar"];
+  const validActions = ["mark_read", "mark_unread", "archive", "spam", "trash", "restore", "delete", "star", "unstar"];
   if (!action || !validActions.includes(action)) {
     return res.status(400).json({ error: `action must be one of: ${validActions.join(", ")}` });
   }
@@ -271,6 +280,8 @@ router.patch("/communications/conversations/bulk", requireAuth, async (req, res)
     if (action === "mark_unread") { updates.status = "unread"; }
     if (action === "archive")     updates.status = "archived";
     if (action === "spam")        updates.status = "spam";
+    if (action === "trash")       updates.status = "trash";
+    if (action === "restore")     { updates.status = "read"; updates.unreadCount = 0; }
     if (action === "star")        updates.starred = true;
     if (action === "unstar")      updates.starred = false;
 
@@ -342,18 +353,31 @@ router.get("/communications/conversations/:id", requireAuth, async (req, res) =>
     campaign = c ?? null;
   }
 
-  // Mark as read and broadcast to other tabs
-  if (conv.status === "unread") {
-    await db
-      .update(commConversationsTable)
-      .set({ status: "read", unreadCount: 0, updatedAt: new Date() })
-      .where(eq(commConversationsTable.id, convId));
-    broadcastRead(userId, convId);
+  // ── Unread tracking: only mark read for INBOUND messages ──────────────────
+  // Never mark a conversation read just because the broker opened their own sent message.
+  const unreadInbound = messages.filter(m => m.direction === "inbound" && !m.isRead);
+  if (unreadInbound.length > 0) {
+    const ids = unreadInbound.map(m => m.id);
+    await db.update(commMessagesTable).set({ isRead: true }).where(inArray(commMessagesTable.id, ids));
+    if (conv.status === "unread" || conv.unreadCount > 0) {
+      await db
+        .update(commConversationsTable)
+        .set({ status: conv.status === "unread" ? "read" : conv.status, unreadCount: 0, updatedAt: new Date() })
+        .where(eq(commConversationsTable.id, convId));
+      broadcastRead(userId, convId);
+    }
   }
 
+  // Return messages with updated isRead state
+  const updatedMessages = messages.map(m =>
+    m.direction === "inbound" && !m.isRead ? { ...m, isRead: true } : m,
+  );
+  const updatedStatus = conv.status === "unread" && unreadInbound.length > 0 ? "read" : conv.status;
+  const updatedUnreadCount = unreadInbound.length > 0 ? 0 : conv.unreadCount;
+
   return res.json({
-    conversation: { ...conv, status: conv.status === "unread" ? "read" : conv.status, unreadCount: 0 },
-    messages,
+    conversation: { ...conv, status: updatedStatus, unreadCount: updatedUnreadCount },
+    messages: updatedMessages,
     notes,
     lead,
     campaign,
@@ -624,19 +648,21 @@ router.get("/communications/stats", requireAuth, async (req, res) => {
 
   const [stats] = await db
     .select({
-      total:      sql<number>`count(*) filter (where ${commConversationsTable.status} NOT IN ('archived', 'spam'))::int`,
+      total:      sql<number>`count(*) filter (where ${commConversationsTable.status} NOT IN ('archived', 'spam', 'trash', 'system'))::int`,
       unread:     sql<number>`count(*) filter (where ${commConversationsTable.status} = 'unread')::int`,
       needsReply: sql<number>`count(*) filter (where ${commConversationsTable.status} = 'needs_reply')::int`,
-      starred:    sql<number>`count(*) filter (where ${commConversationsTable.starred} = true AND ${commConversationsTable.status} NOT IN ('archived', 'spam'))::int`,
+      starred:    sql<number>`count(*) filter (where ${commConversationsTable.starred} = true AND ${commConversationsTable.status} NOT IN ('archived', 'spam', 'trash', 'system'))::int`,
       archived:   sql<number>`count(*) filter (where ${commConversationsTable.status} = 'archived')::int`,
       spam:       sql<number>`count(*) filter (where ${commConversationsTable.status} = 'spam')::int`,
-      inbox:      sql<number>`count(*) filter (where ${commConversationsTable.status} NOT IN ('archived', 'spam') AND (SELECT direction FROM comm_messages WHERE conversation_id = ${commConversationsTable.id} ORDER BY COALESCE(sent_at, created_at) DESC NULLS LAST LIMIT 1) = 'inbound')::int`,
-      sent:       sql<number>`count(*) filter (where ${commConversationsTable.status} NOT IN ('archived', 'spam') AND (SELECT direction FROM comm_messages WHERE conversation_id = ${commConversationsTable.id} ORDER BY COALESCE(sent_at, created_at) DESC NULLS LAST LIMIT 1) = 'outbound')::int`,
+      trash:      sql<number>`count(*) filter (where ${commConversationsTable.status} = 'trash')::int`,
+      system:     sql<number>`count(*) filter (where ${commConversationsTable.status} = 'system')::int`,
+      inbox:      sql<number>`count(*) filter (where ${commConversationsTable.status} NOT IN ('archived', 'spam', 'trash', 'system') AND (SELECT direction FROM comm_messages WHERE conversation_id = ${commConversationsTable.id} ORDER BY COALESCE(sent_at, created_at) DESC NULLS LAST LIMIT 1) = 'inbound')::int`,
+      sent:       sql<number>`count(*) filter (where ${commConversationsTable.status} NOT IN ('archived', 'spam', 'trash', 'system') AND (SELECT direction FROM comm_messages WHERE conversation_id = ${commConversationsTable.id} ORDER BY COALESCE(sent_at, created_at) DESC NULLS LAST LIMIT 1) = 'outbound')::int`,
     })
     .from(commConversationsTable)
     .where(eq(commConversationsTable.userId, userId));
 
-  res.json(stats ?? { total: 0, unread: 0, needsReply: 0, starred: 0, archived: 0, spam: 0, inbox: 0, sent: 0 });
+  res.json(stats ?? { total: 0, unread: 0, needsReply: 0, starred: 0, archived: 0, spam: 0, trash: 0, system: 0, inbox: 0, sent: 0 });
 });
 
 // ─── POST /api/communications/ai-assist ──────────────────────────────────────
