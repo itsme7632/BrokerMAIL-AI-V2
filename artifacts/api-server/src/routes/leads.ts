@@ -42,7 +42,7 @@ router.get("/leads", requireAuth, async (req, res): Promise<void> => {
     .offset((page - 1) * limit);
 
   res.json({
-    data: leads.map(l => ({ ...l, createdAt: l.createdAt.toISOString(), updatedAt: l.updatedAt.toISOString() })),
+    data: leads.map((l: typeof leadsTable.$inferSelect) => ({ ...l, createdAt: l.createdAt.toISOString(), updatedAt: l.updatedAt.toISOString() })),
     total: totalResult.count, page, limit,
   });
 });
@@ -129,7 +129,7 @@ router.post("/leads/bulk-import", requireAuth, async (req, res): Promise<void> =
   const errors: string[] = [];
 
   // Batch suppression check for all provided emails (scoped to this user)
-  const allEmails = leads.map(l => l.email?.trim().toLowerCase()).filter(Boolean) as string[];
+  const allEmails = leads.map((l: ReturnType<typeof BulkImportLeadsBody.parse>['leads'][number]) => l.email?.trim().toLowerCase()).filter(Boolean) as string[];
   const suppressedSet = await filterSuppressed(user.id, allEmails);
 
   for (const lead of leads) {

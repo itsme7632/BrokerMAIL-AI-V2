@@ -622,6 +622,7 @@ function SyncStatusWidget({ liveProgress, isSyncingLive }: {
     } else {
       startedAtRef.current = null;
       setElapsedSec(0);
+      return;
     }
   }, [isSyncingLive]);
 
@@ -919,7 +920,7 @@ function LeftPanel({
     ? "All Mailboxes"
     : safeMailboxes.find(m => m.id === selectedMailboxId)?.email ?? "All Mailboxes";
 
-  const total = convData => convData?.total ?? 0;
+  const total = (convData: { data: Conversation[]; total: number } | undefined) => convData?.total ?? 0;
   const showCheckboxes = selectedIds.size > 0;
 
   const handleSelectAll = () => {
