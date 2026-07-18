@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { getGetMeQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { Button } from "@/components/ui/button";
@@ -318,6 +320,7 @@ export default function MyProfile() {
   const { user, refreshUser } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // Remote data
   const [billing, setBilling]     = useState<BillingData | null>(null);
@@ -357,9 +360,17 @@ export default function MyProfile() {
 
   useEffect(() => {
     if (!user) return;
-    const init = { name: user.name ?? "" };
-    setProfileForm(init);
-    setProfileInitial(init);
+
+    // Always sync the baseline so profileDirty is correct after a save.
+    // Only reset the editable form value when the user is NOT mid-save —
+    // this prevents setQueryData (which updates `user`) from overwriting
+    // text the user is actively typing.
+    const dbName = user.name ?? "";
+    setProfileInitial({ name: dbName });
+    setSavingProfile(saving => {
+      if (!saving) setProfileForm({ name: dbName });
+      return saving; // unchanged
+    });
 
     // Timezone: prefer DB value, then browser, then "UTC"
     const saved = ((user as any).timezone as string | undefined)?.trim();
@@ -367,14 +378,26 @@ export default function MyProfile() {
     setDetectedTz(tz);
     setTzOffset(getUtcOffset(tz));
 
-    // Auto-save detected timezone to DB if the user has none stored yet
+    // Auto-save detected timezone to DB if the user has none stored yet.
+    // Send as POST + X-HTTP-Method-Override so it works through the Replit
+    // deployment proxy (which only passes GET/POST).
     if (!saved) {
       fetch("/api/users/profile", {
-        method: "PATCH",
-        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        method: "POST",
+        headers: {
+          ...getAuthHeaders(),
+          "Content-Type": "application/json",
+          "X-HTTP-Method-Override": "PATCH",
+        },
         body: JSON.stringify({ name: user.name ?? "", timezone: tz }),
       })
-        .then(r => { if (r.ok) setTzAutoSaved(true); })
+        .then(async r => {
+          if (r.ok) {
+            const updated = await r.json().catch(() => null);
+            if (updated) queryClient.setQueryData(getGetMeQueryKey(), updated);
+            setTzAutoSaved(true);
+          }
+        })
         .catch(() => { /* non-fatal */ });
     }
 
@@ -382,7 +405,7 @@ export default function MyProfile() {
     setActivity(loadActivity(user.id));
     const pwDate = localStorage.getItem(pwChangedKey(user.id));
     setLastPwChanged(pwDate ?? null);
-  }, [user]);
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Fetch billing + stats ────────────────────────────────────────────────────
 
@@ -419,31 +442,51 @@ export default function MyProfile() {
 
   const handleSaveProfile = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profileForm.name.trim()) {
+    const trimmedName = profileForm.name.trim();
+    if (!trimmedName) {
       toast({ variant: "destructive", title: "Name is required" });
       return;
     }
     setSavingProfile(true);
     try {
+      // Send as POST + X-HTTP-Method-Override so the request works through
+      // both the Vite dev proxy (which forwards PATCH directly) AND the
+      // Replit deployment proxy (which only passes GET/POST). The server-side
+      // methodOverride middleware reads the header and re-routes to PATCH.
       const res = await fetch("/api/users/profile", {
-        method: "PATCH",
-        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ name: profileForm.name.trim(), timezone: detectedTz }),
+        method: "POST",
+        headers: {
+          ...getAuthHeaders(),
+          "Content-Type": "application/json",
+          "X-HTTP-Method-Override": "PATCH",
+        },
+        body: JSON.stringify({ name: trimmedName, timezone: detectedTz }),
       });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Save failed");
-      await refreshUser();
-      const next = { name: profileForm.name.trim() };
-      setProfileInitial(next);
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `Save failed (HTTP ${res.status})`);
+      }
+
+      // The PATCH route returns the updated user record. Write it directly
+      // into the React Query cache — this is synchronous and guarantees the
+      // AuthContext user is updated immediately, with no refetch race.
+      const updated = await res.json();
+      queryClient.setQueryData(getGetMeQueryKey(), updated);
+
+      // Sync local form baseline from what the server actually stored
+      setProfileInitial({ name: updated.name ?? trimmedName });
+
       // Track activity
       if (user) {
-        const entry = pushActivity(user.id, { type: "profile_update", label: "Profile updated", detail: "Name or timezone changed", timestamp: new Date().toISOString() });
+        const entry = pushActivity(user.id, { type: "profile_update", label: "Profile updated", detail: "Name updated", timestamp: new Date().toISOString() });
         setActivity(a => [entry, ...a]);
       }
       toast({ title: "Profile updated ✓", description: "Your changes have been saved." });
     } catch (err: any) {
       toast({ variant: "destructive", title: "Save failed", description: err.message });
     } finally { setSavingProfile(false); }
-  }, [profileForm, user, refreshUser, toast]);
+  }, [profileForm, detectedTz, queryClient, user, toast]);
 
   const handleChangePassword = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
