@@ -759,7 +759,7 @@ router.post("/communications/ai-assist", requireAuth, async (req, res) => {
 
 router.post("/communications/sync", requireAuth, async (req, res) => {
   const userId = (req as any).user.id as number;
-  const state  = getSyncState();
+  const state  = getSyncState(userId);
 
   if (state.isSyncing) {
     return res.json({ started: false, message: "Sync already in progress" });
