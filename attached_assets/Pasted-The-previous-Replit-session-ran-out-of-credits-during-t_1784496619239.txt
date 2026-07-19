@@ -1,0 +1,232 @@
+The previous Replit session ran out of credits during the Communications module redesign.
+
+IMPORTANT
+
+DO NOT restart this project.
+
+DO NOT redesign from scratch.
+
+DO NOT overwrite completed work.
+
+FIRST read the current codebase completely before making changes.
+
+Current modified files include:
+
+- artifacts/api-server/src/lib/comm-sync.ts
+- artifacts/api-server/src/routes/communications.ts
+- artifacts/vertex-ai-mailer/src/pages/Communications.tsx
+
+The previous session already completed:
+
+✓ RFC2047 subject decoding
+✓ System notification detection
+✓ 14-day threading improvements
+✓ HTML renderer light-mode fixes
+✓ Infinite scrolling
+✓ Reply toolbar improvements
+✓ TypeScript passes
+✓ Build passes
+
+Read the implementation first.
+
+Determine exactly which requirements are already complete.
+
+Create a checklist with:
+
+DONE
+
+PARTIALLY DONE
+
+NOT DONE
+
+Then continue ONLY with the remaining work.
+
+DO NOT remove existing functionality.
+
+DO NOT rewrite already working code.
+
+The end goal is a production-grade email client comparable to Gmail or Outlook.
+
+Remaining priorities include (verify first before implementing):
+
+1. True Gmail/Outlook layout
+
+Folders
+
+↓
+
+Conversation list
+
+↓
+
+Reading pane
+
+↓
+
+Composer
+
+2. Proper email threading
+
+Only thread when:
+
+Message-ID
+
+In-Reply-To
+
+References
+
+match.
+
+Never merge unrelated emails by subject.
+
+3. Delivery failures
+
+Mail Delivery System
+
+Mailer Daemon
+
+Out of Office
+
+Auto Reply
+
+Spam rejection
+
+Deferred
+
+Failed
+
+must become independent notification conversations.
+
+4. Gmail / SMTP mailbox separation
+
+Mailbox selector must isolate:
+
+Gmail only
+
+SMTP only
+
+All mailboxes
+
+Counts
+
+Search
+
+Unread
+
+Pagination
+
+must respect mailbox.
+
+5. Inbox redesign
+
+Professional Gmail-style rows.
+
+Compact.
+
+Sender
+
+Subject
+
+Preview
+
+Date
+
+Icons
+
+Unread.
+
+6. Reading pane redesign
+
+No chat bubbles.
+
+Email cards.
+
+Proper HTML rendering.
+
+Quoted text collapse.
+
+Attachments.
+
+Professional spacing.
+
+7. Mobile UX
+
+Behave like Gmail mobile.
+
+8. Desktop UX
+
+Three-column layout.
+
+9. Unread counts
+
+Fix remaining badge inconsistencies.
+
+10. Pagination
+
+Finish if incomplete.
+
+11. HTML rendering
+
+Verify dark mode.
+
+Verify inline images.
+
+Verify quoted replies.
+
+12. AI tools
+
+Keep all existing AI features.
+
+13. Performance
+
+Do not break:
+
+IMAP
+
+SMTP
+
+Gmail sync
+
+SSE
+
+Templates
+
+Notes
+
+Search
+
+Bulk actions
+
+14. Security
+
+Preserve all mailbox isolation fixes.
+
+Never expose another user's data.
+
+Before finishing ALWAYS run:
+
+pnpm clean
+
+pnpm install
+
+pnpm typecheck
+
+pnpm build
+
+Return:
+
+Files modified
+
+Remaining TODO items
+
+Screenshots (if available)
+
+Confirmation that zero TypeScript errors remain.
+
+IMPORTANT:
+
+Read first.
+
+Continue existing work.
+
+Do not start over.
