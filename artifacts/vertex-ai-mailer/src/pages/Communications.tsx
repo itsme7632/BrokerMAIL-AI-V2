@@ -431,7 +431,13 @@ function useCommEvents(
 
 // ─── HtmlEmailRenderer ────────────────────────────────────────────────────────
 
-function HtmlEmailRenderer({ html, isDark }: { html: string; isDark?: boolean }) {
+/**
+ * Email HTML renderer — always rendered in light mode regardless of the app's
+ * dark-mode setting. Email HTML is author-intended for light backgrounds; dark
+ * mode inversion would make inline `color: black` and similar styles invisible.
+ * `color-scheme: light` tells the browser to stay in light mode for this frame.
+ */
+function HtmlEmailRenderer({ html }: { html: string }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(80);
 
@@ -440,13 +446,23 @@ function HtmlEmailRenderer({ html, isDark }: { html: string; isDark?: boolean })
     .replace(/\s+on\w+\s*=/gi, " data-removed=");
 
   const doc = [
-    "<!DOCTYPE html><html><head><meta charset='utf-8'><style>",
-    "*{box-sizing:border-box}",
-    `body{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;line-height:1.5;color:${isDark ? "#fff" : "#1e293b"};background:transparent;word-break:break-word;overflow:hidden}`,
-    `img{max-width:100%;height:auto}a{color:${isDark ? "#93c5fd" : "#3b82f6"}}`,
-    "table{max-width:100%!important;border-collapse:collapse}p{margin:2px 0}",
-    `blockquote{margin:4px 0 4px 12px;padding-left:8px;border-left:3px solid ${isDark ? "rgba(255,255,255,.3)" : "#e2e8f0"};color:${isDark ? "rgba(255,255,255,.7)" : "#64748b"}}`,
-    `</style></head><body>${clean}</body></html>`,
+    "<!DOCTYPE html><html><head>",
+    "<meta charset='utf-8'>",
+    "<meta name='color-scheme' content='light'>",
+    "<style>",
+    "*, *::before, *::after { box-sizing: border-box; }",
+    "html { color-scheme: light !important; }",
+    "body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #1e293b !important; background: #ffffff !important; word-break: break-word; overflow: hidden; }",
+    "img { max-width: 100% !important; height: auto; }",
+    "a { color: #3b82f6; }",
+    "table { max-width: 100% !important; border-collapse: collapse; }",
+    "td, th { word-break: break-word; }",
+    "p { margin: 2px 0; }",
+    "pre { white-space: pre-wrap; word-break: break-word; }",
+    "blockquote { margin: 4px 0 4px 12px; padding-left: 8px; border-left: 3px solid #e2e8f0; color: #64748b; }",
+    "</style></head><body>",
+    clean,
+    "</body></html>",
   ].join("");
 
   const handleLoad = useCallback(() => {
@@ -457,14 +473,16 @@ function HtmlEmailRenderer({ html, isDark }: { html: string; isDark?: boolean })
   }, []);
 
   return (
-    <iframe
-      ref={iframeRef}
-      srcDoc={doc}
-      sandbox="allow-same-origin"
-      onLoad={handleLoad}
-      style={{ width: "100%", height: `${height}px`, border: "none", display: "block" }}
-      title="Email content"
-    />
+    <div className="bg-white rounded-sm overflow-hidden">
+      <iframe
+        ref={iframeRef}
+        srcDoc={doc}
+        sandbox="allow-same-origin"
+        onLoad={handleLoad}
+        style={{ width: "100%", height: `${height}px`, border: "none", display: "block" }}
+        title="Email content"
+      />
+    </div>
   );
 }
 
@@ -972,6 +990,7 @@ function LeftPanel({
   conversations, isLoading, selectedId, onSelect, stats, onRefresh, isSyncing,
   mailboxes, selectedMailboxId, onMailboxChange, connectionStatus,
   liveProgress, selectedIds, onToggleSelect, onBulkAction,
+  onLoadMore, hasMore, isFetchingMore,
 }: {
   filter: FilterKey; setFilter: (f: FilterKey) => void;
   search: string; setSearch: (s: string) => void;
@@ -985,6 +1004,9 @@ function LeftPanel({
   selectedIds: Set<number>;
   onToggleSelect: (id: number) => void;
   onBulkAction: (action: BulkAction) => void;
+  onLoadMore: () => void;
+  hasMore: boolean;
+  isFetchingMore: boolean;
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -997,6 +1019,19 @@ function LeftPanel({
 
   const handleSelectAll = () => conversations.forEach(c => onToggleSelect(c.id));
   const handleClear = () => conversations.forEach(c => { if (selectedIds.has(c.id)) onToggleSelect(c.id); });
+
+  // Infinite scroll — fire onLoadMore when the sentinel enters the viewport
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting && hasMore && !isFetchingMore) onLoadMore(); },
+      { threshold: 0.1 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, isFetchingMore, onLoadMore]);
 
   const countFor = (key: FilterKey): number | undefined => {
     if (!stats) return undefined;
@@ -1222,17 +1257,28 @@ function LeftPanel({
             )}
           </div>
         ) : (
-          conversations.map(conv => (
-            <ConvItem
-              key={conv.id}
-              conv={conv}
-              isActive={selectedId === conv.id}
-              isSelected={selectedIds.has(conv.id)}
-              onClick={() => onSelect(conv.id)}
-              onToggleSelect={onToggleSelect}
-              showCheckboxes={showCheckboxes}
-            />
-          ))
+          <>
+            {conversations.map(conv => (
+              <ConvItem
+                key={conv.id}
+                conv={conv}
+                isActive={selectedId === conv.id}
+                isSelected={selectedIds.has(conv.id)}
+                onClick={() => onSelect(conv.id)}
+                onToggleSelect={onToggleSelect}
+                showCheckboxes={showCheckboxes}
+              />
+            ))}
+            {/* Infinite scroll sentinel */}
+            <div ref={sentinelRef} className="py-1 flex justify-center">
+              {isFetchingMore && (
+                <Loader2 className="h-4 w-4 animate-spin text-slate-300" />
+              )}
+              {!hasMore && conversations.length > 0 && (
+                <p className="text-[10px] text-slate-300 dark:text-slate-600 py-1">All conversations loaded</p>
+              )}
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -2029,6 +2075,22 @@ function MiddlePanel({
 
         {/* Action toolbar */}
         <div className="flex items-center gap-0.5 flex-shrink-0">
+          {/* Reply button — quick access to composer from the reading pane header */}
+          {!isSystem && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setComposerTrigger({ mode: "reply", ts: Date.now() })}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-xs font-medium"
+                >
+                  <CornerDownLeft className="h-3.5 w-3.5" />
+                  <span className="hidden xl:inline">Reply</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Reply (R)</TooltipContent>
+            </Tooltip>
+          )}
+
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -2488,6 +2550,8 @@ function RightPanel({ selectedId, onClose, showCloseButton, currentUserId }: {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
+const CONVS_PAGE_SIZE = 50;
+
 export default function Communications() {
   const { user } = useAuth();
   const currentUserId = user?.id ?? 0;
@@ -2501,6 +2565,11 @@ export default function Communications() {
   const [isSyncing, setIsSyncing]             = useState(false);
   const [selectedIds, setSelectedIds]         = useState<Set<number>>(new Set());
   const [liveProgress, setLiveProgress]       = useState<SyncProgressState | null>(null);
+
+  // ── Pagination state ─────────────────────────────────────────────────────
+  const [convPage, setConvPage]               = useState(1);
+  const [accConversations, setAccConversations] = useState<Conversation[]>([]);
+  const [convTotal, setConvTotal]             = useState(0);
 
   const queryClient = useQueryClient();
   const { toast }   = useToast();
@@ -2520,19 +2589,41 @@ export default function Communications() {
     staleTime: 5 * 60_000,
   });
 
-  const convsUrl = () => {
-    const params = new URLSearchParams({ filter, search, limit: "50" });
+  // Reset pagination whenever the filter, search, or mailbox changes
+  useEffect(() => {
+    setConvPage(1);
+    setAccConversations([]);
+    setConvTotal(0);
+  }, [filter, search, selectedMailboxId]);
+
+  const convsUrl = (page: number) => {
+    const params = new URLSearchParams({ filter, search, limit: String(CONVS_PAGE_SIZE), page: String(page) });
     if (selectedMailboxId !== null && typeof selectedMailboxId === "number") {
       params.set("mailboxId", String(selectedMailboxId));
     }
     return `/api/communications/conversations?${params.toString()}`;
   };
 
-  const { data: convData, isLoading } = useQuery<{ data: Conversation[]; total: number }>({
-    queryKey: ["conversations", filter, search, selectedMailboxId],
-    queryFn: () => apiFetch(convsUrl()),
+  const { data: convData, isLoading, isFetching } = useQuery<{ data: Conversation[]; total: number }>({
+    queryKey: ["conversations", filter, search, selectedMailboxId, convPage],
+    queryFn: () => apiFetch(convsUrl(convPage)),
     staleTime: 30_000,
   });
+
+  // Accumulate conversations across pages, deduplicating by id
+  useEffect(() => {
+    if (!convData) return;
+    setConvTotal(convData.total);
+    if (convPage === 1) {
+      setAccConversations(convData.data);
+    } else {
+      setAccConversations(prev => {
+        const existingIds = new Set(prev.map(c => c.id));
+        const fresh = convData.data.filter(c => !existingIds.has(c.id));
+        return fresh.length > 0 ? [...prev, ...fresh] : prev;
+      });
+    }
+  }, [convData, convPage]);
 
   const { data: stats } = useQuery<Stats>({
     queryKey: ["comm-stats"],
@@ -2540,7 +2631,13 @@ export default function Communications() {
     staleTime: 60_000,
   });
 
-  const conversations = convData?.data ?? [];
+  const conversations = accConversations;
+  const hasMoreConvs  = conversations.length < convTotal;
+  const isFetchingMore = isFetching && convPage > 1;
+
+  const handleLoadMore = useCallback(() => {
+    if (hasMoreConvs && !isFetching) setConvPage(p => p + 1);
+  }, [hasMoreConvs, isFetching]);
 
   // Optimistic mark-as-read when selecting a conversation (inbound unread only)
   const handleSelect = (id: number) => {
@@ -2650,6 +2747,9 @@ export default function Communications() {
           selectedIds={selectedIds}
           onToggleSelect={handleToggleSelect}
           onBulkAction={handleBulkAction}
+          onLoadMore={handleLoadMore}
+          hasMore={hasMoreConvs}
+          isFetchingMore={isFetchingMore}
         />
       </div>
 

@@ -28,6 +28,33 @@ function snippet(html: string, max = 160): string {
   return plain.length > max ? plain.slice(0, max) + "…" : plain;
 }
 
+/**
+ * Decode RFC 2047 encoded-words in subjects/names stored before the sync
+ * engine added automatic decoding. Applied at API response time as a
+ * belt-and-suspenders for dirty data already in the database.
+ */
+function decodeRFC2047(str: string | null | undefined): string {
+  if (!str || !str.includes("=?")) return str ?? "";
+  return str
+    .replace(/\?=[ \t]+=\?/g, "?==?")
+    .replace(/=\?([^?*]+)(?:\*[^?]*)?\?([BbQq])\?([^?]*)\?=/g, (orig, cs: string, enc: string, txt: string) => {
+      try {
+        if (enc.toUpperCase() === "B") {
+          return Buffer.from(txt.replace(/\s/g, ""), "base64").toString("utf8");
+        }
+        // Q encoding
+        const t = txt.replace(/_/g, " ");
+        const nums: number[] = [];
+        let i = 0;
+        while (i < t.length) {
+          if (t[i] === "=" && i + 2 < t.length) { nums.push(parseInt(t.slice(i + 1, i + 3), 16)); i += 3; }
+          else { nums.push(t.charCodeAt(i)); i++; }
+        }
+        return Buffer.from(nums).toString("utf8");
+      } catch { return orig; }
+    });
+}
+
 // Auto-populate conversations from existing sent drafts (idempotent)
 async function ensureConversationsSeeded(userId: number) {
   try {
@@ -259,7 +286,13 @@ router.get("/communications/conversations", requireAuth, async (req, res) => {
     .limit(limitNum)
     .offset(offset);
 
-  return res.json({ data: conversations, total: countRow?.count ?? 0 });
+  // Decode any RFC 2047 encoded subjects stored before the sync fix
+  const decoded = conversations.map(c => ({
+    ...c,
+    subject:      decodeRFC2047(c.subject),
+    customerName: decodeRFC2047(c.customerName),
+  }));
+  return res.json({ data: decoded, total: countRow?.count ?? 0 });
 });
 
 // ─── PATCH /api/communications/conversations/bulk ────────────────────────────
@@ -392,7 +425,13 @@ router.get("/communications/conversations/:id", requireAuth, async (req, res) =>
   const updatedUnreadCount = unreadInbound.length > 0 ? 0 : conv.unreadCount;
 
   return res.json({
-    conversation: { ...conv, status: updatedStatus, unreadCount: updatedUnreadCount },
+    conversation: {
+      ...conv,
+      status:       updatedStatus,
+      unreadCount:  updatedUnreadCount,
+      subject:      decodeRFC2047(conv.subject),
+      customerName: decodeRFC2047(conv.customerName),
+    },
     messages: updatedMessages,
     notes,
     lead,

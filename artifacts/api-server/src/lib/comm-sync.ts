@@ -66,16 +66,21 @@ export interface SyncResult {
 // ─── Parsing helpers ──────────────────────────────────────────────────────────
 
 function normalizeSubject(subject: string): string {
-  return subject.replace(/^(Re|Fwd|FW|RE|FWD|Fw):\s*/gi, "").toLowerCase().trim();
+  return decodeRFC2047(subject)
+    .replace(/^(Re|Fwd|FW|RE|FWD|Fw):\s*/gi, "")
+    .toLowerCase()
+    .trim();
 }
 
 function parseEmailAddress(header: string): { name: string; email: string } {
-  const m = header.trim().match(/^(.+?)\s*<([^>]+)>\s*$/);
+  // Decode RFC 2047 encoded-words in the header before parsing
+  const decoded = decodeRFC2047(header.trim());
+  const m = decoded.match(/^(.+?)\s*<([^>]+)>\s*$/);
   if (m) {
     const name = m[1]!.trim().replace(/^["']|["']$/g, "");
     return { name, email: m[2]!.trim().toLowerCase() };
   }
-  const email = header.trim().toLowerCase().replace(/[<>]/g, "").split(/[\s,;]/)[0] ?? "";
+  const email = decoded.trim().toLowerCase().replace(/[<>]/g, "").split(/[\s,;]/)[0] ?? "";
   return { name: email.split("@")[0] ?? "", email };
 }
 
@@ -98,6 +103,93 @@ function decodeQuotedPrintable(s: string): string {
 
 function decodeBase64Url(data: string): string {
   return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf-8");
+}
+
+// ─── RFC 2047 encoded-word decoder ───────────────────────────────────────────
+
+/**
+ * Decode a single RFC 2047 encoded-word into a UTF-8 string.
+ * Supports =?charset?B?base64?= (Base64) and =?charset?Q?qp?= (Quoted-Printable).
+ */
+function decodeRFC2047Word(charset: string, encoding: string, text: string): string {
+  const enc = encoding.toUpperCase();
+  let raw: Buffer;
+  if (enc === "B") {
+    raw = Buffer.from(text.replace(/\s/g, ""), "base64");
+  } else {
+    // Q encoding: underscores become spaces; =XX sequences become bytes
+    const nums: number[] = [];
+    const t = text.replace(/_/g, " ");
+    let i = 0;
+    while (i < t.length) {
+      if (t[i] === "=" && i + 2 < t.length) {
+        nums.push(parseInt(t.slice(i + 1, i + 3), 16));
+        i += 3;
+      } else {
+        nums.push(t.charCodeAt(i));
+        i++;
+      }
+    }
+    raw = Buffer.from(nums);
+  }
+  // Most modern encoded subjects are UTF-8; fall back to latin1
+  const cs = charset.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (cs.startsWith("utf")) return raw.toString("utf8");
+  return raw.toString("latin1");
+}
+
+/**
+ * Decode all RFC 2047 encoded-words in a header string.
+ * Strips whitespace between adjacent encoded-words per RFC 2047 §6.2.
+ */
+function decodeRFC2047(str: string): string {
+  if (!str || !str.includes("=?")) return str;
+  return str
+    .replace(/\?=[ \t]+=\?/g, "?==?")
+    .replace(/=\?([^?*]+)(?:\*[^?]*)?\?([BbQq])\?([^?]*)\?=/g, (orig, cs, enc, txt) => {
+      try { return decodeRFC2047Word(cs as string, enc as string, txt as string); } catch { return orig as string; }
+    });
+}
+
+// ─── System notification classifier ─────────────────────────────────────────
+
+/**
+ * Return true when an email appears to be a system notification — delivery
+ * failure, bounce, mailer daemon, auto-reply, or out-of-office message.
+ * These must never be threaded into customer conversations.
+ */
+function isSystemEmail(fromEmail: string, subject: string): boolean {
+  const from = fromEmail.toLowerCase().trim();
+  const subj = subject.toLowerCase();
+
+  // Well-known system sender addresses
+  if (
+    from.startsWith("mailer-daemon@") || from === "mailer-daemon" ||
+    from.startsWith("postmaster@")    || from === "postmaster" ||
+    from.includes("mail-daemon")      || from.includes("mailerdaemon") ||
+    from.includes("mail-delivery")    || from.startsWith("noreply@") ||
+    from.startsWith("no-reply@")      || from.startsWith("do-not-reply@")
+  ) return true;
+
+  // Delivery failure / bounce subjects
+  if (
+    subj.includes("delivery failed")            || subj.includes("delivery failure") ||
+    subj.includes("mail delivery")              || subj.includes("undeliverable") ||
+    subj.includes("undelivered mail")           || subj.includes("returned mail") ||
+    subj.includes("failed permanently")         || subj.includes("message not delivered") ||
+    subj.includes("could not be delivered")     || subj.includes("delivery status notification") ||
+    subj.includes("mail system error")          || subj.includes("delivery notification")
+  ) return true;
+
+  // Auto-reply / out-of-office subjects
+  if (
+    subj.startsWith("auto:")                    || subj.startsWith("automatic reply:") ||
+    subj.startsWith("autoreply:")               || subj.startsWith("out of office:") ||
+    subj.includes("out of office")              || subj.includes("out-of-office") ||
+    subj.includes("automatic reply")            || subj.includes("auto reply")
+  ) return true;
+
+  return false;
 }
 
 function snippetOf(text: string, html: string, max = 160): string {
@@ -238,35 +330,47 @@ async function findOrCreateConversation(opts: {
   inReplyTo?: string;
   references?: string[];
   messageAt: Date;
+  /** When true, conversation is created with status="system" and the email-based
+   *  fallback is skipped (each system notification gets its own conversation). */
+  isSystemNotification?: boolean;
 }): Promise<{ id: number; isNew: boolean }> {
-  const { userId, mailboxId, customerEmail, customerName, subject, inReplyTo, references, messageAt } = opts;
+  const { userId, mailboxId, customerEmail, customerName, subject, inReplyTo, references, messageAt, isSystemNotification } = opts;
 
-  // 1. Thread by In-Reply-To / References — find existing conversation via message externalId
-  const refIds = [inReplyTo, ...(references ?? [])]
-    .filter((r): r is string => typeof r === "string" && r.trim().length > 0);
-  if (refIds.length > 0) {
-    const [linked] = await db
-      .select({ convId: commMessagesTable.conversationId })
-      .from(commMessagesTable)
-      .where(inArray(commMessagesTable.externalId, refIds))
+  // 1. Thread by In-Reply-To / References — find existing conversation via message externalId.
+  //    Skip for system notifications — each bounce/OOO gets its own conversation.
+  if (!isSystemNotification) {
+    const refIds = [inReplyTo, ...(references ?? [])]
+      .filter((r): r is string => typeof r === "string" && r.trim().length > 0);
+    if (refIds.length > 0) {
+      const [linked] = await db
+        .select({ convId: commMessagesTable.conversationId })
+        .from(commMessagesTable)
+        .where(inArray(commMessagesTable.externalId, refIds))
+        .limit(1);
+      if (linked) return { id: linked.convId, isNew: false };
+    }
+
+    // 2. Email-based fallback — only thread into a conversation that received a
+    //    message within the last 14 days. Older conversations are treated as
+    //    separate threads so unrelated emails are never silently merged.
+    const windowCutoff = new Date(messageAt.getTime() - 14 * 24 * 60 * 60 * 1_000);
+    const [existing] = await db
+      .select({ id: commConversationsTable.id })
+      .from(commConversationsTable)
+      .where(
+        and(
+          eq(commConversationsTable.userId, userId),
+          eq(commConversationsTable.customerEmail, customerEmail),
+          sql`${commConversationsTable.lastMessageAt} > ${windowCutoff.toISOString()}::timestamptz`,
+          // Never thread into system/spam/archived/trash conversations
+          sql`${commConversationsTable.status} NOT IN ('system','spam','archived','trash')`,
+        ),
+      )
+      .orderBy(sql`${commConversationsTable.lastMessageAt} DESC`)
       .limit(1);
-    if (linked) return { id: linked.convId, isNew: false };
+
+    if (existing) return { id: existing.id, isNew: false };
   }
-
-  // 2. One conversation per user × customer email (most recent)
-  const [existing] = await db
-    .select({ id: commConversationsTable.id })
-    .from(commConversationsTable)
-    .where(
-      and(
-        eq(commConversationsTable.userId, userId),
-        eq(commConversationsTable.customerEmail, customerEmail),
-      ),
-    )
-    .orderBy(sql`${commConversationsTable.lastMessageAt} DESC`)
-    .limit(1);
-
-  if (existing) return { id: existing.id, isNew: false };
 
   // 3. Create new conversation
   const [newConv] = await db
@@ -277,7 +381,8 @@ async function findOrCreateConversation(opts: {
       subject: subject || "(No subject)",
       customerName: customerName || customerEmail.split("@")[0] || customerEmail,
       customerEmail,
-      status: "unread",
+      // System notifications get their own status so they never pollute inbox
+      status: isSystemNotification ? "system" : "unread",
       starred: false,
       messageCount: 0,
       unreadCount: 0,
@@ -429,7 +534,8 @@ async function syncGmailInbox(user: User): Promise<SyncResult> {
 
         const fromHeader  = get("from");
         const toHeader    = get("to");
-        const subject     = get("subject") || "(No subject)";
+        // Decode RFC 2047 encoded-words that Gmail sometimes leaves in headers
+        const subject     = decodeRFC2047(get("subject") || "(No subject)");
         const inReplyTo   = get("in-reply-to") || undefined;
         const refsStr     = get("references");
         const dateStr     = get("date");
@@ -453,6 +559,9 @@ async function syncGmailInbox(user: User): Promise<SyncResult> {
         const references = refsStr.split(/\s+/).filter(Boolean);
         const externalId = `gmail:${id}`;
 
+        // Classify system emails (delivery failures, bounces, auto-replies, OOO)
+        const sysEmail = !isOutbound && isSystemEmail(from.email, subject);
+
         const conv = await findOrCreateConversation({
           userId: user.id,
           mailboxId: null,
@@ -462,6 +571,7 @@ async function syncGmailInbox(user: User): Promise<SyncResult> {
           inReplyTo,
           references: references.length > 0 ? references : undefined,
           messageAt: sentAt,
+          isSystemNotification: sysEmail,
         });
 
         const inserted = await upsertMessage({
@@ -553,7 +663,8 @@ async function scanImapFolder(
       try {
         const fromHeader  = parseHeader(source, "From");
         const toHeader    = parseHeader(source, "To");
-        const subject     = parseHeader(source, "Subject") || "(No subject)";
+        // Decode RFC 2047 encoded-words (e.g. =?UTF-8?B?...?= subjects)
+        const subject     = decodeRFC2047(parseHeader(source, "Subject") || "(No subject)");
         const messageId   = parseHeader(source, "Message-ID").trim();
         const inReplyTo   = parseHeader(source, "In-Reply-To").trim() || undefined;
         const refsStr     = parseHeader(source, "References");
@@ -581,6 +692,9 @@ async function scanImapFolder(
 
         const { text, html, attachments } = extractImapBody(source);
 
+        // Classify system emails (delivery failures, bounces, auto-replies, OOO)
+        const sysEmail = !isOutbound && isSystemEmail(from.email, subject);
+
         const conv = await findOrCreateConversation({
           userId,
           mailboxId: mailbox.id,
@@ -590,6 +704,7 @@ async function scanImapFolder(
           inReplyTo,
           references: references.length > 0 ? references : undefined,
           messageAt: sentAt,
+          isSystemNotification: sysEmail,
         });
 
         const inserted = await upsertMessage({

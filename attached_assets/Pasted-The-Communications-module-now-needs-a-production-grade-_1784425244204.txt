@@ -1,0 +1,666 @@
+The Communications module now needs a production-grade redesign.
+
+IMPORTANT
+
+This is NOT a bug-fixing task.
+
+This is NOT another UI patch.
+
+This is a complete UX and architecture refinement to make Communications behave like a professional email client such as Gmail, Microsoft Outlook, Apple Mail or Superhuman while preserving all existing backend functionality.
+
+DO NOT introduce new TypeScript errors.
+
+DO NOT break existing APIs.
+
+DO NOT break database migrations.
+
+DO NOT redesign the backend unless absolutely required.
+
+The repository MUST still pass:
+
+pnpm clean
+pnpm install
+pnpm typecheck
+pnpm build
+
+with ZERO TypeScript errors.
+
+==================================================
+GOAL
+==================================================
+
+The finished Communications module should feel like a real email application.
+
+NOT like WhatsApp.
+
+NOT like Slack.
+
+NOT like Discord.
+
+NOT like Messenger.
+
+Everything should follow the behaviour users already expect from Gmail and Outlook.
+
+==================================================
+CURRENT PROBLEMS
+==================================================
+
+1. Conversation architecture is wrong.
+
+Currently every email is rendered like chat bubbles.
+
+This must be removed completely.
+
+Instead implement:
+
+Folders
+
+↓
+
+Conversation List
+
+↓
+
+Reading Pane
+
+↓
+
+Reply Composer
+
+Exactly like Gmail / Outlook.
+
+==================================================
+2. Threading logic is wrong.
+
+Currently unrelated emails are merged together.
+
+Examples:
+
+Customer Email
+
+↓
+
+My Reply
+
+↓
+
+Mail Delivery Failed
+
+↓
+
+Retry
+
+↓
+
+Another Sent Email
+
+Everything appears inside one conversation.
+
+This is incorrect.
+
+Thread only when:
+
+• Message-ID
+• In-Reply-To
+• References
+
+prove the messages belong together.
+
+Subject alone must NEVER merge conversations.
+
+==================================================
+3. Delivery failures
+
+Mail Delivery System
+
+Mailer Daemon
+
+Deferred
+
+Failed
+
+Retry
+
+Out of Office
+
+Vacation responders
+
+System notifications
+
+must NEVER appear inside customer conversations.
+
+Each becomes its own independent notification conversation.
+
+Customer conversations should only contain actual communication between humans.
+
+==================================================
+4. Gmail + SMTP separation
+
+Currently Gmail and SMTP messages are mixed.
+
+This is wrong.
+
+If user selects Gmail mailbox
+
+show ONLY Gmail messages.
+
+If user selects SMTP mailbox
+
+show ONLY SMTP messages.
+
+If user selects All Mailboxes
+
+show combined view.
+
+Conversation counts
+
+Unread counts
+
+Search
+
+Pagination
+
+Folder counts
+
+must all respect the selected mailbox.
+
+==================================================
+5. Reading pane
+
+Completely redesign.
+
+NO speech bubbles.
+
+NO chat UI.
+
+Instead every email should appear as an email card exactly like Gmail.
+
+Each message displays:
+
+Sender
+
+Recipient
+
+Subject
+
+Time
+
+Attachments
+
+HTML Body
+
+Quoted history
+
+Actions
+
+Messages stack vertically.
+
+Latest message expanded.
+
+Older messages collapsed.
+
+==================================================
+6. Quoted history
+
+Implement Gmail behaviour.
+
+Latest message visible.
+
+Older quoted replies collapsed.
+
+"Show quoted text"
+
+Expand smoothly.
+
+Hide again.
+
+Never duplicate the whole thread.
+
+==================================================
+7. Email rendering
+
+Current rendering has multiple issues.
+
+Examples:
+
+Invisible text unless selected.
+
+Broken dark mode.
+
+Broken HTML.
+
+Broken spacing.
+
+Tables overflow.
+
+Lists break.
+
+Email templates appear inside bubbles.
+
+Fix rendering for:
+
+text/plain
+
+text/html
+
+multipart/alternative
+
+quoted printable
+
+base64
+
+inline images
+
+embedded CSS
+
+attachments
+
+Render emails exactly as normal email clients.
+
+==================================================
+8. Subject decoding
+
+Current subjects show:
+
+=?UTF-8?B?...
+
+Decode:
+
+RFC2047
+
+Base64
+
+Quoted Printable
+
+UTF-8
+
+ISO-8859
+
+Windows-1252
+
+Never expose encoded headers.
+
+==================================================
+9. Email body decoding
+
+Some customer replies appear blank until text is selected.
+
+Investigate:
+
+HTML sanitization
+
+CSS inheritance
+
+Dark mode colors
+
+Multipart parsing
+
+Quoted printable decoding
+
+Base64 decoding
+
+Every email must be readable immediately.
+
+==================================================
+10. Sent messages
+
+Sent emails should display exactly as sent.
+
+Not reconstructed.
+
+Show:
+
+Queued
+
+Sent
+
+Delivered
+
+Deferred
+
+Failed
+
+Bounced
+
+Status indicator.
+
+==================================================
+11. Inbox behaviour
+
+Unread logic still has issues.
+
+Unread count remains 99+ after marking everything read.
+
+Fix:
+
+Unread counters
+
+Folder counters
+
+Conversation counters
+
+SSE updates
+
+Mark all read
+
+Mark single read
+
+No refresh required.
+
+==================================================
+12. Inbox UI redesign
+
+Current inbox list is poor.
+
+Redesign like Gmail.
+
+Each row shows:
+
+Avatar
+
+Sender
+
+Subject
+
+Snippet
+
+Date
+
+Unread indicator
+
+Star
+
+Attachment icon
+
+Status icon
+
+Everything aligned professionally.
+
+Compact spacing.
+
+==================================================
+13. Reading pane toolbar
+
+Top actions:
+
+Reply
+
+Reply All
+
+Forward
+
+Archive
+
+Delete
+
+Spam
+
+Mark unread
+
+Move
+
+Labels
+
+Print
+
+Download EML
+
+Open original
+
+Star
+
+More menu
+
+Exactly like Gmail.
+
+==================================================
+14. Reply composer
+
+Sticky bottom.
+
+Professional email editor.
+
+Supports:
+
+Templates
+
+AI Draft
+
+AI Rewrite
+
+AI Translate
+
+Attachments
+
+Formatting
+
+Signature
+
+Schedule Send
+
+Preview
+
+==================================================
+15. Customer replies
+
+Customer replies must display beautifully.
+
+Proper fonts.
+
+Proper spacing.
+
+Proper HTML.
+
+Proper inline images.
+
+Proper quoted history.
+
+No clipping.
+
+==================================================
+16. Delivery notifications
+
+System notifications should have their own appearance.
+
+Example:
+
+⚠ Delivery Failed
+
+⚠ Deferred
+
+⚠ Mailbox Full
+
+⚠ Spam Rejected
+
+⚠ Auto Reply
+
+These are notification cards.
+
+Never merge into customer conversations.
+
+==================================================
+17. Pagination
+
+Current inbox loads everything.
+
+Implement either:
+
+Infinite scrolling
+
+OR
+
+Server pagination.
+
+Load 50 conversations.
+
+Load more automatically.
+
+==================================================
+18. Search
+
+Search should include:
+
+Sender
+
+Recipient
+
+Email
+
+Subject
+
+Vehicle
+
+Pickup
+
+Delivery
+
+Quote
+
+Campaign
+
+Phone
+
+Notes
+
+Respect mailbox filter.
+
+==================================================
+19. Mailbox isolation
+
+Maintain all previous security fixes.
+
+Every user must only ever see:
+
+Their own mailbox
+
+Their own sync status
+
+Their own conversations
+
+Their own SSE events
+
+Their own folders
+
+Their own counts
+
+No global state.
+
+==================================================
+20. Mobile experience
+
+Mobile should behave like Gmail mobile.
+
+Conversation list
+
+↓
+
+Reading pane
+
+↓
+
+Reply composer
+
+Everything touch-friendly.
+
+==================================================
+21. Desktop experience
+
+Three-column layout.
+
+Folders
+
+Conversation list
+
+Reading pane
+
+Resizable.
+
+Responsive.
+
+Professional.
+
+==================================================
+22. Performance
+
+Do NOT break:
+
+Gmail sync
+
+SMTP sync
+
+IMAP
+
+SSE
+
+AI
+
+Bulk actions
+
+Notes
+
+Templates
+
+Mailbox switching
+
+==================================================
+23. Preserve backend
+
+Do NOT remove existing APIs.
+
+Do NOT introduce schema regressions.
+
+Do NOT remove current AI features.
+
+Do NOT break existing users.
+
+==================================================
+24. Verification
+
+Before finishing run:
+
+pnpm clean
+
+pnpm install
+
+pnpm typecheck
+
+pnpm build
+
+Confirm:
+
+✓ Zero TypeScript errors
+
+✓ Zero build errors
+
+✓ Gmail mailbox filtering
+
+✓ SMTP mailbox filtering
+
+✓ Correct threading
+
+✓ Proper RFC2047 decoding
+
+✓ Proper HTML rendering
+
+✓ No invisible text
+
+✓ No unrelated merged conversations
+
+✓ Delivery failures separated
+
+✓ Correct unread counters
+
+✓ Correct folder counts
+
+✓ Mobile UI polished
+
+✓ Desktop UI polished
+
+==================================================
+FINAL GOAL
+
+When a user opens Communications they should immediately feel like they are using Gmail or Microsoft Outlook, not a messaging application.
+
+The module should be polished enough that a paying customer would trust it as their primary business email client.
+
+Take the time to redesign the UX correctly instead of applying more patches to the existing chat-based interface.
