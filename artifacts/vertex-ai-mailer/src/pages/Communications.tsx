@@ -858,7 +858,7 @@ function BulkActionBar({ selectedIds, total, onAction, onSelectAll, onClear, cur
   );
 }
 
-// ─── Conversation Item ────────────────────────────────────────────────────────
+// ─── Conversation Item (Gmail-compact style) ──────────────────────────────────
 
 function ConvItem({
   conv, isActive, isSelected, onClick, onToggleSelect, showCheckboxes,
@@ -868,92 +868,99 @@ function ConvItem({
   showCheckboxes: boolean;
 }) {
   const isSystem = conv.status === "system";
-  const color    = isSystem ? "from-amber-500 to-orange-600" : avatarColor(conv.customerEmail);
-  const badge    = statusBadge(conv.status);
   const isUnread = conv.status === "unread";
   const [hovering, setHovering] = useState(false);
+  const showCheck = showCheckboxes || hovering;
 
   return (
     <div
       className={cn(
-        "w-full text-left border-b border-slate-100 dark:border-slate-800/60 transition-colors group relative flex items-stretch",
-        isSystem
-          ? isActive
-            ? "bg-amber-50 dark:bg-amber-900/20 border-l-2 border-l-amber-500"
-            : "bg-amber-50/40 dark:bg-amber-900/10 border-l-2 border-l-amber-300 dark:border-l-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20"
-          : isActive
-            ? "bg-blue-50 dark:bg-blue-900/20 border-l-2 border-l-blue-500"
-            : "hover:bg-slate-50 dark:hover:bg-slate-800/40 border-l-2 border-l-transparent",
+        "flex items-center border-b border-slate-100 dark:border-slate-800/40 transition-colors cursor-pointer group relative select-none",
+        isActive
+          ? "bg-blue-50 dark:bg-blue-900/20 border-l-[3px] border-l-blue-500"
+          : isUnread
+            ? "bg-white dark:bg-slate-900 border-l-[3px] border-l-blue-400 hover:bg-blue-50/40 dark:hover:bg-blue-900/10"
+            : isSystem
+              ? "bg-amber-50/30 dark:bg-amber-900/5 border-l-[3px] border-l-amber-300 dark:border-l-amber-800/50 hover:bg-amber-50/60 dark:hover:bg-amber-900/10"
+              : "bg-white dark:bg-slate-900 border-l-[3px] border-l-transparent hover:bg-slate-50 dark:hover:bg-slate-800/30",
       )}
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
+      onClick={onClick}
     >
-      {/* Checkbox area */}
-      <div
-        className={cn(
-          "flex items-start justify-center pt-4 flex-shrink-0 transition-all",
-          (showCheckboxes || hovering) ? "w-8 opacity-100" : "w-0 overflow-hidden opacity-0",
+      {/* Checkbox / indicator column */}
+      <div className="flex flex-col items-center justify-center px-2 py-3 gap-1.5 flex-shrink-0 w-9">
+        {showCheck ? (
+          <div
+            className={cn(
+              "h-4 w-4 rounded border-2 flex items-center justify-center cursor-pointer transition-colors flex-shrink-0",
+              isSelected ? "bg-blue-600 border-blue-600" : "border-slate-300 dark:border-slate-600 hover:border-blue-400",
+            )}
+            onClick={e => { e.stopPropagation(); onToggleSelect(conv.id); }}
+          >
+            {isSelected && <Check className="h-2.5 w-2.5 text-white" />}
+          </div>
+        ) : (
+          <Star
+            className={cn(
+              "h-3.5 w-3.5 transition-colors flex-shrink-0",
+              conv.starred ? "fill-amber-400 text-amber-400" : "text-slate-200 dark:text-slate-700 group-hover:text-slate-400 dark:group-hover:text-slate-500",
+            )}
+            onClick={e => e.stopPropagation()}
+          />
         )}
-        onClick={e => { e.stopPropagation(); onToggleSelect(conv.id); }}
-      >
-        <div className={cn(
-          "h-4 w-4 rounded border-2 flex items-center justify-center flex-shrink-0 cursor-pointer transition-colors",
-          isSelected
-            ? "bg-blue-600 border-blue-600"
-            : "border-slate-300 dark:border-slate-600 hover:border-blue-400",
-        )}>
-          {isSelected && <Check className="h-2.5 w-2.5 text-white" />}
-        </div>
+        {isUnread && !showCheck && (
+          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
+        )}
       </div>
 
-      <button className="flex-1 text-left px-3 py-3 min-w-0" onClick={onClick}>
-        <div className="flex items-start gap-2.5">
-          <Avatar className="h-9 w-9 flex-shrink-0 mt-0.5">
-            <AvatarFallback className={`bg-gradient-to-br ${color} text-white text-xs font-semibold`}>
-              {isSystem ? <AlertTriangle className="h-4 w-4" /> : initials(conv.customerName)}
-            </AvatarFallback>
-          </Avatar>
+      {/* Text content */}
+      <div className="flex-1 min-w-0 py-2.5 pr-3">
+        {/* Row 1: sender + date */}
+        <div className="flex items-baseline justify-between gap-2">
+          <span className={cn(
+            "text-[13px] truncate",
+            isUnread ? "font-bold text-slate-900 dark:text-slate-50" : "font-medium text-slate-600 dark:text-slate-300",
+          )}>
+            {isSystem ? "System" : conv.customerName}
+          </span>
+          <span className="text-[10px] text-slate-400 dark:text-slate-500 flex-shrink-0 tabular-nums">{timeAgo(conv.lastMessageAt)}</span>
+        </div>
 
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-1.5">
-              <span className={cn("text-sm truncate", isUnread ? "font-semibold text-slate-900 dark:text-slate-100" : "font-medium text-slate-700 dark:text-slate-300")}>
-                {isSystem ? "System Notification" : conv.customerName}
+        {/* Row 2: subject */}
+        <p className={cn(
+          "text-[12px] truncate mt-0.5 leading-snug",
+          isUnread ? "font-semibold text-slate-800 dark:text-slate-100" : "font-normal text-slate-600 dark:text-slate-400",
+        )}>
+          {conv.subject || "(No subject)"}
+        </p>
+
+        {/* Row 3: preview / tags */}
+        <div className="flex items-center gap-1.5 mt-0.5">
+          {isSystem ? (
+            <span className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-0.5 truncate">
+              <AlertTriangle className="h-2.5 w-2.5 flex-shrink-0" /> Delivery notification
+            </span>
+          ) : (
+            <span className="text-[11px] text-slate-400 dark:text-slate-500 truncate flex-1 font-normal">{conv.customerEmail}</span>
+          )}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {conv.unreadCount > 0 && (
+              <span className="h-4 min-w-4 px-1 rounded-full bg-blue-600 text-white text-[9px] font-bold flex items-center justify-center">
+                {conv.unreadCount > 99 ? "99+" : conv.unreadCount}
               </span>
-              <span className="text-[10px] text-slate-400 flex-shrink-0">{timeAgo(conv.lastMessageAt)}</span>
-            </div>
-            <p className={cn("text-xs truncate mt-0.5", isUnread ? "text-slate-700 dark:text-slate-200 font-medium" : "text-slate-500 dark:text-slate-400")}>
-              {conv.subject}
-            </p>
-            <div className="flex items-center gap-1.5 mt-1.5">
-              {isSystem ? (
-                <span className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                  <AlertTriangle className="h-2.5 w-2.5" /> Delivery notification
-                </span>
-              ) : (
-                <span className="text-[10px] text-slate-400 truncate flex-1">{conv.customerEmail}</span>
-              )}
-              <div className="flex items-center gap-1 flex-shrink-0">
-                {conv.starred && <Star className="h-3 w-3 fill-amber-400 text-amber-400" />}
-                {badge && !["unread", "read", "replied"].includes(conv.status) && (
-                  <span className={cn("px-1.5 py-0.5 rounded text-[9px] font-semibold leading-none", badge.cls)}>
-                    {badge.label}
-                  </span>
-                )}
-                {conv.unreadCount > 0 && (
-                  <span className="h-4 min-w-4 px-1 rounded-full bg-blue-600 text-white text-[9px] font-bold flex items-center justify-center">
-                    {conv.unreadCount}
-                  </span>
-                )}
-              </div>
-            </div>
+            )}
+            {conv.status === "needs_reply" && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Reply</span>
+            )}
           </div>
         </div>
-      </button>
+      </div>
     </div>
   );
 }
 
-// ─── Left Panel ───────────────────────────────────────────────────────────────
+// ─── Filter groups (shared between sidebar and mobile strip) ─────────────────
 
 const FILTER_GROUPS: {
   label?: string;
@@ -961,77 +968,55 @@ const FILTER_GROUPS: {
 }[] = [
   {
     items: [
-      { key: "inbox",       label: "Inbox",       icon: Inbox },
-      { key: "starred",     label: "Starred",     icon: Star },
-      { key: "sent",        label: "Sent",        icon: Send },
-      { key: "drafts",      label: "Drafts",      icon: FileText },
-      { key: "all",         label: "All Mail",    icon: MoreHorizontal },
+      { key: "inbox",       label: "Inbox",         icon: Inbox },
+      { key: "starred",     label: "Starred",        icon: Star },
+      { key: "sent",        label: "Sent",           icon: Send },
+      { key: "drafts",      label: "Drafts",         icon: FileText },
+      { key: "all",         label: "All Mail",       icon: MoreHorizontal },
     ],
   },
   {
     label: "Categories",
     items: [
-      { key: "unread",      label: "Unread",      icon: Mail },
-      { key: "needs_reply", label: "Needs Reply", icon: CornerDownLeft },
+      { key: "unread",      label: "Unread",         icon: Mail },
+      { key: "needs_reply", label: "Needs Reply",    icon: CornerDownLeft },
     ],
   },
   {
     items: [
-      { key: "archived",    label: "Archived",    icon: Archive },
-      { key: "spam",        label: "Spam",        icon: Ban },
-      { key: "trash",       label: "Trash",       icon: Trash2 },
-      { key: "system",      label: "Notifications", icon: AlertTriangle },
+      { key: "archived",    label: "Archived",       icon: Archive },
+      { key: "spam",        label: "Spam",           icon: Ban },
+      { key: "trash",       label: "Trash",          icon: Trash2 },
+      { key: "system",      label: "Notifications",  icon: AlertTriangle },
     ],
   },
 ];
 
-function LeftPanel({
-  filter, setFilter, search, setSearch,
-  conversations, isLoading, selectedId, onSelect, stats, onRefresh, isSyncing,
-  mailboxes, selectedMailboxId, onMailboxChange, connectionStatus,
-  liveProgress, selectedIds, onToggleSelect, onBulkAction,
-  onLoadMore, hasMore, isFetchingMore,
+const FILTER_LABELS: Record<FilterKey, string> = {
+  inbox: "Inbox", sent: "Sent", drafts: "Drafts", starred: "Starred",
+  all: "All Mail", unread: "Unread", needs_reply: "Needs Reply",
+  archived: "Archived", spam: "Spam", trash: "Trash", system: "Notifications",
+};
+
+// ─── Folder Sidebar ───────────────────────────────────────────────────────────
+
+function FolderSidebar({
+  filter, setFilter, stats, mailboxes, selectedMailboxId, onMailboxChange,
+  connectionStatus, liveProgress, isSyncing, onSync,
 }: {
   filter: FilterKey; setFilter: (f: FilterKey) => void;
-  search: string; setSearch: (s: string) => void;
-  conversations: Conversation[]; isLoading: boolean;
-  selectedId: number | null; onSelect: (id: number) => void;
-  stats: Stats | undefined; onRefresh: () => void; isSyncing: boolean;
+  stats: Stats | undefined;
   mailboxes: MailboxOption[]; selectedMailboxId: string | number | null;
   onMailboxChange: (id: string | number | null) => void;
   connectionStatus: "connecting" | "connected" | "disconnected";
   liveProgress: SyncProgressState | null;
-  selectedIds: Set<number>;
-  onToggleSelect: (id: number) => void;
-  onBulkAction: (action: BulkAction) => void;
-  onLoadMore: () => void;
-  hasMore: boolean;
-  isFetchingMore: boolean;
+  isSyncing: boolean;
+  onSync: () => void;
 }) {
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
   const safeMailboxes = mailboxes ?? [];
   const selectedMailboxLabel = selectedMailboxId === null
     ? "All Mailboxes"
     : safeMailboxes.find(m => m.id === selectedMailboxId)?.email ?? "All Mailboxes";
-
-  const showCheckboxes = selectedIds.size > 0;
-
-  const handleSelectAll = () => conversations.forEach(c => onToggleSelect(c.id));
-  const handleClear = () => conversations.forEach(c => { if (selectedIds.has(c.id)) onToggleSelect(c.id); });
-
-  // Infinite scroll — fire onLoadMore when the sentinel enters the viewport
-  const sentinelRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting && hasMore && !isFetchingMore) onLoadMore(); },
-      { threshold: 0.1 },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [hasMore, isFetchingMore, onLoadMore]);
 
   const countFor = (key: FilterKey): number | undefined => {
     if (!stats) return undefined;
@@ -1050,10 +1035,10 @@ function LeftPanel({
   };
 
   return (
-    <div className="flex flex-col h-full border-r border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900">
-      {/* Top bar */}
-      <div className="px-4 pt-4 pb-3 flex-shrink-0 space-y-3">
-        <div className="flex items-center justify-between">
+    <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900/60 border-r border-slate-200 dark:border-slate-700/60">
+      {/* Header */}
+      <div className="px-4 pt-4 pb-3 flex-shrink-0">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <h1 className="text-base font-bold text-slate-900 dark:text-slate-100">Mail</h1>
             <Tooltip>
@@ -1075,34 +1060,20 @@ function LeftPanel({
               </TooltipContent>
             </Tooltip>
           </div>
-          <button
-            onClick={() => {
-              const params = new URLSearchParams({ filter, search, limit: "50" });
-              if (selectedMailboxId !== null && typeof selectedMailboxId === "number") {
-                params.set("mailboxId", String(selectedMailboxId));
-              }
-              queryClient.invalidateQueries({ queryKey: ["conversations"] });
-              queryClient.invalidateQueries({ queryKey: ["comm-stats"] });
-            }}
-            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors"
-            title="Refresh"
-          >
-            <RefreshCw className="h-4 w-4" />
-          </button>
         </div>
 
         {/* Mailbox selector */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors">
-              <div className="flex items-center gap-2">
+            <button className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors">
+              <div className="flex items-center gap-2 min-w-0">
                 <Server className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
                 <span className="truncate">{selectedMailboxLabel}</span>
               </div>
               <ChevronDown className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-64">
+          <DropdownMenuContent align="start" className="w-56">
             <DropdownMenuItem
               onClick={() => onMailboxChange(null)}
               className={cn("text-xs gap-2", selectedMailboxId === null && "text-blue-600 dark:text-blue-400 font-medium")}
@@ -1130,50 +1101,14 @@ function LeftPanel({
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-          <Input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search conversations…"
-            className="pl-8 h-8 text-xs rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60"
-          />
-          {search && (
-            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2">
-              <X className="h-3 w-3 text-slate-400 hover:text-slate-600" />
-            </button>
-          )}
-        </div>
       </div>
 
-      {/* Account health panel */}
-      <AccountHealthPanel
-        liveProgress={liveProgress}
-        isSyncingLive={isSyncing}
-        onSync={onRefresh}
-        isSyncing={isSyncing}
-      />
-
-      {/* Bulk action bar */}
-      {selectedIds.size > 0 && (
-        <BulkActionBar
-          selectedIds={selectedIds}
-          total={conversations.length}
-          onAction={onBulkAction}
-          onSelectAll={handleSelectAll}
-          onClear={handleClear}
-          currentFilter={filter}
-        />
-      )}
-
-      {/* Filter nav */}
-      <div className="px-2 pb-2 flex-shrink-0 space-y-0.5 overflow-y-auto flex-1">
+      {/* Folder nav */}
+      <nav className="flex-1 overflow-y-auto px-2 space-y-0.5 pb-2">
         {FILTER_GROUPS.map((group, gi) => (
-          <div key={gi} className={gi > 0 ? "mt-1 pt-1 border-t border-slate-100 dark:border-slate-800/60" : ""}>
+          <div key={gi} className={gi > 0 ? "mt-2 pt-2 border-t border-slate-200/80 dark:border-slate-700/40" : ""}>
             {group.label && (
-              <p className="px-3 py-1 text-[9px] font-semibold text-slate-400 dark:text-slate-600 uppercase tracking-wider">
+              <p className="px-3 py-1.5 text-[9px] font-semibold text-slate-400 dark:text-slate-600 uppercase tracking-widest">
                 {group.label}
               </p>
             )}
@@ -1184,10 +1119,10 @@ function LeftPanel({
                   key={f.key}
                   onClick={() => setFilter(f.key)}
                   className={cn(
-                    "w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                    "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
                     filter === f.key
-                      ? "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-                      : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800",
+                      ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400"
+                      : "text-slate-600 hover:bg-white dark:text-slate-400 dark:hover:bg-slate-800",
                   )}
                 >
                   <f.icon className={cn("h-3.5 w-3.5 flex-shrink-0", filter === f.key ? "text-blue-500" : "text-slate-400")} />
@@ -1202,30 +1137,128 @@ function LeftPanel({
             })}
           </div>
         ))}
+      </nav>
 
-        {/* Divider before conversation list */}
-        <div className="border-t border-slate-100 dark:border-slate-800 mt-2 pt-2">
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 px-3 pb-1">
-            {conversations.length > 0 ? `${conversations.length} conversation${conversations.length === 1 ? "" : "s"}` : ""}
-          </p>
+      {/* Sync status at bottom */}
+      <div className="flex-shrink-0">
+        <AccountHealthPanel
+          liveProgress={liveProgress}
+          isSyncingLive={isSyncing}
+          onSync={onSync}
+          isSyncing={isSyncing}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─── Conversation List Panel ──────────────────────────────────────────────────
+
+function ConversationListPanel({
+  filter, search, setSearch,
+  conversations, isLoading, total,
+  selectedId, onSelect,
+  selectedIds, onToggleSelect, onBulkAction,
+  onLoadMore, hasMore, isFetchingMore,
+  onRefresh,
+}: {
+  filter: FilterKey;
+  search: string; setSearch: (s: string) => void;
+  conversations: Conversation[]; isLoading: boolean; total: number;
+  selectedId: number | null; onSelect: (id: number) => void;
+  selectedIds: Set<number>;
+  onToggleSelect: (id: number) => void;
+  onBulkAction: (action: BulkAction) => void;
+  onLoadMore: () => void;
+  hasMore: boolean;
+  isFetchingMore: boolean;
+  onRefresh: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const showCheckboxes = selectedIds.size > 0;
+
+  const handleSelectAll = () => conversations.forEach(c => onToggleSelect(c.id));
+  const handleClear = () => conversations.forEach(c => { if (selectedIds.has(c.id)) onToggleSelect(c.id); });
+
+  // Infinite scroll sentinel
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting && hasMore && !isFetchingMore) onLoadMore(); },
+      { threshold: 0.1 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, isFetchingMore, onLoadMore]);
+
+  return (
+    <div className="flex flex-col h-full bg-white dark:bg-slate-900">
+      {/* Header: label + search */}
+      <div className="px-3 pt-3 pb-2 flex-shrink-0 border-b border-slate-100 dark:border-slate-800 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
+            {FILTER_LABELS[filter] ?? filter}
+            {total > 0 && <span className="ml-1.5 text-[11px] text-slate-400 font-normal">{total}</span>}
+          </h2>
+          <button
+            onClick={() => {
+              queryClient.invalidateQueries({ queryKey: ["conversations"] });
+              queryClient.invalidateQueries({ queryKey: ["comm-stats"] });
+              onRefresh();
+            }}
+            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors flex-shrink-0"
+            title="Refresh"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+          </button>
         </div>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+          <Input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search…"
+            className="pl-8 h-8 text-xs rounded-lg border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2">
+              <X className="h-3 w-3 text-slate-400 hover:text-slate-600" />
+            </button>
+          )}
+        </div>
+      </div>
 
-        {/* Conversation list */}
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <BulkActionBar
+          selectedIds={selectedIds}
+          total={conversations.length}
+          onAction={onBulkAction}
+          onSelectAll={handleSelectAll}
+          onClear={handleClear}
+          currentFilter={filter}
+        />
+      )}
+
+      {/* Conversation list */}
+      <div className="flex-1 overflow-y-auto">
         {isLoading ? (
-          <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {Array(6).fill(0).map((_, i) => (
-              <div key={i} className="px-3 py-3 flex items-start gap-2.5">
-                <Skeleton className="h-9 w-9 rounded-full flex-shrink-0" />
-                <div className="flex-1 space-y-1.5">
-                  <Skeleton className="h-3.5 w-32" />
-                  <Skeleton className="h-3 w-full" />
+          <div>
+            {Array(8).fill(0).map((_, i) => (
+              <div key={i} className="px-3 py-3 border-b border-slate-100 dark:border-slate-800/40 space-y-1.5">
+                <div className="flex justify-between gap-2">
                   <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-3 w-8" />
                 </div>
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-2.5 w-3/4" />
               </div>
             ))}
           </div>
         ) : conversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+          <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
             <div className="h-12 w-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-3">
               {filter === "spam"    ? <Ban className="h-6 w-6 text-slate-300 dark:text-slate-600" />
                : filter === "archived" ? <Archive className="h-6 w-6 text-slate-300 dark:text-slate-600" />
@@ -1245,16 +1278,11 @@ function LeftPanel({
             </p>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
               {search ? "Try a different search term" :
-               filter === "inbox"  ? "Inbound emails appear here" :
-               filter === "trash"  ? "Deleted conversations will appear here" :
+               filter === "inbox"  ? "Inbound emails appear here after syncing" :
+               filter === "trash"  ? "Deleted conversations appear here" :
                filter === "system" ? "Delivery failures and bounce notices appear here" :
                "Nothing here yet"}
             </p>
-            {filter === "inbox" && safeMailboxes.length === 0 && (
-              <a href="/mailbox" className="mt-3 text-xs text-blue-500 hover:text-blue-600 font-medium">
-                Connect a mailbox to sync emails →
-              </a>
-            )}
           </div>
         ) : (
           <>
@@ -1270,12 +1298,10 @@ function LeftPanel({
               />
             ))}
             {/* Infinite scroll sentinel */}
-            <div ref={sentinelRef} className="py-1 flex justify-center">
-              {isFetchingMore && (
-                <Loader2 className="h-4 w-4 animate-spin text-slate-300" />
-              )}
+            <div ref={sentinelRef} className="py-2 flex justify-center">
+              {isFetchingMore && <Loader2 className="h-4 w-4 animate-spin text-slate-300" />}
               {!hasMore && conversations.length > 0 && (
-                <p className="text-[10px] text-slate-300 dark:text-slate-600 py-1">All conversations loaded</p>
+                <p className="text-[10px] text-slate-300 dark:text-slate-600 py-1">All loaded</p>
               )}
             </div>
           </>
@@ -2722,38 +2748,70 @@ export default function Communications() {
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* Left panel */}
-      <div className={cn(
-        "w-72 flex-shrink-0 h-full",
-        mobilePanel !== "list" ? "hidden lg:flex lg:flex-col" : "flex flex-col w-full lg:w-72",
-      )}>
-        <LeftPanel
+      {/* ── Folder sidebar — desktop only ────────────────────────────────────── */}
+      <div className="hidden lg:flex lg:flex-col w-52 flex-shrink-0 h-full">
+        <FolderSidebar
           filter={filter}
           setFilter={f => { setFilter(f); setSelectedId(null); setSelectedIds(new Set()); }}
-          search={search}
-          setSearch={setSearch}
-          conversations={conversations}
-          isLoading={isLoading}
-          selectedId={selectedId}
-          onSelect={handleSelect}
           stats={stats}
-          onRefresh={handleRefresh}
-          isSyncing={isSyncing}
           mailboxes={mailboxes}
           selectedMailboxId={selectedMailboxId}
           onMailboxChange={handleMailboxChange}
           connectionStatus={connectionStatus}
           liveProgress={liveProgress}
+          isSyncing={isSyncing}
+          onSync={handleRefresh}
+        />
+      </div>
+
+      {/* ── Conversation list panel ───────────────────────────────────────────── */}
+      {/* On mobile: full-width when mobilePanel==="list"; hidden otherwise.
+          On desktop: always visible at fixed width. */}
+      <div className={cn(
+        "flex-shrink-0 h-full",
+        mobilePanel !== "list"
+          ? "hidden lg:flex lg:flex-col lg:w-80"
+          : "flex flex-col w-full lg:w-80",
+      )}>
+        {/* Mobile: compact folder filter strip above conversation list */}
+        <div className="lg:hidden flex items-center gap-1 px-2 py-2 border-b border-slate-100 dark:border-slate-800 overflow-x-auto flex-shrink-0 bg-slate-50 dark:bg-slate-900/60">
+          {FILTER_GROUPS.flatMap(g => g.items).map(f => (
+            <button
+              key={f.key}
+              onClick={() => { setFilter(f.key); setSelectedId(null); setSelectedIds(new Set()); }}
+              className={cn(
+                "flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold whitespace-nowrap transition-colors flex-shrink-0",
+                filter === f.key
+                  ? "bg-blue-600 text-white"
+                  : "bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700",
+              )}
+            >
+              <f.icon className="h-2.5 w-2.5" />
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        <ConversationListPanel
+          filter={filter}
+          search={search}
+          setSearch={setSearch}
+          conversations={conversations}
+          isLoading={isLoading}
+          total={convTotal}
+          selectedId={selectedId}
+          onSelect={handleSelect}
           selectedIds={selectedIds}
           onToggleSelect={handleToggleSelect}
           onBulkAction={handleBulkAction}
           onLoadMore={handleLoadMore}
           hasMore={hasMoreConvs}
           isFetchingMore={isFetchingMore}
+          onRefresh={handleRefresh}
         />
       </div>
 
-      {/* Middle panel */}
+      {/* ── Reading pane ─────────────────────────────────────────────────────── */}
       <div className={cn(
         "flex-1 h-full min-w-0",
         mobilePanel === "list"    ? "hidden lg:flex lg:flex-col" :
@@ -2769,11 +2827,11 @@ export default function Communications() {
         />
       </div>
 
-      {/* Right panel */}
+      {/* ── Customer details panel ───────────────────────────────────────────── */}
       {(showDetails || mobilePanel === "details") && (
         <div className={cn(
-          "w-72 flex-shrink-0 h-full",
-          mobilePanel === "details" ? "flex flex-col w-full lg:w-72" : "hidden lg:flex lg:flex-col",
+          "w-64 flex-shrink-0 h-full",
+          mobilePanel === "details" ? "flex flex-col w-full lg:w-64" : "hidden lg:flex lg:flex-col",
         )}>
           <RightPanel
             selectedId={selectedId}
