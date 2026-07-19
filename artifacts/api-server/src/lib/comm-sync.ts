@@ -34,7 +34,6 @@ import { decrypt } from "./crypto";
 import { logger } from "./logger";
 import {
   broadcastToUser,
-  broadcastAll,
   markSyncStarted,
   markSyncComplete,
   markSyncProgress,
@@ -735,6 +734,8 @@ async function syncImapMailbox(mailbox: Mailbox, userId: number): Promise<SyncRe
  */
 export async function runCommSync(targetUserId?: number): Promise<SyncResult[]> {
   const results: SyncResult[] = [];
+  // Parallel array — tracks which userId owns each entry in `results`
+  const resultUserIds: number[] = [];
 
   // Count total mailboxes so progress panel can show N/M
   let totalMailboxes = 0;
@@ -757,6 +758,7 @@ export async function runCommSync(targetUserId?: number): Promise<SyncResult[]> 
       if (!user.gmailConnected || !user.gmailAccessToken) continue;
       const r = await syncGmailInbox(user);
       results.push(r);
+      resultUserIds.push(user.id);
       logger.info(
         {
           mailbox: r.mailbox,
@@ -795,6 +797,7 @@ export async function runCommSync(targetUserId?: number): Promise<SyncResult[]> 
     for (const mb of mailboxes) {
       const r = await syncImapMailbox(mb, mb.userId);
       results.push(r);
+      resultUserIds.push(mb.userId);
       logger.info(
         {
           mailbox: r.mailbox,
@@ -811,16 +814,16 @@ export async function runCommSync(targetUserId?: number): Promise<SyncResult[]> 
   } catch (err) {
     logger.error({ err }, "[COMM-SYNC] runCommSync top-level error");
   } finally {
-    const syncMailboxResults: SyncMailboxResult[] = results.map(r => ({
-      mailbox: r.mailbox,
+    // Tag each result with its owner so markSyncComplete can route per-user
+    const syncMailboxResults: SyncMailboxResult[] = results.map((r, i) => ({
+      userId:   resultUserIds[i] ?? 0,
+      mailbox:  r.mailbox,
       imported: r.messagesImported,
-      error: r.error,
+      error:    r.error,
     }));
+    // markSyncComplete stores results per-user and broadcasts only to each
+    // user's own connections — no cross-user data exposure
     markSyncComplete(syncMailboxResults);
-    broadcastAll({
-      type: "sync_complete",
-      data: { totalImported: syncMailboxResults.reduce((s, r) => s + r.imported, 0) },
-    });
   }
 
   return results;

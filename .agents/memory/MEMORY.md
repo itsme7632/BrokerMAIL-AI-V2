@@ -22,3 +22,4 @@
 - [Admin Analytics (Phase 11) data conventions](admin-analytics-phase11.md) — trial/paying-user derivation, provider inference, revenue placeholder, gmail+smtp dual-pipeline summing
 - [System Monitoring (Phase 12) architecture](system-monitoring-phase12.md) — platform-health data sources, cron last-run tracking, IMAP status inference, container disk-usage gotcha
 - [Communications SSE architecture](comm-sse-architecture.md) — EventSource per-user registry, broadcastToUser/All, sync state, HtmlEmailRenderer sandbox, attachment metadata pattern
+- [Comm sync state isolation](comm-sync-isolation.md) — syncState was a global singleton leaking mailbox emails cross-user; fixed by per-user Map + userId-tagged results

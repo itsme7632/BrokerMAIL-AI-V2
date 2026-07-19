@@ -165,7 +165,23 @@ router.get("/communications/conversations", requireAuth, async (req, res) => {
     conditions.push(sql`${commConversationsTable.status} NOT IN ('archived', 'spam', 'trash', 'system')`);
   }
 
-  if (mailboxId)  conditions.push(eq(commConversationsTable.mailboxId,  parseInt(mailboxId, 10)));
+  if (mailboxId) {
+    // Verify the mailbox belongs to this user before using it as a filter.
+    // Without this check a caller could probe for another user's mailbox ID.
+    const mbId = parseInt(mailboxId, 10);
+    if (!isNaN(mbId)) {
+      const owned = await db
+        .select({ id: mailboxesTable.id })
+        .from(mailboxesTable)
+        .where(and(eq(mailboxesTable.id, mbId), eq(mailboxesTable.userId, userId)))
+        .limit(1);
+      if (owned.length > 0) {
+        conditions.push(eq(commConversationsTable.mailboxId, mbId));
+      }
+      // If the mailbox doesn't belong to this user, silently ignore the filter
+      // (returning all conversations for the user is safe; leaking nothing)
+    }
+  }
   if (campaignId) conditions.push(eq(commConversationsTable.campaignId, parseInt(campaignId, 10)));
 
   // Search: customer name, email, subject. For phone/vehicle, join leads.
@@ -803,7 +819,7 @@ router.get("/communications/events", async (req, res) => {
 
 router.get("/communications/sync-status", requireAuth, async (req, res) => {
   const user      = (req as any).user;
-  const syncState = getSyncState();
+  const syncState = getSyncState(user.id);
   const cronState = getCronState("commSync");
 
   const SYNC_INTERVAL_MS = 5 * 60_000;
