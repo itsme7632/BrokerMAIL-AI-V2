@@ -46,6 +46,7 @@ type Conversation = {
   leadId: number | null;
   campaignId: number | null;
   mailboxId: number | null;
+  mailboxType: "gmail" | "smtp" | null;
   subject: string;
   customerName: string;
   customerEmail: string;
@@ -861,11 +862,12 @@ function BulkActionBar({ selectedIds, total, onAction, onSelectAll, onClear, cur
 // ─── Conversation Item (Gmail-compact style) ──────────────────────────────────
 
 function ConvItem({
-  conv, isActive, isSelected, onClick, onToggleSelect, showCheckboxes,
+  conv, isActive, isSelected, onClick, onToggleSelect, showCheckboxes, showMailboxBadge,
 }: {
   conv: Conversation; isActive: boolean; isSelected: boolean;
   onClick: () => void; onToggleSelect: (id: number) => void;
   showCheckboxes: boolean;
+  showMailboxBadge: boolean;
 }) {
   const isSystem = conv.status === "system";
   const isUnread = conv.status === "unread";
@@ -945,6 +947,17 @@ function ConvItem({
             <span className="text-[11px] text-slate-400 dark:text-slate-500 truncate flex-1 font-normal">{conv.customerEmail}</span>
           )}
           <div className="flex items-center gap-1 flex-shrink-0">
+            {/* Mailbox type badge — only when "All Mailboxes" is selected */}
+            {showMailboxBadge && conv.mailboxType && (
+              <span className={cn(
+                "text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide",
+                conv.mailboxType === "gmail"
+                  ? "bg-rose-100 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400"
+                  : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
+              )}>
+                {conv.mailboxType === "gmail" ? "Gmail" : "SMTP"}
+              </span>
+            )}
             {conv.unreadCount > 0 && (
               <span className="h-4 min-w-4 px-1 rounded-full bg-blue-600 text-white text-[9px] font-bold flex items-center justify-center">
                 {conv.unreadCount > 99 ? "99+" : conv.unreadCount}
@@ -1160,7 +1173,7 @@ function ConversationListPanel({
   selectedId, onSelect,
   selectedIds, onToggleSelect, onBulkAction,
   onLoadMore, hasMore, isFetchingMore,
-  onRefresh,
+  onRefresh, showMailboxBadge,
 }: {
   filter: FilterKey;
   search: string; setSearch: (s: string) => void;
@@ -1173,6 +1186,7 @@ function ConversationListPanel({
   hasMore: boolean;
   isFetchingMore: boolean;
   onRefresh: () => void;
+  showMailboxBadge: boolean;
 }) {
   const queryClient = useQueryClient();
   const showCheckboxes = selectedIds.size > 0;
@@ -1295,6 +1309,7 @@ function ConversationListPanel({
                 onClick={() => onSelect(conv.id)}
                 onToggleSelect={onToggleSelect}
                 showCheckboxes={showCheckboxes}
+                showMailboxBadge={showMailboxBadge}
               />
             ))}
             {/* Infinite scroll sentinel */}
@@ -1773,116 +1788,119 @@ function ThreadEmailCard({
     [msg.htmlBody],
   );
 
-  // ── Collapsed row ──
+  // ── Collapsed row: sender + snippet + time, no avatar ──
   if (!isExpanded) {
     return (
       <div
         onClick={onToggle}
-        className="flex items-center gap-3 px-6 py-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group/collapsed border-b border-slate-100 dark:border-slate-800/40 last:border-none"
+        className="flex items-center gap-3 px-6 py-2.5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors border-b border-slate-100 dark:border-slate-800/40 last:border-none"
       >
-        <Avatar className="h-7 w-7 flex-shrink-0">
-          <AvatarFallback className={`bg-gradient-to-br ${color} text-white text-[9px] font-semibold`}>
-            {isOut ? "Me" : initials(msg.fromName ?? customerName)}
-          </AvatarFallback>
-        </Avatar>
-        <div className="flex-1 min-w-0 flex items-baseline gap-3">
-          <span className={cn(
-            "text-sm flex-shrink-0",
-            isUnread ? "font-semibold text-slate-900 dark:text-slate-100" : "font-normal text-slate-600 dark:text-slate-400",
-          )}>
-            {isOut ? "Me" : (msg.fromName ?? customerName)}
-          </span>
-          <span className="text-sm text-slate-400 dark:text-slate-500 truncate flex-1">
-            {msg.snippet ?? msg.body.slice(0, 100)}
-          </span>
-        </div>
-        {isUnread && (
-          <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" title="Unread" />
-        )}
-        <span className="text-[11px] text-slate-400 flex-shrink-0">{timeAgo(time)}</span>
+        <div className={cn(
+          "w-1.5 h-1.5 rounded-full flex-shrink-0",
+          isUnread ? "bg-blue-500" : "bg-transparent",
+        )} />
+        <span className={cn(
+          "text-[13px] flex-shrink-0 w-32 truncate",
+          isOut
+            ? "text-slate-400 dark:text-slate-500 italic"
+            : isUnread
+              ? "font-bold text-slate-900 dark:text-slate-100"
+              : "font-medium text-slate-700 dark:text-slate-300",
+        )}>
+          {isOut ? "Me (sent)" : (msg.fromName ?? customerName)}
+        </span>
+        <span className="text-[12px] text-slate-400 dark:text-slate-500 truncate flex-1">
+          {msg.snippet ?? msg.body.slice(0, 120)}
+        </span>
+        <span className="text-[11px] text-slate-400 flex-shrink-0 tabular-nums">{timeAgo(time)}</span>
       </div>
     );
   }
 
-  // ── Expanded card ──
+  // ── Expanded email document — Gmail-style: header → body → reply strip ──
   return (
-    <div className="py-5 group/expanded border-b border-slate-100 dark:border-slate-800/40 last:border-none">
-      {/* Email header — click to collapse */}
-      <div className="flex items-start gap-3 px-6 cursor-pointer" onClick={onToggle}>
-        <Avatar className="h-9 w-9 flex-shrink-0 mt-0.5">
-          <AvatarFallback className={`bg-gradient-to-br ${color} text-white text-xs font-semibold`}>
-            {isOut ? "Me" : initials(msg.fromName ?? customerName)}
-          </AvatarFallback>
-        </Avatar>
+    <div className="group/expanded border-b border-slate-100 dark:border-slate-800/40 last:border-none">
+
+      {/* ── Email header ── */}
+      <div className="px-6 pt-4 pb-3 flex items-start gap-3">
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                  {isOut ? "Me" : (msg.fromName ?? customerName)}
-                </span>
-                {isSystem && (
-                  <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
-                    <AlertTriangle className="h-2.5 w-2.5" /> System
-                  </span>
-                )}
-                {isUnread && (
-                  <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
-                )}
-              </div>
+          {/* From line */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">
+              {isOut ? "Me" : (msg.fromName ?? msg.fromEmail)}
+            </span>
+            {!isOut && msg.fromName && (
+              <span className="text-[11px] text-slate-400 dark:text-slate-500 truncate max-w-xs">
+                {"<"}{msg.fromEmail}{">"}
+              </span>
+            )}
+            {isSystem && (
+              <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="h-2.5 w-2.5" /> System
+              </span>
+            )}
+            {isOut && (
+              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 border border-blue-200 dark:border-blue-800/30">
+                Sent
+              </span>
+            )}
+            {isUnread && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />}
+          </div>
+          {/* To line */}
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+            <span className="text-slate-300 dark:text-slate-600 mr-1">to</span>
+            {msg.toEmail ?? customerName}
+          </p>
+        </div>
+
+        {/* Date + hover actions */}
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <span className="text-[11px] text-slate-400 tabular-nums mr-1">{fullTime(time)}</span>
+          <div
+            className="flex items-center gap-0.5 opacity-0 group-hover/expanded:opacity-100 transition-opacity"
+            onClick={e => e.stopPropagation()}
+          >
+            {!isSystem && (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <p
-                    className="text-[11px] text-slate-400 mt-0.5 cursor-default"
-                    onClick={e => e.stopPropagation()}
+                  <button
+                    onClick={() => onReply?.("reply")}
+                    className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition-colors"
                   >
-                    {isOut ? `to ${msg.toEmail ?? customerName}` : `from ${msg.fromEmail}`}
-                  </p>
+                    <Reply className="h-3.5 w-3.5" />
+                  </button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom" className="max-w-xs text-left">
-                  <p className="text-[11px]">From: {msg.fromEmail}</p>
-                  {msg.toEmail && <p className="text-[11px]">To: {msg.toEmail}</p>}
-                  {msg.subject && <p className="text-[11px]">Subject: {msg.subject}</p>}
-                </TooltipContent>
+                <TooltipContent>Reply</TooltipContent>
               </Tooltip>
-            </div>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              <span className="text-[11px] text-slate-400">{fullTime(time)}</span>
-              {/* Action buttons — visible on hover */}
-              <div
-                className="flex items-center gap-0.5 opacity-0 group-hover/expanded:opacity-100 transition-opacity"
-                onClick={e => e.stopPropagation()}
-              >
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={() => onReply?.("reply")}
-                      className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition-colors"
-                    >
-                      <Reply className="h-3.5 w-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Reply</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={() => navigator.clipboard.writeText(msg.body)}
-                      className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition-colors"
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Copy text</TooltipContent>
-                </Tooltip>
-              </div>
-            </div>
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => navigator.clipboard.writeText(msg.body)}
+                  className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Copy text</TooltipContent>
+            </Tooltip>
           </div>
+          {/* Collapse button */}
+          <button
+            onClick={e => { e.stopPropagation(); onToggle(); }}
+            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors"
+            title="Collapse"
+          >
+            <ChevronUp className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
 
-      {/* Email body */}
-      <div className="ml-[60px] mr-6 mt-4">
+      {/* Thin divider between header and body */}
+      <div className="mx-6 border-t border-slate-100 dark:border-slate-800" />
+
+      {/* ── Email body — full width, no left indentation ── */}
+      <div className="px-6 py-4">
         {msg.htmlBody ? (
           <>
             <HtmlEmailRenderer html={primaryHtml ?? msg.htmlBody} />
@@ -1911,31 +1929,31 @@ function ThreadEmailCard({
         )}
 
         {msg.attachmentsMeta && <AttachmentList metaJson={msg.attachmentsMeta} />}
-
-        {/* Reply action buttons on the latest message */}
-        {isLatest && !isSystem && (
-          <div className="flex flex-wrap gap-2 mt-5">
-            <button
-              onClick={() => onReply?.("reply")}
-              className="flex items-center gap-1.5 px-4 py-1.5 text-sm text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-full hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-            >
-              <Reply className="h-3.5 w-3.5" /> Reply
-            </button>
-            <button
-              onClick={() => onReply?.("reply_all")}
-              className="flex items-center gap-1.5 px-4 py-1.5 text-sm text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-full hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-            >
-              <ReplyAll className="h-3.5 w-3.5" /> Reply all
-            </button>
-            <button
-              onClick={() => onReply?.("forward")}
-              className="flex items-center gap-1.5 px-4 py-1.5 text-sm text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-full hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-            >
-              <Forward className="h-3.5 w-3.5" /> Forward
-            </button>
-          </div>
-        )}
       </div>
+
+      {/* ── Reply strip — only on the latest message ── */}
+      {isLatest && !isSystem && (
+        <div className="px-6 pb-4 pt-1 flex flex-wrap gap-2 border-t border-slate-100 dark:border-slate-800">
+          <button
+            onClick={() => onReply?.("reply")}
+            className="flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-medium text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-400 dark:hover:border-blue-600 transition-colors"
+          >
+            <Reply className="h-3.5 w-3.5" /> Reply
+          </button>
+          <button
+            onClick={() => onReply?.("reply_all")}
+            className="flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-medium text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-400 dark:hover:border-blue-600 transition-colors"
+          >
+            <ReplyAll className="h-3.5 w-3.5" /> Reply all
+          </button>
+          <button
+            onClick={() => onReply?.("forward")}
+            className="flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-medium text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-400 dark:hover:border-blue-600 transition-colors"
+          >
+            <Forward className="h-3.5 w-3.5" /> Forward
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -2045,16 +2063,28 @@ function MiddlePanel({
         <div className="h-14 px-4 flex items-center border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0">
           <Skeleton className="h-5 w-48" />
         </div>
-        <div className="flex-1 p-5 space-y-6">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="flex gap-3 px-6">
-              <Skeleton className="h-9 w-9 rounded-full flex-shrink-0" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-36" />
-                <Skeleton className="h-16 w-full rounded-xl" />
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-6 pt-5 pb-3">
+            <Skeleton className="h-6 w-80 mb-2" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+          <div className="bg-white dark:bg-slate-900 rounded-xl mx-4 border border-slate-200 dark:border-slate-700/60 overflow-hidden">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 last:border-none space-y-2">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-3 w-40" />
+                  </div>
+                  <Skeleton className="h-3 w-20 flex-shrink-0" />
+                </div>
+                <Skeleton className="h-3 w-24" />
+                <div className="border-t border-slate-100 dark:border-slate-800 pt-3 mt-1">
+                  <Skeleton className="h-20 w-full" />
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -2808,6 +2838,7 @@ export default function Communications() {
           hasMore={hasMoreConvs}
           isFetchingMore={isFetchingMore}
           onRefresh={handleRefresh}
+          showMailboxBadge={selectedMailboxId === null}
         />
       </div>
 

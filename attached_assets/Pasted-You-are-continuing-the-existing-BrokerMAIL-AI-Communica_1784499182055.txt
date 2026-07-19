@@ -1,0 +1,537 @@
+You are continuing the existing BrokerMAIL AI Communications module.
+
+IMPORTANT:
+
+Do NOT rewrite the module from scratch.
+
+Do NOT remove existing functionality.
+
+Do NOT introduce regressions.
+
+First audit the existing implementation before modifying anything.
+
+The following features already exist and MUST continue working:
+
+- Mail synchronization
+- Gmail API sync
+- SMTP/IMAP sync
+- SSE real-time updates
+- AI tools
+- Internal notes
+- Attachments
+- Infinite scrolling
+- HTML rendering
+- RFC2047 decoding
+- Mailbox isolation
+- Search
+- Bulk actions
+- Pagination
+- Threading improvements
+- Security fixes
+- Reply/Reply All/Forward
+- Folder navigation
+- Unread tracking
+- Quoted text collapse
+
+Your goal is NOT to rebuild.
+
+Your goal is to transform this into a professional Gmail / Outlook quality email client.
+
+==================================================
+CURRENT PROBLEMS THAT MUST BE FIXED
+==================================================
+
+## 1. Reading pane still behaves like chat
+
+This is the biggest UX issue.
+
+The email is still displayed like Messenger or WhatsApp.
+
+Emails are wrapped inside rounded message bubbles.
+
+That is wrong.
+
+The reading pane must behave exactly like Gmail or Outlook.
+
+Correct layout:
+
+Subject
+
+From
+To
+CC
+Date
+
+Toolbar
+Reply
+Reply All
+Forward
+Archive
+Delete
+Move
+Star
+More
+
+--------------------------------------------------
+
+Entire email body
+
+--------------------------------------------------
+
+Previous messages collapsed underneath
+
+NOT chat bubbles.
+
+NOT messenger cards.
+
+NOT speech bubbles.
+
+Every email should look like an actual email document.
+
+==================================================
+
+## 2. Restore mailbox switch
+
+The mailbox selector disappeared.
+
+Bring back:
+
+All Mailboxes
+
+Gmail
+
+SMTP
+
+Switching mailbox must instantly filter conversations.
+
+If Gmail selected
+
+ONLY Gmail emails.
+
+If SMTP selected
+
+ONLY SMTP emails.
+
+If All Mailboxes
+
+show everything.
+
+When viewing All Mailboxes display a small Gmail / SMTP badge beside each conversation.
+
+==================================================
+
+## 3. Gmail and SMTP must never merge
+
+Currently Gmail + SMTP are combined.
+
+That is incorrect.
+
+Conversation queries must always respect selected mailbox.
+
+Threading cannot cross mailbox boundaries.
+
+==================================================
+
+## 4. Mail delivery failures
+
+Delivery failures are still being inserted into customer conversations.
+
+Wrong.
+
+These MUST become completely separate notification conversations.
+
+Examples:
+
+Mail Delivery System
+
+Mailer Daemon
+
+Delivery Status Notification
+
+Bounce
+
+Deferred
+
+Out Of Office
+
+Auto Reply
+
+Vacation
+
+Returned mail
+
+Permanent Failure
+
+Temporary Failure
+
+These must NEVER merge into customer conversations.
+
+==================================================
+
+## 5. Outgoing mail unread bug
+
+Outgoing mail should ALWAYS be read.
+
+Never unread.
+
+Never increment unread counters.
+
+Opening sent mail must never change unread counts.
+
+Unread counts only come from inbound customer emails.
+
+==================================================
+
+## 6. Conversation threading
+
+Thread ONLY when messages genuinely belong together.
+
+Priority:
+
+Message-ID
+
+In-Reply-To
+
+References
+
+Fallback:
+
+Normalized subject
+
+Same mailbox
+
+Same participants
+
+Within threading window
+
+Never merge unrelated emails.
+
+Never merge system notifications.
+
+==================================================
+
+## 7. Gmail style conversation list
+
+Current list is still bulky.
+
+Make it compact like Gmail.
+
+Each row should contain
+
+Sender
+
+Subject
+
+Preview
+
+Attachment icon
+
+Unread dot
+
+Star
+
+Date
+
+Very dense layout.
+
+Remove oversized avatars.
+
+==================================================
+
+## 8. Gmail style reading pane
+
+Latest message opens.
+
+Older messages collapsed.
+
+Click expands.
+
+No bubbles.
+
+Proper email rendering.
+
+Images inline.
+
+Tables preserved.
+
+HTML preserved.
+
+Light HTML emails should remain light.
+
+Dark emails stay dark.
+
+==================================================
+
+## 9. Reply Composer
+
+Should behave like Gmail.
+
+Reply
+
+Reply All
+
+Forward
+
+Floating composer
+
+Auto expand
+
+Draft saving
+
+Keyboard shortcuts
+
+==================================================
+
+## 10. Pagination
+
+Load 50 conversations.
+
+Infinite scrolling.
+
+Do not jump back to top.
+
+Keep scroll position.
+
+==================================================
+
+## 11. Mailbox indicator
+
+Conversation rows should indicate
+
+Gmail
+
+SMTP
+
+when All Mailboxes selected.
+
+Hidden when mailbox filtered.
+
+==================================================
+
+## 12. Mobile redesign
+
+Current mobile UI is poor.
+
+Build mobile similar to Gmail app.
+
+Conversation list first.
+
+Reading pane slides in.
+
+Back button returns.
+
+Folder drawer.
+
+Mailbox selector.
+
+Touch friendly.
+
+==================================================
+ADDITIONAL FIXES
+==================================================
+
+## 13. Customer replies not rendering correctly
+
+Customer reply text sometimes appears invisible until highlighted.
+
+Fix HTML/plain-text rendering so replies always display correctly without selecting text.
+
+==================================================
+
+## 14. RFC2047 subject decoding
+
+Subjects like
+
+=?UTF-8?B?...
+
+must always decode before saving and before rendering.
+
+No encoded subjects anywhere.
+
+==================================================
+
+## 15. HTML email rendering
+
+Templates should render exactly like real email clients.
+
+No clipping.
+
+No oversized containers.
+
+No bubble wrapper.
+
+Respect width.
+
+Preserve styles.
+
+==================================================
+
+## 16. Remove messenger appearance
+
+Nothing should resemble Slack.
+
+Discord.
+
+Messenger.
+
+WhatsApp.
+
+Telegram.
+
+It must feel like Outlook.
+
+==================================================
+
+## 17. True desktop layout
+
+Desktop should be
+
+Folder Sidebar
+
+↓
+
+Conversation List
+
+↓
+
+Reading Pane
+
+↓
+
+Customer Sidebar
+
+Four distinct panels.
+
+==================================================
+
+## 18. Conversation grouping
+
+Only group genuine conversations.
+
+Campaign
+
+↓
+
+Customer Reply
+
+↓
+
+Your Reply
+
+Correct.
+
+Campaign
+
+↓
+
+Delivery Failure
+
+Wrong.
+
+Separate.
+
+==================================================
+
+## 19. Mailbox ownership
+
+Preserve all mailbox isolation fixes.
+
+Never leak
+
+sync state
+
+mailbox names
+
+progress
+
+between users.
+
+==================================================
+
+## 20. Preserve all existing working features
+
+DO NOT regress
+
+SSE
+
+Search
+
+AI
+
+Internal notes
+
+Attachments
+
+Quoted text
+
+Pagination
+
+Infinite scroll
+
+Sync engine
+
+Mailbox isolation
+
+Security
+
+RFC2047 decoding
+
+==================================================
+
+## 21. Refactor if necessary
+
+If Communications.tsx has become too large, split it into maintainable components such as:
+
+FolderSidebar
+
+MailboxSelector
+
+ConversationList
+
+ConversationRow
+
+ReadingPane
+
+EmailHeader
+
+EmailBody
+
+HtmlRenderer
+
+ReplyComposer
+
+CustomerSidebar
+
+SyncStatusPanel
+
+BulkActionBar
+
+ThreadNavigator
+
+Keep behavior identical while improving maintainability.
+
+==================================================
+
+## 22. Final verification
+
+Before stopping run:
+
+pnpm typecheck
+
+pnpm build
+
+Fix ALL errors.
+
+Do not stop until BOTH commands complete successfully.
+
+Finally provide:
+
+1. List of files changed
+
+2. Summary of every implemented improvement
+
+3. Confirmation that no regressions were introduced
+
+Do not leave TODOs.
+
+Complete the implementation.

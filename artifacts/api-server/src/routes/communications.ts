@@ -286,11 +286,22 @@ router.get("/communications/conversations", requireAuth, async (req, res) => {
     .limit(limitNum)
     .offset(offset);
 
+  // Derive mailboxType:
+  //   - SMTP/IMAP conversations always have a numeric mailboxId (references mailboxesTable)
+  //   - Gmail conversations are synced via OAuth and stored with mailboxId = null
+  //   - Seeded draft conversations also have mailboxId = null; when user has Gmail connected
+  //     we treat those as Gmail, otherwise we leave the type as null (no badge shown)
+  const userObj = (req as any).user as { gmailEmail?: string | null };
+  const hasGmail = !!userObj?.gmailEmail;
+
   // Decode any RFC 2047 encoded subjects stored before the sync fix
   const decoded = conversations.map(c => ({
     ...c,
     subject:      decodeRFC2047(c.subject),
     customerName: decodeRFC2047(c.customerName),
+    mailboxType:  c.mailboxId !== null
+      ? ("smtp" as const)
+      : (hasGmail ? ("gmail" as const) : null),
   }));
   return res.json({ data: decoded, total: countRow?.count ?? 0 });
 });
