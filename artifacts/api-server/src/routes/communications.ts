@@ -24,7 +24,20 @@ const router = Router();
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function snippet(html: string, max = 160): string {
-  const plain = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  // Strip non-text blocks first — prevents raw CSS/JS leaking into previews.
+  const plain = html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
   return plain.length > max ? plain.slice(0, max) + "…" : plain;
 }
 
@@ -179,8 +192,9 @@ router.get("/communications/conversations", requireAuth, async (req, res) => {
     conditions.push(sql`${commConversationsTable.messageCount} = 1`);
   }
   else if (filter === "inbox") {
-    // Inbox: has an inbound message as the most recent; exclude special folders
-    conditions.push(sql`${commConversationsTable.status} NOT IN ('archived', 'spam', 'trash', 'system')`);
+    // Inbox: has an inbound message as the most recent; exclude archived/spam/trash.
+    // System (delivery failures, bounces) remain in inbox — shown with a badge.
+    conditions.push(sql`${commConversationsTable.status} NOT IN ('archived', 'spam', 'trash')`);
     conditions.push(sql`(SELECT direction FROM comm_messages WHERE conversation_id = ${commConversationsTable.id} ORDER BY COALESCE(sent_at, created_at) DESC NULLS LAST LIMIT 1) = 'inbound'`);
   }
   else if (filter === "sent") {
@@ -188,8 +202,8 @@ router.get("/communications/conversations", requireAuth, async (req, res) => {
     conditions.push(sql`(SELECT direction FROM comm_messages WHERE conversation_id = ${commConversationsTable.id} ORDER BY COALESCE(sent_at, created_at) DESC NULLS LAST LIMIT 1) = 'outbound'`);
   }
   else {
-    // "all" — every active conversation (not archived, spam, trash, or system)
-    conditions.push(sql`${commConversationsTable.status} NOT IN ('archived', 'spam', 'trash', 'system')`);
+    // "all" — every active conversation (not archived, spam, or trash)
+    conditions.push(sql`${commConversationsTable.status} NOT IN ('archived', 'spam', 'trash')`);
   }
 
   if (mailboxId) {

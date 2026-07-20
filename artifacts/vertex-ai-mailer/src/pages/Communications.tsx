@@ -884,9 +884,7 @@ function ConvItem({
           ? "bg-blue-50 dark:bg-blue-900/20 border-l-[3px] border-l-blue-500"
           : isUnread
             ? "bg-white dark:bg-slate-900 border-l-[3px] border-l-blue-400 hover:bg-blue-50/40 dark:hover:bg-blue-900/10"
-            : isSystem
-              ? "bg-amber-50/30 dark:bg-amber-900/5 border-l-[3px] border-l-amber-300 dark:border-l-amber-800/50 hover:bg-amber-50/60 dark:hover:bg-amber-900/10"
-              : "bg-white dark:bg-slate-900 border-l-[3px] border-l-transparent hover:bg-slate-50 dark:hover:bg-slate-800/30",
+            : "bg-white dark:bg-slate-900 border-l-[3px] border-l-transparent hover:bg-slate-50 dark:hover:bg-slate-800/30",
       )}
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
@@ -926,7 +924,7 @@ function ConvItem({
             "text-[13px] truncate",
             isUnread ? "font-bold text-slate-900 dark:text-slate-50" : "font-medium text-slate-600 dark:text-slate-300",
           )}>
-            {isSystem ? "System" : conv.customerName}
+            {conv.customerName}
           </span>
           <span className="text-[10px] text-slate-400 dark:text-slate-500 flex-shrink-0 tabular-nums">{timeAgo(conv.lastMessageAt)}</span>
         </div>
@@ -941,18 +939,18 @@ function ConvItem({
 
         {/* Row 3: snippet + badges */}
         <div className="flex items-center gap-1.5 mt-0.5">
-          {isSystem ? (
-            <span className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-0.5 truncate">
-              <AlertTriangle className="h-2.5 w-2.5 flex-shrink-0" /> Delivery notification
-            </span>
-          ) : (
-            <span className="text-[11px] text-slate-400 dark:text-slate-500 truncate flex-1 font-normal">
-              {conv.snippet || conv.customerEmail}
-            </span>
-          )}
+          <span className="text-[11px] text-slate-400 dark:text-slate-500 truncate flex-1 font-normal">
+            {conv.snippet || conv.customerEmail}
+          </span>
           <div className="flex items-center gap-1 flex-shrink-0">
             {conv.hasAttachments && (
               <Paperclip className="h-2.5 w-2.5 text-slate-400 dark:text-slate-500 flex-shrink-0" />
+            )}
+            {/* System delivery-failure badge */}
+            {isSystem && (
+              <span className="flex items-center gap-0.5 text-[8px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 uppercase tracking-wide whitespace-nowrap">
+                <AlertTriangle className="h-2 w-2 flex-shrink-0" /> Delivery Failure
+              </span>
             )}
             {/* Mailbox type badge — only when "All Mailboxes" is selected */}
             {showMailboxBadge && conv.mailboxType && (
@@ -994,10 +992,9 @@ const FILTER_GROUPS: {
   },
   {
     items: [
-      { key: "archived", label: "Archived",      icon: Archive },
-      { key: "spam",     label: "Spam",           icon: Ban },
-      { key: "trash",    label: "Trash",           icon: Trash2 },
-      { key: "system",   label: "Notifications",  icon: AlertTriangle },
+      { key: "archived", label: "Archived", icon: Archive },
+      { key: "spam",     label: "Spam",     icon: Ban },
+      { key: "trash",    label: "Trash",    icon: Trash2 },
     ],
   },
 ];
@@ -1162,6 +1159,21 @@ function FolderSidebar({
   );
 }
 
+// ─── Pagination helpers ───────────────────────────────────────────────────────
+
+function getPageNumbers(current: number, total: number): (number | "…")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages: (number | "…")[] = [];
+  const seen = new Set<number | "…">();
+  const add = (n: number) => { if (!seen.has(n)) { pages.push(n); seen.add(n); } };
+  add(1);
+  if (current > 3) pages.push("…");
+  for (let p = Math.max(2, current - 1); p <= Math.min(total - 1, current + 1); p++) add(p);
+  if (current < total - 2) pages.push("…");
+  add(total);
+  return pages;
+}
+
 // ─── Conversation List Panel ──────────────────────────────────────────────────
 
 function ConversationListPanel({
@@ -1169,8 +1181,9 @@ function ConversationListPanel({
   conversations, isLoading, total,
   selectedId, onSelect,
   selectedIds, onToggleSelect, onBulkAction,
-  onLoadMore, hasMore, isFetchingMore,
+  currentPage, totalPages, onPageChange,
   onRefresh, showMailboxBadge, mailboxLabel,
+  pageSize,
 }: {
   filter: FilterKey;
   search: string; setSearch: (s: string) => void;
@@ -1179,12 +1192,11 @@ function ConversationListPanel({
   selectedIds: Set<number>;
   onToggleSelect: (id: number) => void;
   onBulkAction: (action: BulkAction) => void;
-  onLoadMore: () => void;
-  hasMore: boolean;
-  isFetchingMore: boolean;
+  currentPage: number; totalPages: number; onPageChange: (p: number) => void;
   onRefresh: () => void;
   showMailboxBadge: boolean;
   mailboxLabel: string;
+  pageSize: number;
 }) {
   const queryClient = useQueryClient();
   const showCheckboxes = selectedIds.size > 0;
@@ -1192,18 +1204,9 @@ function ConversationListPanel({
   const handleSelectAll = () => conversations.forEach(c => onToggleSelect(c.id));
   const handleClear = () => conversations.forEach(c => { if (selectedIds.has(c.id)) onToggleSelect(c.id); });
 
-  // Infinite scroll sentinel
-  const sentinelRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting && hasMore && !isFetchingMore) onLoadMore(); },
-      { threshold: 0.1 },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [hasMore, isFetchingMore, onLoadMore]);
+  const pageNumbers = getPageNumbers(currentPage, totalPages);
+  const rangeStart = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const rangeEnd   = Math.min(currentPage * pageSize, total);
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-slate-900">
@@ -1273,54 +1276,85 @@ function ConversationListPanel({
         ) : conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
             <div className="h-12 w-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-3">
-              {filter === "spam"    ? <Ban className="h-6 w-6 text-slate-300 dark:text-slate-600" />
+              {filter === "spam"     ? <Ban className="h-6 w-6 text-slate-300 dark:text-slate-600" />
                : filter === "archived" ? <Archive className="h-6 w-6 text-slate-300 dark:text-slate-600" />
                : filter === "starred"  ? <Star className="h-6 w-6 text-slate-300 dark:text-slate-600" />
                : filter === "trash"    ? <Trash2 className="h-6 w-6 text-slate-300 dark:text-slate-600" />
-               : filter === "system"   ? <AlertTriangle className="h-6 w-6 text-slate-300 dark:text-slate-600" />
                : <MessageSquare className="h-6 w-6 text-slate-300 dark:text-slate-600" />}
             </div>
             <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
               {search ? "No matches" :
-               filter === "inbox"    ? "Inbox is empty" :
-               filter === "sent"     ? "No sent messages" :
-               filter === "drafts"   ? "No drafts" :
-               filter === "trash"    ? "Trash is empty" :
-               filter === "system"   ? "No notifications" :
+               filter === "inbox"  ? "Inbox is empty" :
+               filter === "sent"   ? "No sent messages" :
+               filter === "drafts" ? "No drafts" :
+               filter === "trash"  ? "Trash is empty" :
                `No ${filter.replace("_", " ")} conversations`}
             </p>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
               {search ? "Try a different search term" :
-               filter === "inbox"  ? "Inbound emails appear here after syncing" :
-               filter === "trash"  ? "Deleted conversations appear here" :
-               filter === "system" ? "Delivery failures and bounce notices appear here" :
+               filter === "inbox" ? "Inbound emails appear here after syncing" :
+               filter === "trash" ? "Deleted conversations appear here" :
                "Nothing here yet"}
             </p>
           </div>
         ) : (
-          <>
-            {conversations.map(conv => (
-              <ConvItem
-                key={conv.id}
-                conv={conv}
-                isActive={selectedId === conv.id}
-                isSelected={selectedIds.has(conv.id)}
-                onClick={() => onSelect(conv.id)}
-                onToggleSelect={onToggleSelect}
-                showCheckboxes={showCheckboxes}
-                showMailboxBadge={showMailboxBadge}
-              />
-            ))}
-            {/* Infinite scroll sentinel */}
-            <div ref={sentinelRef} className="py-2 flex justify-center">
-              {isFetchingMore && <Loader2 className="h-4 w-4 animate-spin text-slate-300" />}
-              {!hasMore && conversations.length > 0 && (
-                <p className="text-[10px] text-slate-300 dark:text-slate-600 py-1">All loaded</p>
-              )}
-            </div>
-          </>
+          conversations.map(conv => (
+            <ConvItem
+              key={conv.id}
+              conv={conv}
+              isActive={selectedId === conv.id}
+              isSelected={selectedIds.has(conv.id)}
+              onClick={() => onSelect(conv.id)}
+              onToggleSelect={onToggleSelect}
+              showCheckboxes={showCheckboxes}
+              showMailboxBadge={showMailboxBadge}
+            />
+          ))
         )}
       </div>
+
+      {/* Pagination footer */}
+      {totalPages > 1 && (
+        <div className="flex-shrink-0 border-t border-slate-100 dark:border-slate-800 px-3 py-2 space-y-1.5">
+          <p className="text-[10px] text-slate-400 text-center">
+            Showing {rangeStart}–{rangeEnd} of {total}
+          </p>
+          <div className="flex items-center justify-center gap-1">
+            <button
+              onClick={() => onPageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="px-2 py-1 text-[11px] rounded border border-slate-200 dark:border-slate-700 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors"
+            >
+              ‹ Prev
+            </button>
+            {pageNumbers.map((p, i) =>
+              p === "…" ? (
+                <span key={`ell-${i}`} className="text-[11px] text-slate-400 px-1">…</span>
+              ) : (
+                <button
+                  key={p}
+                  onClick={() => onPageChange(p as number)}
+                  className={cn(
+                    "w-7 h-7 text-[11px] rounded border transition-colors",
+                    p === currentPage
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800",
+                  )}
+                >
+                  {p}
+                </button>
+              )
+            )}
+            <button
+              onClick={() => onPageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="px-2 py-1 text-[11px] rounded border border-slate-200 dark:border-slate-700 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors"
+            >
+              Next ›
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2621,9 +2655,8 @@ export default function Communications() {
   const [liveProgress, setLiveProgress]       = useState<SyncProgressState | null>(null);
 
   // ── Pagination state ─────────────────────────────────────────────────────
-  const [convPage, setConvPage]               = useState(1);
-  const [accConversations, setAccConversations] = useState<Conversation[]>([]);
-  const [convTotal, setConvTotal]             = useState(0);
+  const [convPage, setConvPage] = useState(1);
+  const [convTotal, setConvTotal] = useState(0);
 
   const queryClient = useQueryClient();
   const { toast }   = useToast();
@@ -2652,42 +2685,31 @@ export default function Communications() {
     return mb.type === "gmail" ? "Gmail" : "SMTP";
   }, [selectedMailboxId, mailboxes]);
 
-  // Reset pagination whenever the filter, search, or mailbox changes
+  // Reset to page 1 whenever the filter, search, or mailbox changes
   useEffect(() => {
     setConvPage(1);
-    setAccConversations([]);
     setConvTotal(0);
   }, [filter, search, selectedMailboxId]);
 
   const convsUrl = (page: number) => {
     const params = new URLSearchParams({ filter, search, limit: String(CONVS_PAGE_SIZE), page: String(page) });
     if (selectedMailboxId !== null) {
-      // Send both numeric SMTP IDs and the special "gmail" string
       params.set("mailboxId", String(selectedMailboxId));
     }
     return `/api/communications/conversations?${params.toString()}`;
   };
 
-  const { data: convData, isLoading, isFetching } = useQuery<{ data: Conversation[]; total: number }>({
+  const { data: convData, isLoading } = useQuery<{ data: Conversation[]; total: number }>({
     queryKey: ["conversations", filter, search, selectedMailboxId, convPage],
     queryFn: () => apiFetch(convsUrl(convPage)),
     staleTime: 30_000,
+    placeholderData: (prev) => prev,
   });
 
-  // Accumulate conversations across pages, deduplicating by id
+  // Update total when data arrives
   useEffect(() => {
-    if (!convData) return;
-    setConvTotal(convData.total);
-    if (convPage === 1) {
-      setAccConversations(convData.data);
-    } else {
-      setAccConversations(prev => {
-        const existingIds = new Set(prev.map(c => c.id));
-        const fresh = convData.data.filter(c => !existingIds.has(c.id));
-        return fresh.length > 0 ? [...prev, ...fresh] : prev;
-      });
-    }
-  }, [convData, convPage]);
+    if (convData) setConvTotal(convData.total);
+  }, [convData]);
 
   const { data: stats } = useQuery<Stats>({
     queryKey: ["comm-stats"],
@@ -2695,13 +2717,14 @@ export default function Communications() {
     staleTime: 60_000,
   });
 
-  const conversations = accConversations;
-  const hasMoreConvs  = conversations.length < convTotal;
-  const isFetchingMore = isFetching && convPage > 1;
+  const conversations = convData?.data ?? [];
+  const totalPages    = Math.max(1, Math.ceil(convTotal / CONVS_PAGE_SIZE));
 
-  const handleLoadMore = useCallback(() => {
-    if (hasMoreConvs && !isFetching) setConvPage(p => p + 1);
-  }, [hasMoreConvs, isFetching]);
+  const handlePageChange = useCallback((p: number) => {
+    const clamped = Math.max(1, Math.min(p, totalPages));
+    setConvPage(clamped);
+    setSelectedId(null);
+  }, [totalPages]);
 
   // Optimistic mark-as-read when selecting a conversation (inbound unread only)
   const handleSelect = (id: number) => {
@@ -2842,12 +2865,13 @@ export default function Communications() {
           selectedIds={selectedIds}
           onToggleSelect={handleToggleSelect}
           onBulkAction={handleBulkAction}
-          onLoadMore={handleLoadMore}
-          hasMore={hasMoreConvs}
-          isFetchingMore={isFetchingMore}
+          currentPage={convPage}
+          totalPages={totalPages}
+          onPageChange={handlePageChange}
           onRefresh={handleRefresh}
           showMailboxBadge={selectedMailboxId === null}
           mailboxLabel={mailboxLabel}
+          pageSize={CONVS_PAGE_SIZE}
         />
       </div>
 

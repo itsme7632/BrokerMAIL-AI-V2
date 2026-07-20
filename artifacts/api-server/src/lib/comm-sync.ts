@@ -392,31 +392,10 @@ async function findOrCreateConversation(opts: {
       if (linked) return { id: linked.convId, isNew: false };
     }
 
-    // 2. Email-based fallback — only thread into a conversation that received a
-    //    message within the last 14 days. Older conversations are treated as
-    //    separate threads so unrelated emails are never silently merged.
-    const windowCutoff = new Date(messageAt.getTime() - 14 * 24 * 60 * 60 * 1_000);
-    // Enforce mailbox isolation: Gmail (mailboxId=null) and SMTP mailboxes never share threads.
-    const mailboxIsolation = mailboxId !== null
-      ? eq(commConversationsTable.mailboxId, mailboxId)
-      : isNull(commConversationsTable.mailboxId);
-    const [existing] = await db
-      .select({ id: commConversationsTable.id })
-      .from(commConversationsTable)
-      .where(
-        and(
-          eq(commConversationsTable.userId, userId),
-          eq(commConversationsTable.customerEmail, customerEmail),
-          mailboxIsolation,
-          sql`${commConversationsTable.lastMessageAt} > ${windowCutoff.toISOString()}::timestamptz`,
-          // Never thread into system/spam/archived/trash conversations
-          sql`${commConversationsTable.status} NOT IN ('system','spam','archived','trash')`,
-        ),
-      )
-      .orderBy(sql`${commConversationsTable.lastMessageAt} DESC`)
-      .limit(1);
-
-    if (existing) return { id: existing.id, isNew: false };
+    // NOTE: Email-address-only fallback was intentionally removed.
+    // Threading must ONLY happen via Message-ID / In-Reply-To / References headers.
+    // Customer email alone is never sufficient — it would merge unrelated quotes
+    // sent to the same person into one conversation.
   }
 
   // 3. Create new conversation
@@ -467,7 +446,21 @@ async function upsertMessage(opts: {
     .limit(1);
   if (existing) return false;
 
-  const body = text || html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  // Use proper HTML stripping (same logic as snippetOf) so that CSS/style blocks
+  // never leak raw text into the body column used as snippet fallback.
+  const body = text || html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
   const snippet = snippetOf(text, html);
 
   await db.insert(commMessagesTable).values({

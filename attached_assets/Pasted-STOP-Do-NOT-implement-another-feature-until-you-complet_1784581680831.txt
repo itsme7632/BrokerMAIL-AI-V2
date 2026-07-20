@@ -1,0 +1,323 @@
+STOP.
+
+Do NOT implement another feature until you complete a full root-cause audit.
+
+Over the last several iterations, multiple fixes were reported as completed, but the same issues continue to appear. I do not want another cosmetic update. I want you to identify exactly WHY the old behavior is still being rendered.
+
+========================
+PHASE 1 — ROOT CAUSE AUDIT
+========================
+
+Before changing any code:
+
+1. Identify every component responsible for rendering an email thread.
+
+Find every component used to render:
+
+- expanded messages
+- collapsed messages
+- timeline rows
+- HTML renderer
+- quoted text
+- conversation cards
+
+Determine whether multiple renderers still exist.
+
+I suspect both the old chat renderer and the new email renderer coexist.
+
+Produce a list of every renderer and indicate which one is actually used.
+
+Do not edit anything until this audit is complete.
+
+------------------------
+
+2. Audit conversation threading.
+
+Determine why conversations still merge unrelated outbound emails.
+
+Threading MUST primarily use:
+
+• Message-ID
+• In-Reply-To
+• References
+
+Subject matching should ONLY be fallback.
+
+Emails sent months apart to the same customer must NEVER be merged into one conversation unless headers explicitly connect them.
+
+Identify exactly where incorrect conversation grouping occurs.
+
+------------------------
+
+3. Audit unread logic.
+
+Unread counters still show 99+.
+
+Determine whether unread values are calculated from:
+
+- comm_messages
+- comm_conversations
+- cached counts
+- sync engine
+- SSE updates
+
+Find where outbound messages become unread.
+
+No fixes yet.
+Only document root cause.
+
+------------------------
+
+4. Audit preview generation.
+
+Conversation previews currently show text like:
+
+"Changelog 70 plus git-style schema..."
+
+Determine exactly why CSS or hidden HTML is entering snippets.
+
+Snippets must contain ONLY visible email text.
+
+------------------------
+
+5. Audit HTML parsing.
+
+Some emails display:
+
+(empty)
+
+Some render perfectly.
+
+Determine why.
+
+Support ALL common MIME types:
+
+text/plain
+
+text/html
+
+multipart/alternative
+
+multipart/mixed
+
+quoted-printable
+
+base64
+
+nested multipart
+
+Always choose the best displayable body.
+
+========================
+PHASE 2 — IMPLEMENTATION
+========================
+
+Only after completing the audit:
+
+1.
+
+Replace the chat renderer completely.
+
+Email threads must look like Gmail or Outlook.
+
+NO chat bubbles.
+
+NO messenger layout.
+
+NO avatar timeline.
+
+Each email:
+
+From
+
+To
+
+Date
+
+Subject
+
+Body
+
+Reply buttons
+
+Nothing else.
+
+------------------------
+
+2.
+
+Threading must be rebuilt.
+
+A conversation should only contain emails connected through:
+
+Message-ID
+
+In-Reply-To
+
+References
+
+Customer email alone is NEVER enough.
+
+If a customer replies to Quote B, do NOT include Quote A.
+
+------------------------
+
+3.
+
+Remove Notifications folder.
+
+Bounce emails
+
+Delivery failures
+
+Deferred emails
+
+Return-to-sender
+
+must remain in Inbox.
+
+Display them as ordinary emails with a small badge:
+
+Delivery Failure
+
+Bounce
+
+Warning
+
+Do not group all delivery failures together.
+
+Each email remains its own conversation unless actual threading headers connect them.
+
+------------------------
+
+4.
+
+Restore real pagination.
+
+Remove infinite scroll.
+
+Show exactly 50 conversations per page.
+
+Provide:
+
+Previous
+
+Next
+
+page numbers
+
+Showing X–Y of Z
+
+The conversation list scrolls independently.
+
+Changing pages never reloads the entire UI.
+
+------------------------
+
+5.
+
+Fix scrolling.
+
+Conversation list scrolls independently.
+
+Reading pane scrolls independently.
+
+Customer panel remains fixed.
+
+The browser window should never scroll while reading an email.
+
+------------------------
+
+6.
+
+Refresh button.
+
+Replace the fake refresh.
+
+It must:
+
+sync Gmail
+
+sync SMTP
+
+refresh current mailbox
+
+update unread counts
+
+refresh current page
+
+If syncing fails, display the error.
+
+------------------------
+
+7.
+
+Internal Notes.
+
+Either:
+
+fully implement notes
+
+or remove the panel.
+
+No placeholders.
+
+------------------------
+
+8.
+
+Conversation previews.
+
+Show only:
+
+Sender
+
+Subject
+
+Visible snippet
+
+Attachment icon
+
+Date
+
+Nothing from CSS, HEAD, STYLE or hidden HTML.
+
+------------------------
+
+9.
+
+Mailbox isolation.
+
+When Gmail mailbox is selected:
+
+ONLY Gmail emails.
+
+When SMTP mailbox is selected:
+
+ONLY SMTP emails.
+
+When All Mailboxes is selected:
+
+merge them while preserving mailbox badges.
+
+------------------------
+
+10.
+
+After implementation:
+
+Run:
+
+pnpm typecheck
+
+pnpm build
+
+Verify there is only ONE email thread renderer remaining.
+
+Verify there is only ONE threading algorithm.
+
+Verify there is only ONE unread counter implementation.
+
+Do not leave duplicate implementations in the project.
+
+This task is focused on fixing the architecture and eliminating duplicate/legacy logic—not adding new features.
