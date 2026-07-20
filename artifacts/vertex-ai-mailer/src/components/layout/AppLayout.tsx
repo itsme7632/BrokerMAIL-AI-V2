@@ -47,10 +47,11 @@ const NAV_GROUP_DEFS: NavGroupDef[] = [
     icon: Megaphone,
     defaultOpen: false,
     items: [
-      { href: "/campaigns",         icon: Megaphone,   label: "Campaigns",        exact: false },
-      { href: "/templates",         icon: FileText,    label: "Templates",        exact: true  },
-      { href: "/templates/gallery", icon: LayoutGrid,  label: "Template Gallery", exact: true  },
-      { href: "/leads/import",      icon: UploadCloud, label: "Upload & Send",    exact: true  },
+      { href: "/campaigns",         icon: Megaphone,      label: "Campaigns",        exact: false },
+      { href: "/sent-emails",       icon: SendHorizonal,  label: "Sent Emails",      exact: true  },
+      { href: "/templates",         icon: FileText,       label: "Templates",        exact: true  },
+      { href: "/templates/gallery", icon: LayoutGrid,     label: "Template Gallery", exact: true  },
+      { href: "/leads/import",      icon: UploadCloud,    label: "Upload & Send",    exact: true  },
     ],
   },
   {

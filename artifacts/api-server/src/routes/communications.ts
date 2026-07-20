@@ -6,7 +6,7 @@ import {
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 import { verifyToken } from "../lib/auth";
-import { eq, and, desc, or, ilike, sql, inArray, isNotNull } from "drizzle-orm";
+import { eq, and, desc, or, ilike, sql, inArray, isNotNull, isNull } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { runCommSync } from "../lib/comm-sync";
 import {
@@ -193,20 +193,29 @@ router.get("/communications/conversations", requireAuth, async (req, res) => {
   }
 
   if (mailboxId) {
-    // Verify the mailbox belongs to this user before using it as a filter.
-    // Without this check a caller could probe for another user's mailbox ID.
-    const mbId = parseInt(mailboxId, 10);
-    if (!isNaN(mbId)) {
-      const owned = await db
-        .select({ id: mailboxesTable.id })
-        .from(mailboxesTable)
-        .where(and(eq(mailboxesTable.id, mbId), eq(mailboxesTable.userId, userId)))
-        .limit(1);
-      if (owned.length > 0) {
-        conditions.push(eq(commConversationsTable.mailboxId, mbId));
+    if (mailboxId === "gmail") {
+      // Gmail conversations are synced via OAuth and stored with mailboxId = null.
+      // Only apply this filter when the user actually has Gmail connected.
+      const userObj = (req as any).user as { gmailEmail?: string | null };
+      if (userObj?.gmailEmail) {
+        conditions.push(isNull(commConversationsTable.mailboxId));
       }
-      // If the mailbox doesn't belong to this user, silently ignore the filter
-      // (returning all conversations for the user is safe; leaking nothing)
+    } else {
+      // Numeric SMTP mailbox ID — verify ownership before filtering.
+      // Without this check a caller could probe for another user's mailbox ID.
+      const mbId = parseInt(mailboxId, 10);
+      if (!isNaN(mbId)) {
+        const owned = await db
+          .select({ id: mailboxesTable.id })
+          .from(mailboxesTable)
+          .where(and(eq(mailboxesTable.id, mbId), eq(mailboxesTable.userId, userId)))
+          .limit(1);
+        if (owned.length > 0) {
+          conditions.push(eq(commConversationsTable.mailboxId, mbId));
+        }
+        // If the mailbox doesn't belong to this user, silently ignore the filter
+        // (returning all conversations for the user is safe; leaking nothing)
+      }
     }
   }
   if (campaignId) conditions.push(eq(commConversationsTable.campaignId, parseInt(campaignId, 10)));

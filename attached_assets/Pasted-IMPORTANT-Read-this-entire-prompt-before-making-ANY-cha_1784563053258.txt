@@ -1,0 +1,311 @@
+IMPORTANT: Read this entire prompt before making ANY changes.
+
+DO NOT rewrite the Communications module from scratch.
+
+DO NOT introduce new TypeScript errors.
+
+DO NOT remove existing working functionality.
+
+First inspect the current implementation and only modify the areas listed below.
+
+The goal is to make Communications behave like Gmail/Outlook while restoring our previous Sent Emails experience.
+
+==================================================
+PART 1 - RESTORE PREVIOUS SENT EMAILS PAGE
+==================================================
+
+The previous Sent Emails page was significantly better than the current Communications > Sent folder.
+
+I want to restore the old Sent Emails page exactly as it existed before the Communications redesign.
+
+Requirements:
+
+• Restore the previous Sent Emails page and routing.
+• Preserve:
+  - campaign history
+  - sent email history
+  - delivery status
+  - open tracking
+  - click tracking
+  - search
+  - pagination
+  - filters
+• Do NOT make Sent Emails use the Communications thread UI.
+• Do NOT display sent emails inside Gmail-style conversations.
+• Communications should have a lightweight "Sent" folder only for mailbox browsing if needed, but the main Sent Emails page becomes the primary place to manage outgoing mail.
+
+==================================================
+PART 2 - UNREAD LOGIC (CRITICAL BUG)
+==================================================
+
+Current bug:
+
+Outgoing emails are appearing inside Unread.
+
+This is incorrect.
+
+Unread must ONLY include inbound customer emails.
+
+Rules:
+
+Inbound:
+- unread until opened
+- mark read when opened
+- contributes to unread badge
+
+Outbound:
+- always read
+- NEVER contributes to unread count
+- NEVER appears inside Unread
+- NEVER increments unread badges
+
+Recalculate unread counts using messages, not conversations.
+
+==================================================
+PART 3 - OPENING SENT EMAILS
+==================================================
+
+Current bug:
+
+Opening my own sent emails changes read/open counts.
+
+Fix:
+
+Opening outbound mail must never:
+
+- change unread count
+- mark anything read
+- increase customer open statistics
+- trigger tracking events
+
+Customer opens should ONLY come from tracking pixels or tracked links.
+
+==================================================
+PART 4 - MARK AS READ
+==================================================
+
+Current bug:
+
+Mark as Read updates the badge partially but conversations remain unread.
+
+Fix:
+
+Mark as Read must update:
+
+- database
+- API
+- UI
+- badges
+- counters
+
+Everything must remain synchronized.
+
+==================================================
+PART 5 - DELIVERY FAILURE THREADING
+==================================================
+
+Current bug:
+
+Mail Delivery System messages are merged into customer conversations.
+
+Never do this.
+
+Delivery failures, bounces, deferred mail, SPF failures, DKIM failures, mailbox full, etc.
+
+must always become isolated system conversations.
+
+They must NEVER merge into customer threads.
+
+==================================================
+PART 6 - HTML EMAIL RENDERING
+==================================================
+
+Current UI still looks like chat.
+
+I want Gmail / Outlook style.
+
+REMOVE:
+
+• messenger bubbles
+• rounded message containers
+• avatar chat appearance
+
+Expanded email should become:
+
+--------------------------------------------------
+
+Subject
+
+From
+To
+Date
+
+---------------------------------------
+
+FULL EMAIL DOCUMENT
+
+---------------------------------------
+
+Reply
+Reply All
+Forward
+
+--------------------------------------------------
+
+The HTML email itself should occupy the reading pane.
+
+Not be placed inside another bubble.
+
+==================================================
+PART 7 - HTML ENCODING
+==================================================
+
+Current bug:
+
+Characters display as:
+
+â€¢
+â€
+â€œ
+
+Fix all encoding.
+
+Properly decode:
+
+• quoted printable
+• UTF-8
+• HTML entities
+• RFC2047
+
+The rendered email should match Gmail exactly.
+
+==================================================
+PART 8 - SENT PREVIEW
+==================================================
+
+Current bug:
+
+Conversation previews display raw HTML/CSS like:
+
+body{margin:0...
+
+Instead:
+
+Generate a clean text preview.
+
+Example:
+
+Hi John,
+Thank you for requesting a quote...
+
+Never display HTML or CSS inside preview snippets.
+
+==================================================
+PART 9 - THREADING RULES
+==================================================
+
+Customer conversations:
+
+You
+↓
+
+Customer
+↓
+
+You
+↓
+
+Customer
+
+Only merge messages when:
+
+• same mailbox
+• same normalized subject
+• valid Message-ID / References / In-Reply-To
+• same participants
+
+Never merge:
+
+Customer thread
++
+Mail Delivery
++
+Campaign
++
+Different mailbox
+
+==================================================
+PART 10 - MAILBOX SEPARATION
+==================================================
+
+Keep Gmail and SMTP completely isolated.
+
+Mailbox selector must work correctly.
+
+Selecting Gmail:
+
+Only Gmail emails.
+
+Selecting SMTP:
+
+Only SMTP emails.
+
+All Mailboxes:
+
+Combined view with mailbox badge.
+
+Never merge Gmail conversations with SMTP conversations.
+
+==================================================
+PART 11 - READING PANE
+==================================================
+
+Make the reading pane look much closer to Gmail or Outlook.
+
+Improve:
+
+• spacing
+• typography
+• header
+• divider lines
+• subject placement
+• sender information
+• recipient information
+
+Emails should feel like reading an email, not a chat conversation.
+
+==================================================
+PART 12 - REGRESSION TEST
+==================================================
+
+Before finishing verify:
+
+✓ TypeScript passes
+✓ Build passes
+✓ Old Sent Emails page restored
+✓ Outbound emails never appear unread
+✓ Opening sent emails changes nothing
+✓ Delivery failures isolated
+✓ HTML renders correctly
+✓ UTF-8 decoding fixed
+✓ Preview snippets clean
+✓ Mailbox switching works
+✓ Gmail/SMTP isolation works
+✓ No new regressions
+
+Do NOT stop after coding.
+
+Run:
+
+pnpm typecheck
+
+pnpm build
+
+Only finish once both pass with zero errors.
+
+Finally provide:
+
+1. Files changed
+2. Bugs fixed
+3. Any database migration required (if any)
+4. Anything that still needs another iteration

@@ -2654,7 +2654,8 @@ export default function Communications() {
 
   const convsUrl = (page: number) => {
     const params = new URLSearchParams({ filter, search, limit: String(CONVS_PAGE_SIZE), page: String(page) });
-    if (selectedMailboxId !== null && typeof selectedMailboxId === "number") {
+    if (selectedMailboxId !== null) {
+      // Send both numeric SMTP IDs and the special "gmail" string
       params.set("mailboxId", String(selectedMailboxId));
     }
     return `/api/communications/conversations?${params.toString()}`;

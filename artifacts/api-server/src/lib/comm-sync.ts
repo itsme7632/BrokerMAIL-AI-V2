@@ -28,7 +28,7 @@ import {
   commMessagesTable,
 } from "@workspace/db";
 import type { User, Mailbox } from "@workspace/db";
-import { eq, and, inArray, isNotNull, sql } from "drizzle-orm";
+import { eq, and, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { getGmailClient } from "./gmail";
 import { decrypt } from "./crypto";
 import { logger } from "./logger";
@@ -96,9 +96,31 @@ function parseHeader(raw: string, name: string): string {
 }
 
 function decodeQuotedPrintable(s: string): string {
-  return s
-    .replace(/=\r?\n/g, "")
-    .replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  // Unfold soft line breaks
+  const unfolded = s.replace(/=\r?\n/g, "");
+  // Collect raw bytes then decode as UTF-8.
+  // The old char-by-char approach produced latin1 garbage for multi-byte UTF-8 sequences
+  // (e.g. U+2022 BULLET encoded as =E2=80=A2 would render as "â€¢" instead of "•").
+  const bytes: number[] = [];
+  let i = 0;
+  while (i < unfolded.length) {
+    if (
+      unfolded[i] === "=" &&
+      i + 2 < unfolded.length &&
+      /[0-9A-Fa-f]{2}/.test(unfolded.slice(i + 1, i + 3))
+    ) {
+      bytes.push(parseInt(unfolded.slice(i + 1, i + 3), 16));
+      i += 3;
+    } else {
+      bytes.push(unfolded.charCodeAt(i) & 0xff);
+      i++;
+    }
+  }
+  try {
+    return Buffer.from(bytes).toString("utf-8");
+  } catch {
+    return Buffer.from(bytes).toString("latin1");
+  }
 }
 
 function decodeBase64Url(data: string): string {
@@ -193,8 +215,26 @@ function isSystemEmail(fromEmail: string, subject: string): boolean {
 }
 
 function snippetOf(text: string, html: string, max = 160): string {
-  const source = text || html.replace(/<[^>]+>/g, " ");
-  return source.replace(/\s+/g, " ").trim().slice(0, max);
+  if (text) {
+    return text.replace(/\s+/g, " ").trim().slice(0, max);
+  }
+  // Strip non-text blocks first — otherwise <style>body{margin:0...}</style>
+  // leaks raw CSS into the snippet when there is no plain-text part.
+  const stripped = html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => {
+      try { return String.fromCodePoint(Number(n)); } catch { return " "; }
+    });
+  return stripped.replace(/\s+/g, " ").trim().slice(0, max);
 }
 
 function escapeRegex(s: string): string {
@@ -324,6 +364,8 @@ function extractImapBody(source: string): { text: string; html: string; attachme
 async function findOrCreateConversation(opts: {
   userId: number;
   mailboxId: number | null;
+  /** Direction of the triggering message — outbound conversations start as "read". */
+  direction: "inbound" | "outbound";
   customerEmail: string;
   customerName: string;
   subject: string;
@@ -334,7 +376,7 @@ async function findOrCreateConversation(opts: {
    *  fallback is skipped (each system notification gets its own conversation). */
   isSystemNotification?: boolean;
 }): Promise<{ id: number; isNew: boolean }> {
-  const { userId, mailboxId, customerEmail, customerName, subject, inReplyTo, references, messageAt, isSystemNotification } = opts;
+  const { userId, mailboxId, direction, customerEmail, customerName, subject, inReplyTo, references, messageAt, isSystemNotification } = opts;
 
   // 1. Thread by In-Reply-To / References — find existing conversation via message externalId.
   //    Skip for system notifications — each bounce/OOO gets its own conversation.
@@ -354,6 +396,10 @@ async function findOrCreateConversation(opts: {
     //    message within the last 14 days. Older conversations are treated as
     //    separate threads so unrelated emails are never silently merged.
     const windowCutoff = new Date(messageAt.getTime() - 14 * 24 * 60 * 60 * 1_000);
+    // Enforce mailbox isolation: Gmail (mailboxId=null) and SMTP mailboxes never share threads.
+    const mailboxIsolation = mailboxId !== null
+      ? eq(commConversationsTable.mailboxId, mailboxId)
+      : isNull(commConversationsTable.mailboxId);
     const [existing] = await db
       .select({ id: commConversationsTable.id })
       .from(commConversationsTable)
@@ -361,6 +407,7 @@ async function findOrCreateConversation(opts: {
         and(
           eq(commConversationsTable.userId, userId),
           eq(commConversationsTable.customerEmail, customerEmail),
+          mailboxIsolation,
           sql`${commConversationsTable.lastMessageAt} > ${windowCutoff.toISOString()}::timestamptz`,
           // Never thread into system/spam/archived/trash conversations
           sql`${commConversationsTable.status} NOT IN ('system','spam','archived','trash')`,
@@ -381,8 +428,9 @@ async function findOrCreateConversation(opts: {
       subject: subject || "(No subject)",
       customerName: customerName || customerEmail.split("@")[0] || customerEmail,
       customerEmail,
-      // System notifications get their own status so they never pollute inbox
-      status: isSystemNotification ? "system" : "unread",
+      // System: isolated; outbound: broker sent it — never start as unread;
+      // inbound: unread until the broker opens it.
+      status: isSystemNotification ? "system" : (direction === "outbound" ? "read" : "unread"),
       starred: false,
       messageCount: 0,
       unreadCount: 0,
@@ -565,6 +613,7 @@ async function syncGmailInbox(user: User): Promise<SyncResult> {
         const conv = await findOrCreateConversation({
           userId: user.id,
           mailboxId: null,
+          direction,
           customerEmail,
           customerName,
           subject,
@@ -698,6 +747,7 @@ async function scanImapFolder(
         const conv = await findOrCreateConversation({
           userId,
           mailboxId: mailbox.id,
+          direction,
           customerEmail,
           customerName,
           subject,
