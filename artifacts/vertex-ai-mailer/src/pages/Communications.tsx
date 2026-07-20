@@ -455,8 +455,8 @@ function HtmlEmailRenderer({ html }: { html: string }) {
     "<style>",
     "*, *::before, *::after { box-sizing: border-box; }",
     "html { color-scheme: light !important; }",
-    "body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #1e293b !important; background: #ffffff !important; word-break: break-word; overflow: hidden; }",
-    "img { max-width: 100% !important; height: auto; }",
+    "body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.5; color: #1e293b !important; background: #ffffff !important; word-break: break-word; overflow-x: hidden; }",
+    "img { max-width: 100% !important; height: auto; display: block; }",
     "a { color: #3b82f6; }",
     "table { max-width: 100% !important; border-collapse: collapse; }",
     "td, th { word-break: break-word; }",
@@ -468,24 +468,44 @@ function HtmlEmailRenderer({ html }: { html: string }) {
     "</body></html>",
   ].join("");
 
-  const handleLoad = useCallback(() => {
+  // Measure the real document height and update the iframe.
+  // Must handle two cases:
+  //   1. onLoad — document is ready but images may not be.
+  //   2. ResizeObserver on the inner document element — fires as images finish
+  //      loading and expand the layout, giving the correct final height.
+  // No maximum is imposed: emails render to their natural full height, exactly
+  // as Gmail does.
+  const measure = useCallback(() => {
     try {
-      const el = iframeRef.current?.contentDocument?.documentElement;
-      if (el) setHeight(Math.max(40, Math.min(600, el.scrollHeight)));
-    } catch { /* sandboxed */ }
+      const doc = iframeRef.current?.contentDocument;
+      if (!doc) return;
+      const h = doc.documentElement.scrollHeight;
+      if (h > 0) setHeight(h);
+    } catch { /* cross-origin sandbox — skip */ }
   }, []);
 
+  const handleLoad = useCallback(() => {
+    measure();
+    try {
+      const doc = iframeRef.current?.contentDocument;
+      if (!doc) return;
+      // Watch the inner document for size changes (image loads, web fonts, etc.)
+      const ro = new ResizeObserver(measure);
+      ro.observe(doc.documentElement);
+      // Disconnect when the iframe is removed
+      iframeRef.current?.addEventListener("unload", () => ro.disconnect(), { once: true });
+    } catch { /* sandboxed */ }
+  }, [measure]);
+
   return (
-    <div className="bg-white rounded-sm overflow-hidden">
-      <iframe
-        ref={iframeRef}
-        srcDoc={doc}
-        sandbox="allow-same-origin"
-        onLoad={handleLoad}
-        style={{ width: "100%", height: `${height}px`, border: "none", display: "block" }}
-        title="Email content"
-      />
-    </div>
+    <iframe
+      ref={iframeRef}
+      srcDoc={doc}
+      sandbox="allow-same-origin"
+      onLoad={handleLoad}
+      style={{ width: "100%", height: `${height}px`, border: "none", display: "block" }}
+      title="Email content"
+    />
   );
 }
 
@@ -2345,8 +2365,8 @@ function MiddlePanel({
           )}
         </div>
 
-        {/* Thread items (messages + notes) */}
-        <div className="bg-white dark:bg-slate-900 rounded-xl mx-4 mb-2 border border-slate-200 dark:border-slate-700/60 overflow-hidden">
+        {/* Thread items (messages + notes) — rendered directly, no card wrapper */}
+        <div className="bg-white dark:bg-slate-900">
           {threadItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-slate-400">
               <Mail className="h-10 w-10 mb-2 opacity-30" />

@@ -453,25 +453,36 @@ router.get("/communications/conversations/:id", requireAuth, async (req, res) =>
 
   // ── Unread tracking: only mark read for INBOUND messages ──────────────────
   // Never mark a conversation read just because the broker opened their own sent message.
+  //
+  // The unreadCount on the conversation row is reset unconditionally whenever it
+  // is > 0 — regardless of whether individual messages still have isRead=false.
+  // Previously the reset was gated on unreadInbound.length > 0, which meant a
+  // conversation could accumulate a permanent "99+" badge when messages were
+  // already marked isRead by a prior sync but the conversation counter was never
+  // decremented (e.g. after a bulk-read race or re-import).
   const unreadInbound = messages.filter(m => m.direction === "inbound" && !m.isRead);
+
+  // Step 1: mark individual inbound messages as read (only those not yet read)
   if (unreadInbound.length > 0) {
     const ids = unreadInbound.map(m => m.id);
     await db.update(commMessagesTable).set({ isRead: true }).where(inArray(commMessagesTable.id, ids));
-    if (conv.status === "unread" || conv.unreadCount > 0) {
-      await db
-        .update(commConversationsTable)
-        .set({ status: conv.status === "unread" ? "read" : conv.status, unreadCount: 0, updatedAt: new Date() })
-        .where(eq(commConversationsTable.id, convId));
-      broadcastRead(userId, convId);
-    }
+  }
+
+  // Step 2: reset the conversation-level counter unconditionally
+  if (conv.status === "unread" || conv.unreadCount > 0) {
+    await db
+      .update(commConversationsTable)
+      .set({ status: conv.status === "unread" ? "read" : conv.status, unreadCount: 0, updatedAt: new Date() })
+      .where(eq(commConversationsTable.id, convId));
+    broadcastRead(userId, convId);
   }
 
   // Return messages with updated isRead state
   const updatedMessages = messages.map(m =>
     m.direction === "inbound" && !m.isRead ? { ...m, isRead: true } : m,
   );
-  const updatedStatus = conv.status === "unread" && unreadInbound.length > 0 ? "read" : conv.status;
-  const updatedUnreadCount = unreadInbound.length > 0 ? 0 : conv.unreadCount;
+  const updatedStatus = conv.status === "unread" ? "read" : conv.status;
+  const updatedUnreadCount = 0;
 
   return res.json({
     conversation: {

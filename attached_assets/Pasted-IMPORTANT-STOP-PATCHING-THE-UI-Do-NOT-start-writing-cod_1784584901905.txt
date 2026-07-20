@@ -1,0 +1,334 @@
+IMPORTANT: STOP PATCHING THE UI.
+
+Do NOT start writing code immediately.
+
+The Communications module has been "fixed" several times already, but the same problems still exist. This means the issue is architectural, not CSS.
+
+I want you to FIRST perform a complete audit of the Communications module and explain WHY these issues still exist before modifying any code.
+
+====================================================
+PHASE 1 — ROOT CAUSE ANALYSIS (MANDATORY)
+====================================================
+
+Before touching a single line of code, identify:
+
+1. Why is the reading pane still rendered like a messenger/chat application?
+
+2. Which component is still responsible for the "bubble chat" appearance?
+
+3. Which component wraps every email inside a rounded card?
+
+4. Why is the HTML email not rendered exactly as Gmail/Outlook renders it?
+
+5. Why is the entire Communications page scrolling instead of only the email body?
+
+6. Why is pagination still behaving like infinite scroll?
+
+7. Why does the unread badge still show 99+ after multiple previous fixes?
+
+8. Why are conversations still grouped incorrectly?
+
+9. Why do unrelated outbound emails still appear inside one conversation?
+
+10. Which previous fixes never actually replaced the old architecture?
+
+Do NOT say "fixed" unless you have verified the code path.
+
+====================================================
+PHASE 2 — REPLACE THE READING PANE ARCHITECTURE
+====================================================
+
+I DO NOT WANT CSS PATCHES.
+
+I want the reading pane rebuilt to behave like Gmail and Outlook.
+
+Current architecture:
+
+Conversation
+    ↓
+Rounded Card
+        ↓
+Email HTML
+            ↓
+Reply buttons
+
+REMOVE THIS COMPLETELY.
+
+Instead:
+
+Subject
+
+From:
+To:
+Date:
+
+---------------------------------
+
+FULL HTML EMAIL
+
+(no bubble)
+
+(no rounded card)
+
+(no fake chat container)
+
+---------------------------------
+
+Reply
+Reply All
+Forward
+
+The HTML email itself should occupy the available width exactly like Gmail.
+
+Do NOT clip it inside another container.
+
+====================================================
+PHASE 3 — SCROLLING
+====================================================
+
+Scrolling is completely wrong.
+
+I want EXACTLY this behavior:
+
+LEFT COLUMN
+Conversation list
+
+Scrollable independently.
+
+Contains only 40–50 conversations.
+
+Has:
+
+Previous
+
+1 2 3 4 5
+
+Next
+
+No infinite scroll.
+
+=====================
+
+CENTER COLUMN
+
+Reading pane NEVER scrolls the page.
+
+The browser page itself should stay fixed.
+
+Only the email body area should scroll internally.
+
+Exactly like Gmail.
+
+=====================
+
+RIGHT COLUMN
+
+Customer panel
+
+Fixed.
+
+Never scrolls away.
+
+====================================================
+PHASE 4 — THREADING
+====================================================
+
+This is still incorrect.
+
+Right now conversations are grouped by customer.
+
+I DO NOT WANT THAT.
+
+Conversation identity must ONLY use:
+
+Message-ID
+
+In-Reply-To
+
+References
+
+A customer receiving 5 different quotes should create 5 different conversations.
+
+Example:
+
+Quote #25239405
+
+↓
+
+Customer Reply
+
+is ONE conversation.
+
+NOT
+
+Quote A
+
+Quote B
+
+Quote C
+
+Customer Reply
+
+No customer-based merging.
+
+No 14-day fallback.
+
+No email-address-only fallback.
+
+====================================================
+PHASE 5 — UNREAD COUNT
+====================================================
+
+The unread badge is still showing 99+.
+
+Investigate the backend.
+
+Find the exact SQL/API logic responsible.
+
+Determine whether unread is calculated from:
+
+messages
+
+or
+
+conversations.
+
+Fix the calculation.
+
+Opening an email must immediately update the unread count.
+
+Outbound emails must NEVER become unread.
+
+====================================================
+PHASE 6 — PAGINATION
+====================================================
+
+Remove any remaining infinite scrolling.
+
+Conversation list should load:
+
+50 conversations
+
+ONLY.
+
+Bottom should display:
+
+Showing 1–50 of XXXX
+
+Previous
+
+1
+
+2
+
+3
+
+4
+
+...
+
+Next
+
+Changing pages must NOT reload the reading pane unnecessarily.
+
+====================================================
+PHASE 7 — HTML EMAIL RENDERING
+====================================================
+
+The HTML emails are still clipped.
+
+Some emails still appear inside cards.
+
+Render them exactly as Gmail and Outlook.
+
+The renderer should preserve:
+
+full width
+
+tables
+
+images
+
+padding
+
+backgrounds
+
+signatures
+
+inline CSS
+
+responsive layouts
+
+Nothing should be cropped.
+
+====================================================
+PHASE 8 — REMOVE CHAT UI
+====================================================
+
+Delete every remaining messenger/chat UI element.
+
+No speech bubbles.
+
+No message cards.
+
+No avatar-indented replies.
+
+No rounded thread boxes.
+
+No fake messenger styling.
+
+This is an EMAIL CLIENT.
+
+Not Slack.
+
+Not Messenger.
+
+Not Discord.
+
+====================================================
+PHASE 9 — VERIFY AGAINST GMAIL
+====================================================
+
+Open the same email in Gmail and compare.
+
+The Communications page should look nearly identical in behavior:
+
+✔ fixed layout
+
+✔ scrollable email body
+
+✔ full-width HTML
+
+✔ proper threading
+
+✔ separate conversations
+
+✔ real pagination
+
+✔ independent scrolling
+
+====================================================
+FINAL REQUIREMENTS
+====================================================
+
+Before saying "done":
+
+Run:
+
+pnpm typecheck
+
+Run:
+
+pnpm build
+
+Then explain:
+
+1. The root cause of every issue.
+
+2. Which files changed.
+
+3. Which old architecture was removed.
+
+4. Which new architecture replaced it.
+
+Do NOT say "fixed" unless you verified it by tracing the actual code path and confirming the old implementation has been removed.
