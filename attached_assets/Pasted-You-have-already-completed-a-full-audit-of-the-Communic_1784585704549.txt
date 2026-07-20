@@ -1,0 +1,140 @@
+You have already completed a full audit of the Communications module and identified the real root causes. Do NOT redesign or refactor anything else. Do NOT touch pagination, threading logic, mailbox sync, or any working functionality.
+
+Only fix the audited issues below.
+
+==================================================
+1. REMOVE THE CHAT/BUBBLE APPEARANCE COMPLETELY
+==================================================
+
+From your audit:
+
+Communications.tsx still wraps the entire reading pane inside a rounded card.
+
+Remove that wrapper completely.
+
+Requirements:
+
+- Reading pane must look like Gmail / Outlook.
+- No floating rounded container around the email.
+- No "chat" appearance.
+- No messenger style.
+- Email should appear as a normal document directly inside the reading pane.
+
+The only borders should be natural email separators, not a large rounded card.
+
+==================================================
+2. HTML EMAILS MUST DISPLAY FULLY
+==================================================
+
+From your audit you found:
+
+Math.min(600, el.scrollHeight)
+
+This must be removed completely.
+
+Requirements:
+
+- Never cap iframe height.
+- Email height must equal the document height.
+- Remove overflow-hidden that clips emails.
+- Add ResizeObserver so images, fonts and lazy-loaded content resize automatically.
+- HTML emails must display exactly like Gmail and Outlook.
+
+No clipping.
+No white cut-off.
+No missing footer.
+No missing signature.
+
+The email body must render from top to bottom exactly as received.
+
+==================================================
+3. FIX SCROLLING
+==================================================
+
+Current behavior is wrong.
+
+Desired behavior:
+
+LEFT COLUMN
+-------------
+Conversation list
+
+Scrollable
+
+50 conversations per page
+
+CENTER
+-------------
+Reading pane
+
+Remain fixed.
+
+Only the email body itself should scroll if the email is longer than the viewport.
+
+The entire Communications page should NEVER become one giant scrolling page.
+
+RIGHT PANEL
+-------------
+Customer information
+
+Remain fixed.
+
+This should behave exactly like Gmail desktop.
+
+==================================================
+4. FIX UNREAD COUNTER
+==================================================
+
+From your audit:
+
+Conversation unreadCount is not reset correctly.
+
+Fix it exactly as you described.
+
+Requirements:
+
+- Opening a conversation immediately clears unreadCount.
+- Conversation status changes to read.
+- Badge updates instantly.
+- Refresh must not restore the unread badge.
+- No more permanent 99+ badge.
+
+==================================================
+DO NOT CHANGE
+==================================================
+
+DO NOT modify:
+
+- pagination
+- mailbox sync
+- threading
+- conversation grouping
+- Sent Emails page
+- reply composer
+- customer panel
+- APIs unrelated to these fixes
+
+==================================================
+VERIFY
+==================================================
+
+Before stopping:
+
+Run:
+
+pnpm typecheck
+
+Run:
+
+pnpm build
+
+Both must pass.
+
+Then provide a report showing:
+
+1. Which files changed.
+2. What was removed.
+3. What was fixed.
+4. Why each fix solves the original root cause.
+
+Do not say "fixed" unless you have verified the root cause is actually removed.

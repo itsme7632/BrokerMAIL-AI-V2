@@ -2116,28 +2116,26 @@ function MiddlePanel({
         <div className="h-14 px-4 flex items-center border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0">
           <Skeleton className="h-5 w-48" />
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto bg-white dark:bg-slate-900">
           <div className="px-6 pt-5 pb-3">
             <Skeleton className="h-6 w-80 mb-2" />
             <Skeleton className="h-3 w-24" />
           </div>
-          <div className="bg-white dark:bg-slate-900 rounded-xl mx-4 border border-slate-200 dark:border-slate-700/60 overflow-hidden">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 last:border-none space-y-2">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-2">
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="h-3 w-40" />
-                  </div>
-                  <Skeleton className="h-3 w-20 flex-shrink-0" />
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 last:border-none space-y-2">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-40" />
                 </div>
-                <Skeleton className="h-3 w-24" />
-                <div className="border-t border-slate-100 dark:border-slate-800 pt-3 mt-1">
-                  <Skeleton className="h-20 w-full" />
-                </div>
+                <Skeleton className="h-3 w-20 flex-shrink-0" />
               </div>
-            ))}
-          </div>
+              <Skeleton className="h-3 w-24" />
+              <div className="border-t border-slate-100 dark:border-slate-800 pt-3 mt-1">
+                <Skeleton className="h-20 w-full" />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
