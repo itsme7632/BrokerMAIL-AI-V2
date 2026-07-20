@@ -1,0 +1,121 @@
+Before making any changes, inspect the current Communications implementation.
+
+Do NOT rewrite the module.
+
+Only implement the changes below.
+
+1. Remove these folders from the Communications sidebar:
+- Sent
+- Drafts
+- Needs Reply
+- Unread
+
+Reason:
+- Sent Emails already has its own dedicated page and should remain there.
+- Drafts belong under Compose Email.
+- Needs Reply should become a future filter, not permanent navigation.
+- Unread should be a filter/search option rather than a permanent folder.
+
+Keep only:
+
+Inbox
+Starred
+Archived
+Spam
+Trash
+Notifications (or rename to "System")
+
+--------------------------------------------------
+
+2. Keep the existing Sent Emails page exactly as it is.
+
+Do not merge it into Communications.
+
+Do not remove any tracking, search, pagination, or analytics.
+
+--------------------------------------------------
+
+3. Improve the right customer panel.
+
+Instead of mostly empty sections, display:
+
+- Customer name
+- Email
+- Phone (if available)
+- Vehicle
+- Pickup
+- Delivery
+- Quote amount
+- Last contacted
+- Email opens
+- Link clicks
+- Tags
+- Internal notes
+
+Hide empty fields instead of rendering blank cards.
+
+--------------------------------------------------
+
+4. Improve conversation rows.
+
+Each row should display:
+
+Sender
+
+Subject
+
+Preview snippet
+
+Date
+
+Mailbox badge (only in All Mailboxes)
+
+Attachment icon if attachments exist
+
+Unread indicator
+
+Star indicator
+
+--------------------------------------------------
+
+5. Update the page title based on mailbox selection.
+
+Examples:
+
+Inbox — Gmail
+
+Inbox — SMTP
+
+Inbox — All Mailboxes
+
+--------------------------------------------------
+
+6. Simplify the reading toolbar.
+
+Use:
+
+Reply
+Reply All
+Forward
+Archive
+Delete
+More
+
+--------------------------------------------------
+
+7. Do NOT break:
+
+- Gmail sync
+- SMTP sync
+- Threading
+- HTML rendering
+- TypeScript
+- Build
+
+Run:
+
+pnpm typecheck
+
+pnpm build
+
+Only finish if both pass with zero TypeScript errors.

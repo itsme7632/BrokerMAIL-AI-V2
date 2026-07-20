@@ -288,6 +288,21 @@ router.get("/communications/conversations", requireAuth, async (req, res) => {
       messageCount:  commConversationsTable.messageCount,
       unreadCount:   commConversationsTable.unreadCount,
       lastMessageAt: commConversationsTable.lastMessageAt,
+      // Latest message preview snippet (falls back to body prefix when snippet column is empty)
+      snippet: sql<string | null>`(
+        SELECT COALESCE(NULLIF(m.snippet, ''), LEFT(m.body, 200))
+        FROM comm_messages m
+        WHERE m.conversation_id = ${commConversationsTable.id}
+        ORDER BY COALESCE(m.sent_at, m.created_at) DESC NULLS LAST
+        LIMIT 1
+      )`,
+      // True when at least one message has a non-empty attachments_meta JSON array
+      hasAttachments: sql<boolean>`EXISTS (
+        SELECT 1 FROM comm_messages m
+        WHERE m.conversation_id = ${commConversationsTable.id}
+          AND m.attachments_meta IS NOT NULL
+          AND m.attachments_meta != '[]'
+      )`,
     })
     .from(commConversationsTable)
     .where(where)

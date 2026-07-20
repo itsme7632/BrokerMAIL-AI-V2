@@ -56,6 +56,8 @@ type Conversation = {
   messageCount: number;
   unreadCount: number;
   lastMessageAt: string;
+  snippet: string | null;
+  hasAttachments: boolean;
 };
 
 type Message = {
@@ -937,16 +939,21 @@ function ConvItem({
           {conv.subject || "(No subject)"}
         </p>
 
-        {/* Row 3: preview / tags */}
+        {/* Row 3: snippet + badges */}
         <div className="flex items-center gap-1.5 mt-0.5">
           {isSystem ? (
             <span className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-0.5 truncate">
               <AlertTriangle className="h-2.5 w-2.5 flex-shrink-0" /> Delivery notification
             </span>
           ) : (
-            <span className="text-[11px] text-slate-400 dark:text-slate-500 truncate flex-1 font-normal">{conv.customerEmail}</span>
+            <span className="text-[11px] text-slate-400 dark:text-slate-500 truncate flex-1 font-normal">
+              {conv.snippet || conv.customerEmail}
+            </span>
           )}
           <div className="flex items-center gap-1 flex-shrink-0">
+            {conv.hasAttachments && (
+              <Paperclip className="h-2.5 w-2.5 text-slate-400 dark:text-slate-500 flex-shrink-0" />
+            )}
             {/* Mailbox type badge — only when "All Mailboxes" is selected */}
             {showMailboxBadge && conv.mailboxType && (
               <span className={cn(
@@ -981,26 +988,16 @@ const FILTER_GROUPS: {
 }[] = [
   {
     items: [
-      { key: "inbox",       label: "Inbox",         icon: Inbox },
-      { key: "starred",     label: "Starred",        icon: Star },
-      { key: "sent",        label: "Sent",           icon: Send },
-      { key: "drafts",      label: "Drafts",         icon: FileText },
-      { key: "all",         label: "All Mail",       icon: MoreHorizontal },
-    ],
-  },
-  {
-    label: "Categories",
-    items: [
-      { key: "unread",      label: "Unread",         icon: Mail },
-      { key: "needs_reply", label: "Needs Reply",    icon: CornerDownLeft },
+      { key: "inbox",    label: "Inbox",   icon: Inbox },
+      { key: "starred",  label: "Starred", icon: Star },
     ],
   },
   {
     items: [
-      { key: "archived",    label: "Archived",       icon: Archive },
-      { key: "spam",        label: "Spam",           icon: Ban },
-      { key: "trash",       label: "Trash",          icon: Trash2 },
-      { key: "system",      label: "Notifications",  icon: AlertTriangle },
+      { key: "archived", label: "Archived",      icon: Archive },
+      { key: "spam",     label: "Spam",           icon: Ban },
+      { key: "trash",    label: "Trash",           icon: Trash2 },
+      { key: "system",   label: "Notifications",  icon: AlertTriangle },
     ],
   },
 ];
@@ -1173,7 +1170,7 @@ function ConversationListPanel({
   selectedId, onSelect,
   selectedIds, onToggleSelect, onBulkAction,
   onLoadMore, hasMore, isFetchingMore,
-  onRefresh, showMailboxBadge,
+  onRefresh, showMailboxBadge, mailboxLabel,
 }: {
   filter: FilterKey;
   search: string; setSearch: (s: string) => void;
@@ -1187,6 +1184,7 @@ function ConversationListPanel({
   isFetchingMore: boolean;
   onRefresh: () => void;
   showMailboxBadge: boolean;
+  mailboxLabel: string;
 }) {
   const queryClient = useQueryClient();
   const showCheckboxes = selectedIds.size > 0;
@@ -1214,6 +1212,7 @@ function ConversationListPanel({
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
             {FILTER_LABELS[filter] ?? filter}
+            <span className="font-normal text-slate-400"> — {mailboxLabel}</span>
             {total > 0 && <span className="ml-1.5 text-[11px] text-slate-400 font-normal">{total}</span>}
           </h2>
           <button
@@ -2129,35 +2128,48 @@ function MiddlePanel({
           </p>
         </div>
 
-        {/* Action toolbar */}
+        {/* Action toolbar: Reply · Reply All · Forward · Archive · Delete · More */}
         <div className="flex items-center gap-0.5 flex-shrink-0">
-          {/* Reply button — quick access to composer from the reading pane header */}
           {!isSystem && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => setComposerTrigger({ mode: "reply", ts: Date.now() })}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-xs font-medium"
-                >
-                  <CornerDownLeft className="h-3.5 w-3.5" />
-                  <span className="hidden xl:inline">Reply</span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Reply (R)</TooltipContent>
-            </Tooltip>
-          )}
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setComposerTrigger({ mode: "reply", ts: Date.now() })}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-xs font-medium"
+                  >
+                    <CornerDownLeft className="h-3.5 w-3.5" />
+                    <span className="hidden xl:inline">Reply</span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Reply (R)</TooltipContent>
+              </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => updateMutation.mutate({ starred: !conv.starred })}
-                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                <Star className={cn("h-4 w-4", conv.starred ? "fill-amber-400 text-amber-400" : "text-slate-400")} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>{conv.starred ? "Unstar" : "Star"}</TooltipContent>
-          </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setComposerTrigger({ mode: "reply_all", ts: Date.now() })}
+                    className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors"
+                  >
+                    <ReplyAll className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Reply All</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setComposerTrigger({ mode: "forward", ts: Date.now() })}
+                    className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors"
+                  >
+                    <Forward className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Forward</TooltipContent>
+              </Tooltip>
+            </>
+          )}
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -2174,30 +2186,13 @@ function MiddlePanel({
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={() => updateMutation.mutate({ status: "unread" })}
-                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors"
+                onClick={() => updateMutation.mutate({ status: "trash" })}
+                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
               >
-                <Mail className="h-4 w-4" />
+                <Trash2 className="h-4 w-4" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Mark Unread</TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setShowAI(v => !v)}
-                className={cn(
-                  "p-1.5 rounded-lg transition-colors",
-                  showAI
-                    ? "bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400"
-                    : "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400",
-                )}
-              >
-                <Sparkles className="h-4 w-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>AI Assistant</TooltipContent>
+            <TooltipContent>Move to Trash</TooltipContent>
           </Tooltip>
 
           {deleteConfirm ? (
@@ -2219,16 +2214,26 @@ function MiddlePanel({
                   <MoreHorizontal className="h-4 w-4" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onClick={() => updateMutation.mutate({ starred: !conv.starred })} className="gap-2 text-xs">
+                  <Star className={cn("h-3.5 w-3.5", conv.starred ? "fill-amber-400 text-amber-400" : "")} />
+                  {conv.starred ? "Unstar" : "Star"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => updateMutation.mutate({ status: "unread" })} className="gap-2 text-xs">
+                  <Mail className="h-3.5 w-3.5" /> Mark Unread
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setShowAI(v => !v)}
+                  className={cn("gap-2 text-xs", showAI && "text-violet-600 dark:text-violet-400")}
+                >
+                  <Sparkles className="h-3.5 w-3.5" /> AI Assistant
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => updateMutation.mutate({ status: "needs_reply" })} className="gap-2 text-xs">
                   <CornerDownLeft className="h-3.5 w-3.5" /> Mark Needs Reply
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => updateMutation.mutate({ status: "replied" })} className="gap-2 text-xs">
                   <CheckCircle2 className="h-3.5 w-3.5" /> Mark Replied
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => updateMutation.mutate({ status: "trash" })} className="gap-2 text-xs">
-                  <Trash2 className="h-3.5 w-3.5" /> Move to Trash
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -2433,16 +2438,16 @@ function RightPanel({ selectedId, onClose, showCloseButton, currentUserId }: {
   const color = avatarColor(conv.customerEmail);
 
   const fields = [
-    { icon: Mail,         label: "Email",    value: conv.customerEmail, copyable: true },
-    { icon: Phone,        label: "Phone",    value: conv.customerPhone, tel: true },
-    { icon: Truck,        label: "Vehicle",  value: lead?.vehicle },
-    { icon: MapPin,       label: "Route",    value: lead?.route },
-    { icon: MapPin,       label: "Pickup",   value: lead?.pickup },
-    { icon: MapPin,       label: "Delivery", value: lead?.delivery },
-    { icon: DollarSign,   label: "Quote",    value: lead?.price },
-    { icon: Tag,          label: "Quote ID", value: lead?.quoteId },
-    { icon: Megaphone,    label: "Campaign", value: campaign?.name },
-    { icon: CheckCircle2, label: "Status",   value: lead?.status },
+    { icon: Mail,         label: "Email",          value: conv.customerEmail, copyable: true },
+    { icon: Phone,        label: "Phone",          value: conv.customerPhone, tel: true },
+    { icon: Truck,        label: "Vehicle",        value: lead?.vehicle },
+    { icon: MapPin,       label: "Pickup",         value: lead?.pickup },
+    { icon: MapPin,       label: "Delivery",       value: lead?.delivery },
+    { icon: DollarSign,   label: "Quote",          value: lead?.price },
+    { icon: Tag,          label: "Quote ID",       value: lead?.quoteId },
+    { icon: Megaphone,    label: "Campaign",       value: campaign?.name },
+    { icon: CheckCircle2, label: "Status",         value: lead?.status },
+    { icon: Clock,        label: "Last contacted", value: timeAgo(conv.lastMessageAt) },
   ].filter(f => f.value) as { icon: any; label: string; value: string; copyable?: boolean; tel?: boolean }[];
 
   return (
@@ -2593,13 +2598,6 @@ function RightPanel({ selectedId, onClose, showCloseButton, currentUserId }: {
         )}
       </PanelSection>
 
-      {/* Tasks — placeholder */}
-      <PanelSection title="Tasks" sectionKey="tasks" defaultOpen={false}>
-        <div className="pt-1 flex flex-col items-center py-3 text-center">
-          <ListTodo className="h-6 w-6 text-slate-300 dark:text-slate-600 mb-1.5" />
-          <p className="text-xs text-slate-400 dark:text-slate-500">Tasks coming soon</p>
-        </div>
-      </PanelSection>
     </div>
   );
 }
@@ -2644,6 +2642,15 @@ export default function Communications() {
     queryFn: () => apiFetch("/api/communications/mailboxes"),
     staleTime: 5 * 60_000,
   });
+
+  // Human-readable label for the selected mailbox, used in the list-panel title
+  // e.g. "Inbox — Gmail" / "Inbox — hello@domain.com (SMTP)" / "Inbox — All Mailboxes"
+  const mailboxLabel = useMemo(() => {
+    if (selectedMailboxId === null) return "All Mailboxes";
+    const mb = mailboxes.find(m => String(m.id) === String(selectedMailboxId));
+    if (!mb) return "All Mailboxes";
+    return mb.type === "gmail" ? "Gmail" : "SMTP";
+  }, [selectedMailboxId, mailboxes]);
 
   // Reset pagination whenever the filter, search, or mailbox changes
   useEffect(() => {
@@ -2840,6 +2847,7 @@ export default function Communications() {
           isFetchingMore={isFetchingMore}
           onRefresh={handleRefresh}
           showMailboxBadge={selectedMailboxId === null}
+          mailboxLabel={mailboxLabel}
         />
       </div>
 
