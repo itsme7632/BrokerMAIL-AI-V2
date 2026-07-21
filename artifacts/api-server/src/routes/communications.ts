@@ -996,42 +996,54 @@ router.get("/communications/sync-status", requireAuth, async (req, res) => {
 
 router.post("/communications/repair", requireAuth, async (req, res) => {
   const userId = (req as any).user.id as number;
+  const t0 = Date.now();
+  const BATCH = 100; // conversations per transaction
 
-  // ── Step 1: recompute unreadCount from actual isRead flags ───────────────
-  // Count unread inbound messages per conversation and sync the counter.
-  // This is more accurate than just zeroing non-unread conversations — it
-  // corrects inflated counts (99+) on conversations the user DID open but
-  // whose counter wasn't reset (e.g. due to cache hits bypassing the GET handler).
-  const allConvs = await db
-    .select({ id: commConversationsTable.id, status: commConversationsTable.status, unreadCount: commConversationsTable.unreadCount })
-    .from(commConversationsTable)
-    .where(eq(commConversationsTable.userId, userId));
+  // ── Step 1: Bulk-recompute unreadCount (single CTE UPDATE) ───────────────
+  // BEFORE: 1 SELECT per conv + 1 UPDATE per mismatch  = O(N) round-trips
+  // AFTER:  1 CTE UPDATE touching only mismatched rows = 1 round-trip
+  const s1 = Date.now();
+  const step1 = await db.execute(sql`
+    WITH counts AS (
+      SELECT c.id,
+             COALESCE(m.cnt, 0)::int AS real_count
+      FROM   comm_conversations c
+      LEFT JOIN (
+        SELECT   conversation_id, count(*)::int AS cnt
+        FROM     comm_messages
+        WHERE    direction = 'inbound' AND is_read = false
+        GROUP BY conversation_id
+      ) m ON m.conversation_id = c.id
+      WHERE  c.user_id = ${userId}
+    ),
+    updated AS (
+      UPDATE comm_conversations cc
+      SET    unread_count = counts.real_count,
+             status = CASE
+               WHEN counts.real_count > 0 THEN 'unread'
+               WHEN cc.status = 'unread'  THEN 'read'
+               ELSE cc.status
+             END,
+             updated_at = now()
+      FROM   counts
+      WHERE  cc.id = counts.id
+        AND  (cc.unread_count <> counts.real_count
+              OR (cc.status = 'unread' AND counts.real_count = 0))
+      RETURNING cc.id
+    )
+    SELECT count(*)::int AS fixed FROM updated
+  `);
+  const fixedUnreadCounts = Number((step1.rows[0] as any)?.fixed ?? 0);
+  logger.info(`[repair] Step 1 completed — ${fixedUnreadCounts} unread counts fixed in ${Date.now() - s1}ms`);
 
-  let fixedUnreadCounts = 0;
-  for (const conv of allConvs) {
-    const [row] = await db
-      .select({ cnt: sql<number>`count(*)::int` })
-      .from(commMessagesTable)
-      .where(and(
-        eq(commMessagesTable.conversationId, conv.id),
-        eq(commMessagesTable.direction, "inbound"),
-        eq(commMessagesTable.isRead, false),
-      ));
-    const realCount = row?.cnt ?? 0;
-    const expectedStatus = realCount > 0 ? "unread" : (conv.status === "unread" ? "read" : conv.status);
-    if (realCount !== conv.unreadCount || (conv.status === "unread" && realCount === 0)) {
-      await db
-        .update(commConversationsTable)
-        .set({ unreadCount: realCount, status: expectedStatus, updatedAt: new Date() })
-        .where(eq(commConversationsTable.id, conv.id));
-      fixedUnreadCounts++;
-    }
-  }
+  // ── Step 2: Split all-inbound multi-message conversations ────────────────
+  // BEFORE: per-conv SELECT (full row) + per-conv SELECT (messages) = O(2N) queries
+  // AFTER:  1 batch SELECT convs + 1 batch SELECT messages, group in-memory
+  const s2 = Date.now();
+  let conversationsSplit = 0;
+  let messagesMoved = 0;
 
-  // ── Step 2: split all-inbound multi-message conversations ────────────────
-  // Conversations where the broker never replied but multiple inbound messages
-  // were merged — typical for automated notification chains from dispatch/carrier.
-  const allInboundConvs = await db
+  const allInboundConvIds = await db
     .select({ id: commConversationsTable.id })
     .from(commConversationsTable)
     .where(and(
@@ -1044,92 +1056,113 @@ router.post("/communications/repair", requireAuth, async (req, res) => {
       )`,
     ));
 
-  let conversationsSplit = 0;
-  let messagesMoved = 0;
+  if (allInboundConvIds.length > 0) {
+    const ids2 = allInboundConvIds.map(r => r.id);
 
-  async function splitExtraMessages(
-    convId: number,
-    origConv: typeof commConversationsTable.$inferSelect,
-    msgs: typeof commMessagesTable.$inferSelect[],
-    firstMsg: typeof commMessagesTable.$inferSelect,
-    restMsgs: typeof commMessagesTable.$inferSelect[],
-  ) {
-    await db
-      .update(commConversationsTable)
-      .set({
-        messageCount:  1,
-        unreadCount:   firstMsg.isRead ? 0 : 1,
-        status:        firstMsg.isRead ? (origConv.status === "unread" ? "read" : origConv.status) : "unread",
-        subject:       firstMsg.subject ?? origConv.subject,
-        lastMessageAt: firstMsg.sentAt ?? firstMsg.createdAt,
-        updatedAt:     new Date(),
-      })
-      .where(eq(commConversationsTable.id, convId));
+    // Load all qualifying conversation rows in one query
+    const convRows2 = await db
+      .select()
+      .from(commConversationsTable)
+      .where(inArray(commConversationsTable.id, ids2));
+    const convMap2 = new Map(convRows2.map(c => [c.id, c]));
 
-    for (const msg of restMsgs) {
-      const [newConv] = await db
-        .insert(commConversationsTable)
-        .values({
-          userId:        origConv.userId,
-          mailboxId:     origConv.mailboxId ?? null,
-          leadId:        origConv.leadId ?? null,
-          campaignId:    origConv.campaignId ?? null,
-          subject:       msg.subject ?? origConv.subject,
-          customerName:  msg.fromName ?? origConv.customerName,
-          customerEmail: msg.fromEmail ?? origConv.customerEmail,
-          customerPhone: origConv.customerPhone ?? null,
-          status:        msg.isRead ? "read" : "unread",
-          starred:       false,
-          messageCount:  1,
-          unreadCount:   msg.isRead ? 0 : 1,
-          lastMessageAt: msg.sentAt ?? msg.createdAt,
-        })
-        .returning({ id: commConversationsTable.id });
-
-      await db
-        .update(commMessagesTable)
-        .set({ conversationId: newConv.id })
-        .where(eq(commMessagesTable.id, msg.id));
-
-      messagesMoved++;
-    }
-    conversationsSplit++;
-  }
-
-  for (const { id: convId } of allInboundConvs) {
-    const [origConv] = await db.select().from(commConversationsTable).where(eq(commConversationsTable.id, convId));
-    if (!origConv) continue;
-
-    const msgs = await db
+    // Load all messages for all qualifying conversations in one query
+    const allMsgs2 = await db
       .select()
       .from(commMessagesTable)
-      .where(eq(commMessagesTable.conversationId, convId))
+      .where(inArray(commMessagesTable.conversationId, ids2))
       .orderBy(commMessagesTable.sentAt);
 
-    if (msgs.length <= 1) continue;
-    const [firstMsg, ...restMsgs] = msgs;
-    await splitExtraMessages(convId, origConv, msgs, firstMsg!, restMsgs);
-  }
+    // Group messages by conversation in memory
+    const msgsByConv2 = new Map<number, typeof allMsgs2>();
+    for (const msg of allMsgs2) {
+      const arr = msgsByConv2.get(msg.conversationId) ?? [];
+      arr.push(msg);
+      msgsByConv2.set(msg.conversationId, arr);
+    }
 
-  // ── Step 3: split mixed conversations with off-sender inbound messages ───
-  // These are conversations that DO have an outbound message (broker initiated)
-  // but also contain inbound messages from email addresses OTHER than the
-  // conversation's customerEmail. These are automated notifications (dispatch
-  // systems, carriers) that were incorrectly threaded in via References headers.
-  // The previous repair missed them entirely because it required NOT EXISTS outbound.
+    // Process BATCH conversations per transaction
+    for (let i = 0; i < ids2.length; i += BATCH) {
+      const batch = ids2.slice(i, i + BATCH);
+      await db.transaction(async (tx) => {
+        for (const convId of batch) {
+          const origConv = convMap2.get(convId);
+          if (!origConv) continue;
+          const msgs = msgsByConv2.get(convId) ?? [];
+          if (msgs.length <= 1) continue;
+
+          const [firstMsg, ...restMsgs] = msgs;
+          if (!firstMsg) continue;
+
+          await tx
+            .update(commConversationsTable)
+            .set({
+              messageCount:  1,
+              unreadCount:   firstMsg.isRead ? 0 : 1,
+              status:        firstMsg.isRead
+                ? (origConv.status === "unread" ? "read" : origConv.status)
+                : "unread",
+              subject:       firstMsg.subject ?? origConv.subject,
+              lastMessageAt: firstMsg.sentAt ?? firstMsg.createdAt,
+              updatedAt:     new Date(),
+            })
+            .where(eq(commConversationsTable.id, convId));
+
+          for (const msg of restMsgs) {
+            const [newConv] = await tx
+              .insert(commConversationsTable)
+              .values({
+                userId:        origConv.userId,
+                mailboxId:     origConv.mailboxId ?? null,
+                leadId:        origConv.leadId ?? null,
+                campaignId:    origConv.campaignId ?? null,
+                subject:       msg.subject ?? origConv.subject,
+                customerName:  msg.fromName ?? origConv.customerName,
+                customerEmail: msg.fromEmail ?? origConv.customerEmail,
+                customerPhone: origConv.customerPhone ?? null,
+                status:        msg.isRead ? "read" : "unread",
+                starred:       false,
+                messageCount:  1,
+                unreadCount:   msg.isRead ? 0 : 1,
+                lastMessageAt: msg.sentAt ?? msg.createdAt,
+              })
+              .returning({ id: commConversationsTable.id });
+
+            await tx
+              .update(commMessagesTable)
+              .set({ conversationId: newConv.id })
+              .where(eq(commMessagesTable.id, msg.id));
+
+            messagesMoved++;
+          }
+          conversationsSplit++;
+        }
+      });
+      logger.info(`[repair] Step 2 batch ${Math.ceil((i + BATCH) / BATCH)} — ${Math.min(i + BATCH, ids2.length)}/${ids2.length} convs processed`);
+    }
+  }
+  logger.info(`[repair] Step 2 completed — ${conversationsSplit} split, ${messagesMoved} moved in ${Date.now() - s2}ms`);
+
+  // ── Step 3: Split mixed conversations (outbound + foreign inbound) ────────
+  // BEFORE: per-conv SELECT (full) + per-conv SELECT (foreign msgs)
+  //         + per-conv SELECT count + SELECT lastMsg + UPDATE = O(5N) queries
+  // AFTER:  1 batch SELECT convs + 1 batch SELECT inbound msgs (filter in-memory)
+  //         + 1 bulk UPDATE … FROM (subquery) for all recounts = 3 batch queries
+  const s3 = Date.now();
+  const splitBefore3 = conversationsSplit;
+  const movedBefore3 = messagesMoved;
+
   const mixedConvs = await db
     .select({ id: commConversationsTable.id, customerEmail: commConversationsTable.customerEmail })
     .from(commConversationsTable)
     .where(and(
       eq(commConversationsTable.userId, userId),
       sql`${commConversationsTable.messageCount} > 1`,
-      // Must have at least one outbound (otherwise step 2 handled it)
       sql`EXISTS (
         SELECT 1 FROM comm_messages _cm
         WHERE _cm.conversation_id = ${commConversationsTable.id}
           AND _cm.direction = 'outbound'
       )`,
-      // Must have at least one inbound from a DIFFERENT sender than customerEmail
       sql`EXISTS (
         SELECT 1 FROM comm_messages _cm
         WHERE _cm.conversation_id = ${commConversationsTable.id}
@@ -1138,82 +1171,112 @@ router.post("/communications/repair", requireAuth, async (req, res) => {
       )`,
     ));
 
-  for (const { id: convId, customerEmail } of mixedConvs) {
-    const [origConv] = await db.select().from(commConversationsTable).where(eq(commConversationsTable.id, convId));
-    if (!origConv) continue;
+  if (mixedConvs.length > 0) {
+    const ids3 = mixedConvs.map(r => r.id);
+    const custEmailMap = new Map(mixedConvs.map(r => [r.id, r.customerEmail]));
 
-    // Collect all inbound messages whose fromEmail doesn't match customerEmail
-    const foreignInbound = await db
+    // Load all full conversation rows in one query
+    const convRows3 = await db
+      .select()
+      .from(commConversationsTable)
+      .where(inArray(commConversationsTable.id, ids3));
+    const convMap3 = new Map(convRows3.map(c => [c.id, c]));
+
+    // Load ALL inbound messages for these convs in one query, filter foreign in-memory
+    const allInbound3 = await db
       .select()
       .from(commMessagesTable)
       .where(and(
-        eq(commMessagesTable.conversationId, convId),
+        inArray(commMessagesTable.conversationId, ids3),
         eq(commMessagesTable.direction, "inbound"),
-        sql`lower(${commMessagesTable.fromEmail}) != lower(${customerEmail})`,
       ))
       .orderBy(commMessagesTable.sentAt);
 
-    if (foreignInbound.length === 0) continue;
-
-    // Each foreign-sender inbound message becomes its own conversation
-    for (const msg of foreignInbound) {
-      const [newConv] = await db
-        .insert(commConversationsTable)
-        .values({
-          userId:        origConv.userId,
-          mailboxId:     origConv.mailboxId ?? null,
-          leadId:        null,
-          campaignId:    null,
-          subject:       msg.subject ?? origConv.subject,
-          customerName:  msg.fromName ?? (msg.fromEmail.split("@")[0] ?? msg.fromEmail),
-          customerEmail: msg.fromEmail,
-          customerPhone: null,
-          status:        msg.isRead ? "read" : "unread",
-          starred:       false,
-          messageCount:  1,
-          unreadCount:   msg.isRead ? 0 : 1,
-          lastMessageAt: msg.sentAt ?? msg.createdAt,
-        })
-        .returning({ id: commConversationsTable.id });
-
-      await db
-        .update(commMessagesTable)
-        .set({ conversationId: newConv.id })
-        .where(eq(commMessagesTable.id, msg.id));
-
-      messagesMoved++;
+    const foreignByConv3 = new Map<number, typeof allInbound3>();
+    for (const msg of allInbound3) {
+      const custEmail = custEmailMap.get(msg.conversationId) ?? "";
+      if ((msg.fromEmail ?? "").toLowerCase() !== custEmail.toLowerCase()) {
+        const arr = foreignByConv3.get(msg.conversationId) ?? [];
+        arr.push(msg);
+        foreignByConv3.set(msg.conversationId, arr);
+      }
     }
 
-    // Recount original conversation
-    const [remaining] = await db
-      .select({ cnt: sql<number>`count(*)::int` })
-      .from(commMessagesTable)
-      .where(eq(commMessagesTable.conversationId, convId));
+    // Process BATCH conversations per transaction
+    for (let i = 0; i < ids3.length; i += BATCH) {
+      const batch = ids3.slice(i, i + BATCH);
+      const affectedInBatch: number[] = [];
 
-    const remainingCount = remaining?.cnt ?? 0;
-    const [lastMsg] = await db
-      .select({ sentAt: commMessagesTable.sentAt, createdAt: commMessagesTable.createdAt })
-      .from(commMessagesTable)
-      .where(eq(commMessagesTable.conversationId, convId))
-      .orderBy(desc(commMessagesTable.sentAt))
-      .limit(1);
+      await db.transaction(async (tx) => {
+        for (const convId of batch) {
+          const origConv = convMap3.get(convId);
+          if (!origConv) continue;
+          const foreignInbound = foreignByConv3.get(convId) ?? [];
+          if (foreignInbound.length === 0) continue;
 
-    await db
-      .update(commConversationsTable)
-      .set({
-        messageCount:  Math.max(0, remainingCount),
-        lastMessageAt: lastMsg?.sentAt ?? lastMsg?.createdAt ?? origConv.lastMessageAt,
-        updatedAt:     new Date(),
-      })
-      .where(eq(commConversationsTable.id, convId));
+          affectedInBatch.push(convId);
 
-    conversationsSplit++;
+          for (const msg of foreignInbound) {
+            const [newConv] = await tx
+              .insert(commConversationsTable)
+              .values({
+                userId:        origConv.userId,
+                mailboxId:     origConv.mailboxId ?? null,
+                leadId:        null,
+                campaignId:    null,
+                subject:       msg.subject ?? origConv.subject,
+                customerName:  msg.fromName ?? (msg.fromEmail?.split("@")[0] ?? msg.fromEmail ?? ""),
+                customerEmail: msg.fromEmail ?? "",
+                customerPhone: null,
+                status:        msg.isRead ? "read" : "unread",
+                starred:       false,
+                messageCount:  1,
+                unreadCount:   msg.isRead ? 0 : 1,
+                lastMessageAt: msg.sentAt ?? msg.createdAt,
+              })
+              .returning({ id: commConversationsTable.id });
+
+            await tx
+              .update(commMessagesTable)
+              .set({ conversationId: newConv.id })
+              .where(eq(commMessagesTable.id, msg.id));
+
+            messagesMoved++;
+          }
+          conversationsSplit++;
+        }
+      });
+
+      // Bulk recount original conversations in this batch — 1 UPDATE replaces 3N queries
+      if (affectedInBatch.length > 0) {
+        await db.execute(sql`
+          UPDATE comm_conversations cc
+          SET    message_count   = COALESCE(sub.cnt, 0),
+                 last_message_at = sub.last_at,
+                 updated_at      = now()
+          FROM (
+            SELECT   conversation_id,
+                     count(*)::int                             AS cnt,
+                     max(COALESCE(sent_at, created_at))       AS last_at
+            FROM     comm_messages
+            WHERE    conversation_id IN (${sql.join(affectedInBatch.map(id => sql`${id}`), sql`, `)})
+            GROUP BY conversation_id
+          ) sub
+          WHERE cc.id = sub.conversation_id
+        `);
+      }
+
+      logger.info(`[repair] Step 3 batch ${Math.ceil((i + BATCH) / BATCH)} — ${Math.min(i + BATCH, ids3.length)}/${ids3.length} convs processed`);
+    }
   }
+  logger.info(`[repair] Step 3 completed — ${conversationsSplit - splitBefore3} split, ${messagesMoved - movedBefore3} moved in ${Date.now() - s3}ms`);
+  logger.info(`[repair] Total time: ${Date.now() - t0}ms`);
 
   return res.json({
     fixedUnreadCounts,
     conversationsSplit,
     messagesMoved,
+    timingMs: Date.now() - t0,
   });
 });
 
