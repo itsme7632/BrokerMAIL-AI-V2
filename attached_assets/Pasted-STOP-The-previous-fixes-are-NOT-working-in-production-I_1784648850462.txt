@@ -1,0 +1,319 @@
+STOP.
+
+The previous fixes are NOT working in production.
+
+I deployed your changes.
+
+The production screenshots prove the implementation is still incorrect.
+
+Do NOT read the code and assume it is correct.
+
+Do NOT tell me "the code already does this."
+
+The production behavior is the source of truth.
+
+You must reproduce each issue locally, trace the execution path, find the exact failing code, and only then modify it.
+
+===========================================================
+BUG #1 - PAGE STILL SCROLLS
+===========================================================
+
+Current behavior:
+
+The ENTIRE Communications page scrolls.
+
+This is wrong.
+
+Desired behavior:
+
+LEFT COLUMN
+-------------
+Conversation list
+
+Independent scrollbar only.
+
+CENTER
+-------------
+Reading pane
+
+Fixed height.
+
+Only the EMAIL BODY scrolls.
+
+RIGHT
+-------------
+Customer panel
+
+Fixed.
+
+Exactly like Gmail desktop.
+
+DO NOT just add more CSS.
+
+Trace every parent container from AppLayout down to:
+
+Communications
+
+MiddlePanel
+
+ThreadBody
+
+EmailRenderer
+
+Identify which container expands beyond the viewport.
+
+Replace the layout if necessary.
+
+===========================================================
+BUG #2 - THREADING IS STILL WRONG
+===========================================================
+
+Production still groups unrelated emails together.
+
+Example:
+
+Dispatch
+
+Order posted
+
+Order unposted
+
+Order posted
+
+Order unposted
+
+These MUST NOT become one conversation.
+
+Every outbound email must create a NEW conversation.
+
+Only if a customer replies to THAT email should it become threaded.
+
+Conversation identity must ONLY use
+
+Message-ID
+
+In-Reply-To
+
+References
+
+NO sender grouping
+
+NO subject grouping
+
+NO email-address grouping
+
+NO seeding by email address
+
+The repair endpoint returned
+
+{
+  fixedUnreadCounts: 0,
+  conversationsSplit: 0,
+  messagesMoved: 0
+}
+
+while production still contains incorrectly grouped conversations.
+
+This proves the repair logic is NOT matching the real production data.
+
+Find out WHY.
+
+Fix the repair routine.
+
+If necessary completely rewrite it.
+
+===========================================================
+BUG #3 - 99+ UNREAD STILL EXISTS
+===========================================================
+
+Production still shows
+
+99+
+
+Your previous fix did NOT solve it.
+
+Trace:
+
+Mailbox Sync
+
+↓
+
+Database
+
+↓
+
+Conversation table
+
+↓
+
+Stats endpoint
+
+↓
+
+Conversation API
+
+↓
+
+Sidebar badge
+
+↓
+
+Conversation row badge
+
+Find exactly where the unread count becomes incorrect.
+
+Do not guess.
+
+Use logging.
+
+Then fix it.
+
+===========================================================
+BUG #4 - CUSTOMER EMAILS SHOW RAW MIME
+===========================================================
+
+This is a NEW bug.
+
+Some customer emails display
+
+Content-Type:
+
+Content-Transfer-Encoding:
+
+Base64
+
+------MIME Boundary------
+
+VGhpcyBpcyBhIGJhc2U2NCBlbWFpbA...
+
+This should NEVER happen.
+
+Decode MIME correctly.
+
+Requirements:
+
+If HTML exists
+
+Render HTML.
+
+Otherwise
+
+Decode Base64 text/plain.
+
+Never display
+
+Content-Type
+
+Content-Transfer-Encoding
+
+MIME boundaries
+
+Raw Base64
+
+The Communications page must display the readable email exactly like Gmail.
+
+===========================================================
+BUG #5 - EVERY EMAIL PREVIEW SAYS "HELLO"
+===========================================================
+
+Production shows almost every conversation preview as
+
+Hello
+
+even when the email body is completely different.
+
+This is incorrect.
+
+The preview/snippet generation is broken.
+
+Requirements:
+
+Generate the preview exactly like Gmail.
+
+The snippet should be:
+
+• first readable sentence
+
+• decoded text
+
+• HTML stripped
+
+• MIME stripped
+
+• Base64 decoded
+
+• whitespace normalized
+
+Never use a hardcoded string.
+
+Never always return "Hello".
+
+Find why the snippet generator keeps producing "Hello".
+
+Fix it.
+
+===========================================================
+BUG #6 - DO NOT CLAIM FIXES FROM SOURCE CODE
+===========================================================
+
+The previous audit claimed
+
+✓ scrolling fixed
+
+✓ threading fixed
+
+✓ unread fixed
+
+Production disproved all of them.
+
+This time:
+
+Reproduce every issue.
+
+Trace the execution path.
+
+Verify with actual rendered output.
+
+Only then modify the code.
+
+===========================================================
+AFTER FIXING
+===========================================================
+
+Run
+
+pnpm typecheck
+
+Run
+
+pnpm build
+
+Both must pass.
+
+Then provide
+
+1.
+
+Root cause for EACH bug.
+
+2.
+
+Files changed.
+
+3.
+
+Functions changed.
+
+4.
+
+Why the previous implementation failed.
+
+5.
+
+How you VERIFIED the fix.
+
+Do NOT say "fixed"
+
+unless you actually reproduced the issue, corrected it, and verified the rendered behavior.
+
+Do NOT stop until all six production issues are resolved.

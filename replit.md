@@ -16,8 +16,17 @@ A production-ready AI SaaS for vehicle shipping brokers — upload CSV/XLSX lead
 - Status: DATABASE_URL and SESSION_SECRET are set; OPENAI_API_KEY is not set yet (user declined on initial setup) — AI email generation will fail until it's added.
 
 ## First-time setup (after import or clone)
-1. Run `pnpm --filter db push` — creates all database tables (must be done before starting the API server for the first time)
-2. Start the API server — it will seed default plans and an admin account on first boot
+1. `pnpm install` — install all workspace dependencies (required; node_modules is gitignored)
+2. `pnpm --filter @workspace/db run push` — push the Drizzle schema to the database (creates all tables)
+3. Start the **API Server** workflow — seeds default plans and an admin account (`admin@brokermail.ai`) on first boot
+4. Start the **Start application** workflow — serves the Vite frontend on port 24622
+
+### Initial setup status (completed 2026-07-21)
+- `pnpm install` run — all 582 packages installed
+- `pnpm --filter @workspace/db run push` run — all tables created
+- API Server restarted — schema validated OK, plans seeded, admin account seeded
+- Both workflows running: frontend on port 24622, API on port 8080
+- **Still needed:** `OPENAI_API_KEY` (AI generation), `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REDIRECT_URI` (Gmail OAuth)
 
 ## Stack
 
