@@ -81,7 +81,6 @@ router.get("/composer/mailboxes", requireAuth, async (req, res) => {
         smtpUser:  mailboxesTable.smtpUser,
         fromName:  mailboxesTable.fromName,
         smtpHost:  mailboxesTable.smtpHost,
-        imapHost:  mailboxesTable.imapHost,
         isActive:  mailboxesTable.isActive,
       })
       .from(mailboxesTable)
