@@ -227,13 +227,24 @@ export function AdminOverview({ onNavigateTab }: { onNavigateTab: (tab: string) 
   const [data, setData]       = useState<DashboardOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
+  const [myAnalytics, setMyAnalytics] = useState<{
+    totalEmailsSent: number; gmailEmailsSent: number; smtpEmailsSent: number;
+    totalDraftsCreated: number; activeCampaigns: number;
+    monthlyUsage: number; monthlyLimit: number; currentPlan: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const overview = await apiFetch("dashboard-overview");
+      const [overview, analyticsData] = await Promise.all([
+        apiFetch("dashboard-overview"),
+        fetch("/api/analytics/overview", {
+          headers: { Authorization: `Bearer ${token()}` },
+        }).then(r => r.ok ? r.json() : null).catch(() => null),
+      ]);
       setData(overview);
+      if (analyticsData) setMyAnalytics(analyticsData);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load dashboard");
     } finally {
@@ -274,6 +285,20 @@ export function AdminOverview({ onNavigateTab }: { onNavigateTab: (tab: string) 
           </Button>
         </div>
       </div>
+
+      {/* ── My Account Stats (admin's own analytics) ────────────────────── */}
+      {(myAnalytics || loading) && (
+        <div className="rounded-2xl border border-border bg-muted/30 p-4 space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">My Account</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
+            <KpiCard icon={Send}    label="Emails Sent (All Time)"  value={myAnalytics ? myAnalytics.totalEmailsSent.toLocaleString() : "—"}  accent="blue"    loading={loading} />
+            <KpiCard icon={Send}    label="Sent This Month"         value={myAnalytics ? myAnalytics.monthlyUsage.toLocaleString() : "—"}      accent="indigo"  loading={loading} />
+            <KpiCard icon={Mail}    label="Gmail Drafts"            value={myAnalytics ? myAnalytics.totalDraftsCreated.toLocaleString() : "—"} accent="purple"  loading={loading} />
+            <KpiCard icon={Zap}     label="My Active Campaigns"     value={myAnalytics ? myAnalytics.activeCampaigns.toLocaleString() : "—"}   accent="emerald" loading={loading} />
+            <KpiCard icon={UserCheck} label="My Plan"               value={myAnalytics?.currentPlan ?? "—"}                                     accent="teal"    loading={loading} />
+          </div>
+        </div>
+      )}
 
       {/* ── KPI grid — 2 cols → 3 → 4 → 5 → 6 as viewport grows ────────── */}
       {/*    Labels are allowed to wrap — no truncation. Cards stay aligned   */}

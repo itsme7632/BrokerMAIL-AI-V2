@@ -325,6 +325,7 @@ export default function MyProfile() {
   // Remote data
   const [billing, setBilling]     = useState<BillingData | null>(null);
   const [dashStats, setDashStats] = useState<DashStats | null>(null);
+  const [analytics, setAnalytics] = useState<{ totalEmailsSent: number } | null>(null);
   const [loadingData, setLoadingData] = useState(true);
 
   // Profile form
@@ -412,11 +413,13 @@ export default function MyProfile() {
   useEffect(() => {
     const h = getAuthHeaders();
     Promise.all([
-      fetch("/api/billing/subscription", { headers: h }).then(r => r.ok ? r.json() : null),
-      fetch("/api/dashboard/stats",       { headers: h }).then(r => r.ok ? r.json() : null),
-    ]).then(([b, s]) => {
+      fetch("/api/billing/subscription",  { headers: h }).then(r => r.ok ? r.json() : null),
+      fetch("/api/dashboard/stats",        { headers: h }).then(r => r.ok ? r.json() : null),
+      fetch("/api/analytics/overview",     { headers: h }).then(r => r.ok ? r.json() : null),
+    ]).then(([b, s, a]) => {
       if (b) setBilling(b);
       if (s) setDashStats(s);
+      if (a) setAnalytics(a);
     }).finally(() => setLoadingData(false));
   }, []);
 
@@ -776,7 +779,7 @@ export default function MyProfile() {
               {/* RIGHT: stats */}
               <div className="grid grid-cols-2 gap-3 xl:w-[280px] flex-shrink-0">
                 <StatCard icon={Megaphone}  label="Campaigns"   loading={loadingData} value={dashStats ? String(dashStats.totalCampaigns) : null}                         color="text-blue-400"   bg="bg-blue-500/10 border-blue-500/20"   emptyHint="Start first campaign" />
-                <StatCard icon={Send}        label="Emails Sent" loading={loadingData} value={billing  ? String(billing.usage.emailsSentThisMonth) : null}                  color="text-green-400"  bg="bg-green-500/10 border-green-500/20"  emptyHint="Send your first email" />
+                <StatCard icon={Send}        label="Emails Sent" loading={loadingData} value={analytics ? String(analytics.totalEmailsSent) : null}                     color="text-green-400"  bg="bg-green-500/10 border-green-500/20"  emptyHint="Send your first email" />
                 <StatCard icon={BarChart3}   label="Success Rate" loading={loadingData} value={dashStats ? `${Math.round(dashStats.draftSuccessRate * 100)}%` : null}       color="text-purple-400" bg="bg-purple-500/10 border-purple-500/20" emptyHint="No data yet" />
                 <StatCard icon={Server}      label="Mailboxes"   loading={loadingData} value={billing  ? String(billing.usage.smtpAccountsUsed) : null}                    color="text-amber-400"  bg="bg-amber-500/10 border-amber-500/20"  emptyHint="Add a mailbox" />
               </div>

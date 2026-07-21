@@ -1,0 +1,278 @@
+# BrokerMAIL AI - Fix Usage Statistics & Create Central Analytics Service
+
+We have found several statistics bugs.
+
+These are NOT feature requests—they are incorrect calculations and inconsistent data across the platform.
+
+I want to fix this permanently by introducing a centralized analytics service.
+
+==================================================
+CENTRAL ANALYTICS SERVICE (REQUIRED)
+==================================================
+
+Create a single backend analytics service that becomes the ONLY source of truth for all statistics across BrokerMAIL AI.
+
+Create:
+
+GET /api/analytics/overview
+
+Every page must consume this endpoint instead of calculating statistics independently.
+
+Pages that MUST use this API:
+
+• Dashboard
+• My Profile
+• Plans & Billing
+• Admin Dashboard
+• Future Analytics page
+• Future Reports page
+
+No duplicate calculation logic should remain in frontend components.
+
+==================================================
+GET /api/analytics/overview
+==================================================
+
+Return at minimum:
+
+{
+  totalEmailsSent,
+  smtpEmailsSent,
+  gmailEmailsSent,
+
+  totalDraftsCreated,
+
+  campaignsCreated,
+  activeCampaigns,
+  completedCampaigns,
+
+  totalOpens,
+  totalClicks,
+  repliesReceived,
+
+  failedEmails,
+  bouncedEmails,
+
+  connectedMailboxes,
+
+  lastEmailSent,
+
+  monthlyUsage,
+  monthlyLimit,
+
+  currentPlan,
+
+  quotaRemaining,
+
+  usageResetDate
+}
+
+If additional useful metrics already exist in the database, include them as well.
+
+==================================================
+BUG #1 — ENTERPRISE PLAN EMAILS SENT
+==================================================
+
+Problem:
+
+Enterprise users have Unlimited email limits.
+
+The platform currently displays:
+
+Emails Sent = 0
+
+because it is confusing:
+
+Limit
+
+with
+
+Usage
+
+Correct behavior:
+
+Usage = actual emails sent
+
+Limit = Unlimited
+
+Example:
+
+Emails Sent
+
+548
+
+∞ Unlimited
+
+NOT
+
+0
+
+∞ Unlimited
+
+Usage and Limits are completely separate values.
+
+==================================================
+BUG #2 — DASHBOARD
+==================================================
+
+Dashboard currently shows:
+
+Drafts Created
+
+but not total Emails Sent.
+
+Update Dashboard to use analytics overview.
+
+Cards should display:
+
+Emails Sent (Total)
+
+Gmail Drafts Created
+
+Active Campaigns
+
+Quota Used
+
+The Emails Sent value must include:
+
+SMTP emails
+
++
+
+Gmail emails
+
+Drafts must never be counted as sent emails.
+
+==================================================
+BUG #3 — MY PROFILE
+==================================================
+
+My Profile currently displays:
+
+—
+
+Send your first email
+
+even though emails have already been sent.
+
+Replace this with the real analytics value.
+
+If:
+
+totalEmailsSent > 0
+
+show the actual number.
+
+Only show the empty-state message when the count is truly zero.
+
+==================================================
+BUG #4 — PLANS & BILLING
+==================================================
+
+Plans & Billing must also consume
+
+GET /api/analytics/overview
+
+Display:
+
+Emails Sent
+
+Monthly Usage
+
+Quota Remaining
+
+Current Plan
+
+Unlimited (if Enterprise)
+
+Again:
+
+Usage != Limit
+
+==================================================
+BUG #5 — ADMIN
+==================================================
+
+Admin Dashboard should also consume the same analytics service.
+
+No separate calculations.
+
+==================================================
+DATA SOURCE
+==================================================
+
+Aggregate statistics from existing tables only.
+
+Reuse existing data.
+
+Do not duplicate records.
+
+Use existing email queue, campaigns, Gmail drafts, sent emails, tracking tables, etc.
+
+==================================================
+CACHE
+==================================================
+
+Cache analytics briefly if appropriate.
+
+Invalidate cache immediately when:
+
+Email sent
+
+Draft created
+
+Campaign completed
+
+Campaign deleted
+
+Mailbox connected
+
+Mailbox disconnected
+
+Tracking event received
+
+==================================================
+PERFORMANCE
+==================================================
+
+Analytics endpoint should return everything in one request.
+
+Avoid multiple frontend API calls.
+
+==================================================
+TESTING
+==================================================
+
+Verify:
+
+Dashboard == Plans & Billing
+
+Dashboard == My Profile
+
+Dashboard == Admin
+
+Enterprise shows:
+
+548 Emails Sent
+
+Unlimited Plan
+
+Starter shows:
+
+723 / 1000
+
+Free shows:
+
+41 / 100
+
+All pages display identical statistics because they all consume
+
+GET /api/analytics/overview
+
+Run:
+
+pnpm typecheck
+
+pnpm build
+
+before marking complete.

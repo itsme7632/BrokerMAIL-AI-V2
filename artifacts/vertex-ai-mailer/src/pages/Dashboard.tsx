@@ -367,6 +367,19 @@ export default function Dashboard() {
     lastSuppressionAt: string | null;
     topReasons: { reason: string; count: number }[];
   } | null>(null);
+  const [analytics, setAnalytics] = useState<{
+    totalEmailsSent:    number;
+    gmailEmailsSent:    number;
+    smtpEmailsSent:     number;
+    totalDraftsCreated: number;
+    activeCampaigns:    number;
+    monthlyUsage:       number;
+    monthlyLimit:       number;  // -1 = unlimited
+    quotaRemaining:     number;  // -1 = unlimited
+    currentPlan:        string;
+    currentPlanSlug:    string;
+  } | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [billing,   setBilling]   = useState<BillingData | null>(null);
   const [branding,  setBranding]  = useState<{
     companyName?: string | null;
@@ -446,6 +459,13 @@ export default function Dashboard() {
       .then(r => r.ok ? r.json() : null).then(d => d && setBilling(d)).catch(() => {});
     fetch("/api/users/branding", { headers: { Authorization: `Bearer ${token()}` } })
       .then(r => r.ok ? r.json() : null).then(d => d && setBranding(d)).catch(() => {});
+    // Central analytics overview — single source of truth for all stat cards
+    setAnalyticsLoading(true);
+    fetch("/api/analytics/overview", { headers: { Authorization: `Bearer ${token()}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setAnalytics(d); })
+      .catch(() => {})
+      .finally(() => setAnalyticsLoading(false));
   }, []);
 
   // Fetch real SMTP mailbox state (same source as Mailbox settings page)
@@ -561,8 +581,9 @@ export default function Dashboard() {
   const quotaPct = quota && quota.hourlyLimit > 0
     ? Math.min(100, Math.round((quota.usedThisHour / quota.hourlyLimit) * 100))
     : 0;
-  const emailUsagePct = billing?.plan.monthlyEmailLimit && billing.plan.monthlyEmailLimit > 0
-    ? Math.min(100, Math.round((billing.usage.emailsSentThisMonth / billing.plan.monthlyEmailLimit) * 100))
+  // Monthly plan quota % — from analytics (covers both SMTP + Gmail sends)
+  const emailUsagePct = analytics && analytics.monthlyLimit > 0
+    ? Math.min(100, Math.round((analytics.monthlyUsage / analytics.monthlyLimit) * 100))
     : null;
 
   // ── Onboarding completion flags — backend state OR manually-checked ─────────
@@ -570,7 +591,7 @@ export default function Dashboard() {
   const ob_branding_be = !!(branding && (branding.companyName || branding.logoUrl) && (branding.website || branding.phone || branding.logoUrl));
   const ob_leads_be    = !statsLoading && (stats?.totalLeads ?? 0) > 0;
   const ob_campaign_be = !statsLoading && (stats?.totalCampaigns ?? 0) > 0;
-  const ob_email_be    = !!(billing    && billing.usage.emailsSentThisMonth > 0);
+  const ob_email_be    = !!(analytics  && analytics.totalEmailsSent > 0);
 
   // Backend overrides manual; manual only fills in gaps while backend is falsy
   const ob_gmail    = ob_gmail_be    || manuallyCompleted.has("gmail");
@@ -795,23 +816,23 @@ export default function Dashboard() {
       {/* ── Metric cards ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 
-        {/* Emails Sent */}
+        {/* Emails Sent (Total) — SMTP + Gmail combined, all time */}
         <motion.div custom={0} initial="hidden" animate="show" variants={fadeUp}>
           <div className="group rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 p-5 hover:border-border dark:hover:border-slate-700 hover:shadow-xl hover:shadow-black/20 transition-all duration-200 cursor-default">
             <div className="flex items-center gap-2 mb-3">
               <div className="h-7 w-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center flex-shrink-0">
                 <Send className="h-3.5 w-3.5 text-blue-400" />
               </div>
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Emails Sent</p>
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Emails Sent (Total)</p>
             </div>
-            {!billing ? (
+            {analyticsLoading ? (
               <Skeleton className="h-8 w-16 bg-muted dark:bg-slate-800" />
             ) : (
               <p className="text-3xl font-bold text-foreground dark:text-white tabular-nums">
-                {billing.usage.emailsSentThisMonth.toLocaleString()}
+                {(analytics?.totalEmailsSent ?? 0).toLocaleString()}
               </p>
             )}
-            <p className="text-xs text-slate-500 mt-1">This billing period</p>
+            <p className="text-xs text-slate-500 mt-1">SMTP + Gmail, all time</p>
             {emailUsagePct !== null && (
               <div className="mt-3 h-1 w-full rounded-full bg-secondary dark:bg-slate-800 overflow-hidden">
                 <div className="h-full rounded-full transition-all duration-700"
@@ -821,29 +842,23 @@ export default function Dashboard() {
           </div>
         </motion.div>
 
-        {/* Drafts Created */}
+        {/* Gmail Drafts Created */}
         <motion.div custom={1} initial="hidden" animate="show" variants={fadeUp}>
           <div className="group rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 p-5 hover:border-border dark:hover:border-slate-700 hover:shadow-xl hover:shadow-black/20 transition-all duration-200 cursor-default">
             <div className="flex items-center gap-2 mb-3">
               <div className="h-7 w-7 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
                 <Mail className="h-3.5 w-3.5 text-violet-400" />
               </div>
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Drafts Created</p>
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Gmail Drafts Created</p>
             </div>
-            {statsLoading ? (
+            {analyticsLoading ? (
               <Skeleton className="h-8 w-16 bg-muted dark:bg-slate-800" />
             ) : (
               <p className="text-3xl font-bold text-foreground dark:text-white tabular-nums">
-                {(stats?.totalDraftsCreated ?? 0).toLocaleString()}
+                {(analytics?.totalDraftsCreated ?? 0).toLocaleString()}
               </p>
             )}
             <p className="text-xs text-slate-500 mt-1">All time</p>
-            {!statsLoading && (stats?.draftSuccessRate ?? 0) > 0 && (
-              <div className="mt-3 h-1 w-full rounded-full bg-secondary dark:bg-slate-800 overflow-hidden">
-                <div className="h-full rounded-full bg-violet-500 transition-all duration-700"
-                  style={{ width: `${Math.round((stats?.draftSuccessRate ?? 0) * 100)}%` }} />
-              </div>
-            )}
           </div>
         </motion.div>
 
@@ -856,45 +871,59 @@ export default function Dashboard() {
               </div>
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Active Campaigns</p>
             </div>
-            {campaignsLoading ? (
+            {analyticsLoading ? (
               <Skeleton className="h-8 w-16 bg-muted dark:bg-slate-800" />
             ) : (
-              <p className="text-3xl font-bold text-foreground dark:text-white tabular-nums">{activeCampaigns}</p>
+              <p className="text-3xl font-bold text-foreground dark:text-white tabular-nums">
+                {(analytics?.activeCampaigns ?? 0).toLocaleString()}
+              </p>
             )}
             <p className="text-xs text-slate-500 mt-1">
               {coolingCampaigns > 0 ? `${coolingCampaigns} cooling down` : "Running now"}
             </p>
             <div className="mt-3 h-1 w-full rounded-full bg-secondary dark:bg-slate-800 overflow-hidden">
-              <div className={`h-full rounded-full transition-all duration-700 ${activeCampaigns > 0 ? "bg-emerald-500" : "bg-slate-700"}`}
-                style={{ width: activeCampaigns > 0 ? "100%" : "0%" }} />
+              <div className={`h-full rounded-full transition-all duration-700 ${(analytics?.activeCampaigns ?? 0) > 0 ? "bg-emerald-500" : "bg-slate-700"}`}
+                style={{ width: (analytics?.activeCampaigns ?? 0) > 0 ? "100%" : "0%" }} />
             </div>
           </div>
         </motion.div>
 
-        {/* Quota Used */}
+        {/* Monthly Quota Used — plan-based, SMTP + Gmail combined */}
         <motion.div custom={3} initial="hidden" animate="show" variants={fadeUp}>
-          <div className="group rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 p-5 hover:border-border dark:hover:border-slate-700 hover:shadow-xl hover:shadow-black/20 transition-all duration-200 cursor-default">
-            <div className="flex items-center gap-2 mb-3">
-              <div className={`h-7 w-7 rounded-lg flex items-center justify-center flex-shrink-0 ${quotaPct >= 80 ? "bg-red-500/10 border border-red-500/20" : "bg-amber-500/10 border border-amber-500/20"}`}>
-                <BarChart3 className={`h-3.5 w-3.5 ${quotaPct >= 80 ? "text-red-400" : "text-amber-400"}`} />
+          {(() => {
+            const isUnlimited = analytics?.monthlyLimit === -1;
+            const used   = analytics?.monthlyUsage ?? 0;
+            const limit  = analytics?.monthlyLimit ?? 0;
+            const pct    = isUnlimited || limit <= 0 ? 0 : Math.min(100, Math.round((used / limit) * 100));
+            const barColor = pct >= 90 ? "#f87171" : pct >= 70 ? "#fb923c" : "#f59e0b";
+            return (
+              <div className="group rounded-2xl border border-border dark:border-slate-800 bg-card dark:bg-slate-900 p-5 hover:border-border dark:hover:border-slate-700 hover:shadow-xl hover:shadow-black/20 transition-all duration-200 cursor-default">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className={`h-7 w-7 rounded-lg flex items-center justify-center flex-shrink-0 ${pct >= 80 ? "bg-red-500/10 border border-red-500/20" : "bg-amber-500/10 border border-amber-500/20"}`}>
+                    <BarChart3 className={`h-3.5 w-3.5 ${pct >= 80 ? "text-red-400" : "text-amber-400"}`} />
+                  </div>
+                  <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Quota Used</p>
+                </div>
+                {analyticsLoading ? (
+                  <Skeleton className="h-8 w-16 bg-muted dark:bg-slate-800" />
+                ) : isUnlimited ? (
+                  <>
+                    <p className="text-3xl font-bold text-foreground dark:text-white tabular-nums">{used.toLocaleString()}</p>
+                    <p className="text-xs text-emerald-400 font-semibold mt-1">∞ Unlimited plan</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-3xl font-bold text-foreground dark:text-white tabular-nums">{used.toLocaleString()}</p>
+                    <p className="text-xs text-slate-500 mt-1">of {limit.toLocaleString()} this month</p>
+                    <div className="mt-3 h-1 w-full rounded-full bg-secondary dark:bg-slate-800 overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-700"
+                        style={{ width: `${pct}%`, backgroundColor: barColor }} />
+                    </div>
+                  </>
+                )}
               </div>
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Quota Used</p>
-            </div>
-            {quotaLoading ? (
-              <Skeleton className="h-8 w-16 bg-muted dark:bg-slate-800" />
-            ) : (
-              <p className="text-3xl font-bold text-foreground dark:text-white tabular-nums">
-                {quota ? `${quotaPct}%` : "—"}
-              </p>
-            )}
-            <p className="text-xs text-slate-500 mt-1">
-              {quota ? `${quota.usedThisHour}/${quota.hourlyLimit} this hour` : "No mailbox configured"}
-            </p>
-            <div className="mt-3 h-1 w-full rounded-full bg-secondary dark:bg-slate-800 overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-700"
-                style={{ width: `${quotaPct}%`, backgroundColor: quotaPct >= 90 ? "#f87171" : quotaPct >= 70 ? "#fb923c" : "#f59e0b" }} />
-            </div>
-          </div>
+            );
+          })()}
         </motion.div>
 
       </div>

@@ -313,6 +313,9 @@ export default function Plans() {
   const [, navigate] = useLocation();
   const [plans, setPlans]             = useState<Plan[]>([]);
   const [billing, setBilling]         = useState<BillingData | null>(null);
+  const [analytics, setAnalytics]     = useState<{
+    monthlyUsage: number; monthlyLimit: number; quotaRemaining: number;
+  } | null>(null);
   const [loading, setLoading]         = useState(true);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [requesting, setRequesting]   = useState(false);
@@ -320,12 +323,16 @@ export default function Plans() {
   async function load() {
     setLoading(true);
     try {
-      const [plansData, billingData] = await Promise.all([
+      const [plansData, billingData, analyticsData] = await Promise.all([
         bfetch("billing/plans"),
         bfetch("billing/subscription"),
+        fetch("/api/analytics/overview", {
+          headers: { Authorization: `Bearer ${localStorage.getItem("auth_token") ?? ""}` },
+        }).then(r => r.ok ? r.json() : null),
       ]);
       setPlans(plansData);
       setBilling(billingData);
+      if (analyticsData) setAnalytics(analyticsData);
     } catch (err: any) {
       toast({ variant: "destructive", title: "Failed to load billing", description: err.message });
     } finally {
@@ -356,9 +363,12 @@ export default function Plans() {
   const pending     = billing?.pendingRequest;
   const history     = billing?.requestHistory ?? [];
 
-  const emailPct = currentPlan && usage && currentPlan.monthlyEmailLimit > 0
-    ? (usage.emailsSentThisMonth / currentPlan.monthlyEmailLimit) * 100 : 0;
-  const showEmailWarning = emailPct >= 75 && currentPlan?.monthlyEmailLimit !== -1;
+  // Use analytics for sent count (SMTP + Gmail combined); fall back to billing usage if analytics not yet loaded
+  const emailsSentThisMonth = analytics?.monthlyUsage ?? usage?.emailsSentThisMonth ?? 0;
+  const emailMonthlyLimit   = analytics?.monthlyLimit ?? currentPlan?.monthlyEmailLimit ?? 0;
+  const emailPct = emailMonthlyLimit > 0
+    ? (emailsSentThisMonth / emailMonthlyLimit) * 100 : 0;
+  const showEmailWarning = emailPct >= 75 && emailMonthlyLimit !== -1;
   const emailNearLimit   = emailPct >= 90;
 
   return (
@@ -416,7 +426,7 @@ export default function Plans() {
               {emailNearLimit ? "Email limit almost reached" : "Approaching email limit"}
             </p>
             <p className={`text-xs mt-0.5 ${emailNearLimit ? "text-red-700" : "text-amber-700"}`}>
-              You've used <strong>{usage?.emailsSentThisMonth}</strong> of <strong>{currentPlan?.monthlyEmailLimit}</strong> emails
+              You've used <strong>{emailsSentThisMonth.toLocaleString()}</strong> of <strong>{emailMonthlyLimit.toLocaleString()}</strong> emails
               this month ({Math.round(emailPct)}%). Consider upgrading your plan.
             </p>
           </div>
@@ -443,7 +453,7 @@ export default function Plans() {
           const resetLabel = resetDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
           return (
             <div className="space-y-4">
-              <UsageBar label="Emails Sent"    used={usage.emailsSentThisMonth} limit={currentPlan.monthlyEmailLimit} icon={Mail} />
+              <UsageBar label="Emails Sent"    used={emailsSentThisMonth} limit={emailMonthlyLimit} icon={Mail} />
               <UsageBar label="SMTP Mailboxes" used={usage.smtpAccountsUsed}    limit={currentPlan.smtpAccountsLimit} icon={Server} />
               <UsageBar label="Campaigns"      used={usage.campaignsCount}       limit={currentPlan.campaignsLimit}    icon={BarChart3} />
               <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
