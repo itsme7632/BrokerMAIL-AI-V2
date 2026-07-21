@@ -4254,134 +4254,245 @@ router.get("/admin/tracking-url-check", requireAdmin, async (_req, res): Promise
 
 // ─── POST /admin/comm/reparse ─────────────────────────────────────────────────
 //
-// Maintenance endpoint: regenerate body, htmlBody-derived text, and snippet for
-// all existing rows in comm_messages.
+// Cursor-based maintenance endpoint: regenerates body/snippet for comm_messages
+// ONE BATCH PER REQUEST so no single HTTP call ever hits a proxy timeout.
 //
-// Background: the MIME parser only runs during sync. Rows already stored retain
-// their original (potentially buggy) parsed values. This endpoint:
+// HOW TO USE
+// ----------
+// Call repeatedly, passing `nextCursor` from each response back as `cursor`,
+// until `completed: true` is returned.
 //
-//   Phase 1 (always, safe):
-//     For every message where htmlBody IS NOT NULL — re-derive body (plain text)
-//     via stripHtmlToText and re-derive snippet via snippetOf. Idempotent.
+//   1st call  → POST /api/admin/comm/reparse  { clearUnparseable?: bool, batchSize?: 50–200 }
+//   Nth call  → POST /api/admin/comm/reparse  { cursor: "<nextCursor>" }
 //
-//   Phase 1b (always, safe):
-//     For every message where htmlBody IS NULL and body is valid text — just
-//     re-derive snippet from the stored body.
+// PHASES (order is fixed; one batch of ≤batchSize rows per request)
+// ─────────────────────────────────────────────────────────────────
+//   "html"    – htmlBody IS NOT NULL  → re-derive body (stripHtmlToText) + snippet
+//   "snippet" – htmlBody IS NULL, valid body → re-derive snippet only
+//   "clear"   – htmlBody IS NULL, body=(empty)|raw-MIME → DELETE + fix conv counters
+//               (only runs when clearUnparseable=true)
 //
-//   Phase 2 (opt-in: clearUnparseable=true):
-//     Delete rows where body='(empty)' or body looks like raw MIME headers and
-//     htmlBody IS NULL. The raw source was never stored, so in-place repair is
-//     impossible. Deletion removes the dedup lock (externalId) so the next sync
-//     re-imports those messages through the fixed parser. Conversations are
-//     preserved; their messageCount/unreadCount counters are decremented.
+// CURSOR (opaque base64url-encoded JSON carried by caller between requests)
+//   { phase, lastId, batchSize, clearUnparseable,
+//     tot: { htmlReparsed, snippetOnly, unparseableCleared, unparseableRemaining } }
 //
-//     After clearing, call POST /api/communications/sync (or wait for the cron)
-//     to re-import the cleared messages.
+// IN-PROGRESS RESPONSE
+//   { completed:false, processed:<cumulative>, remaining:<estimate>,
+//     nextCursor:"...", batch:{ phase, rowsThisBatch, durationMs, ... } }
 //
-// Returns: { htmlReparsed, snippetOnly, unparseableCleared, unparseableRemaining }
+// COMPLETED RESPONSE
+//   { completed:true, processed:<total>,
+//     htmlReparsed, snippetOnly, unparseableCleared, unparseableRemaining,
+//     nextStep?:"..." }
 //
+
+type ReparsePhase = "html" | "snippet" | "clear";
+
+interface ReparseCursor {
+  phase:            ReparsePhase;
+  lastId:           number;
+  batchSize:        number;
+  clearUnparseable: boolean;
+  tot: {
+    htmlReparsed:         number;
+    snippetOnly:          number;
+    unparseableCleared:   number;
+    unparseableRemaining: number;
+  };
+}
+
+function encodeReparseCursor(c: ReparseCursor): string {
+  return Buffer.from(JSON.stringify(c), "utf8").toString("base64url");
+}
+
+function decodeReparseCursor(s: string): ReparseCursor {
+  return JSON.parse(Buffer.from(s, "base64url").toString("utf8")) as ReparseCursor;
+}
+
+function isUnparseableBody(body: string): boolean {
+  const head = body.slice(0, 200);
+  return (
+    body === "(empty)" ||
+    /^content-type:\s/i.test(head) ||
+    /^content-transfer-encoding:\s/i.test(head)
+  );
+}
+
+function nextReparsePhase(
+  current: ReparsePhase,
+  clearUnparseable: boolean,
+): ReparsePhase | null {
+  if (current === "html")    return "snippet";
+  if (current === "snippet") return clearUnparseable ? "clear" : null;
+  return null; // "clear" is always last
+}
+
+async function countReparseRemaining(
+  phase:            ReparsePhase,
+  lastId:           number,
+  clearUnparseable: boolean,
+): Promise<number> {
+  // Count all rows still to process across every remaining phase.
+  // Runs three lightweight index-range COUNT queries in parallel.
+  const [htmlCount, snippetCount, clearCount] = await Promise.all([
+    // html phase: htmlBody IS NOT NULL, id > lastId (0 when phase has passed)
+    phase === "html"
+      ? db.select({ n: sql<number>`count(*)::int` })
+           .from(commMessagesTable)
+           .where(and(isNotNull(commMessagesTable.htmlBody), gt(commMessagesTable.id, lastId)))
+           .then(r => r[0]?.n ?? 0)
+      : phase === "snippet" || phase === "clear"
+        ? db.select({ n: sql<number>`count(*)::int` })
+             .from(commMessagesTable)
+             .where(isNotNull(commMessagesTable.htmlBody))
+             .then(r => r[0]?.n ?? 0)
+        : Promise.resolve(0 as number),
+
+    // snippet phase: htmlBody IS NULL, body valid, id > lastId (0 when phase has passed)
+    phase === "html" || phase === "snippet"
+      ? db.select({ n: sql<number>`count(*)::int` })
+           .from(commMessagesTable)
+           .where(and(
+             isNull(commMessagesTable.htmlBody),
+             phase === "snippet" ? gt(commMessagesTable.id, lastId) : sql`true`,
+             sql`NOT (
+               ${commMessagesTable.body} = '(empty)' OR
+               ${commMessagesTable.body} ilike 'Content-Type: %' OR
+               ${commMessagesTable.body} ilike 'Content-Transfer-Encoding: %'
+             )`,
+           ))
+           .then(r => r[0]?.n ?? 0)
+      : Promise.resolve(0 as number),
+
+    // clear phase: unparseable rows — only relevant when opt-in
+    clearUnparseable
+      ? db.select({ n: sql<number>`count(*)::int` })
+           .from(commMessagesTable)
+           .where(and(
+             isNull(commMessagesTable.htmlBody),
+             phase === "clear" ? gt(commMessagesTable.id, lastId) : sql`true`,
+             or(
+               eq(commMessagesTable.body, "(empty)"),
+               sql`${commMessagesTable.body} ilike 'Content-Type: %'`,
+               sql`${commMessagesTable.body} ilike 'Content-Transfer-Encoding: %'`,
+             ),
+           ))
+           .then(r => r[0]?.n ?? 0)
+      : Promise.resolve(0 as number),
+  ]);
+
+  return (htmlCount ?? 0) + (snippetCount ?? 0) + (clearCount ?? 0);
+}
+
 router.post("/admin/comm/reparse", requireAdmin, async (req, res): Promise<void> => {
-  const { clearUnparseable = false } = (req.body ?? {}) as { clearUnparseable?: boolean };
+  const reqStart = Date.now();
 
-  let htmlReparsed      = 0;  // rows fixed via stored htmlBody
-  let snippetOnly       = 0;  // rows where only the snippet was re-derived
-  let unparseableCleared   = 0;  // rows deleted (needs re-sync)
-  let unparseableRemaining = 0;  // rows with bad content left in place
+  // ── Decode or initialise cursor ───────────────────────────────────────────
+  const body = (req.body ?? {}) as {
+    cursor?:           string;
+    clearUnparseable?: boolean;
+    batchSize?:        number;
+  };
 
-  // ── Phase 1: rows WITH htmlBody — re-derive body + snippet ─────────────────
-  {
-    let lastId = 0;
-    for (;;) {
-      const rows = await db
-        .select({ id: commMessagesTable.id, htmlBody: commMessagesTable.htmlBody })
-        .from(commMessagesTable)
-        .where(and(isNotNull(commMessagesTable.htmlBody), gt(commMessagesTable.id, lastId)))
-        .orderBy(commMessagesTable.id)
-        .limit(200);
+  let cursor: ReparseCursor;
+  if (body.cursor) {
+    try {
+      cursor = decodeReparseCursor(body.cursor);
+    } catch {
+      res.status(400).json({ error: "Invalid cursor — start a fresh run by omitting cursor." });
+      return;
+    }
+  } else {
+    cursor = {
+      phase:            "html",
+      lastId:           0,
+      batchSize:        Math.min(200, Math.max(50, body.batchSize ?? 150)),
+      clearUnparseable: body.clearUnparseable ?? false,
+      tot: { htmlReparsed: 0, snippetOnly: 0, unparseableCleared: 0, unparseableRemaining: 0 },
+    };
+  }
 
-      if (rows.length === 0) break;
+  const { phase, lastId, batchSize, clearUnparseable, tot } = cursor;
+  const phaseStart = Date.now();
+  let rowsThisBatch      = 0;
+  let batchHtmlReparsed  = 0;
+  let batchSnippetOnly   = 0;
+  let batchCleared       = 0;
+  let batchUnparseable   = 0;
 
-      for (const row of rows) {
-        const html    = row.htmlBody!;
-        const newBody = stripHtmlToText(html).replace(/\s+/g, " ").trim() || "(empty)";
-        const newSnip = snippetOf(newBody, html);
+  // ── Run one batch for the current phase ──────────────────────────────────
+
+  if (phase === "html") {
+    // Re-derive body (plain text) + snippet for rows that have htmlBody stored.
+    const rows = await db
+      .select({ id: commMessagesTable.id, htmlBody: commMessagesTable.htmlBody })
+      .from(commMessagesTable)
+      .where(and(isNotNull(commMessagesTable.htmlBody), gt(commMessagesTable.id, lastId)))
+      .orderBy(commMessagesTable.id)
+      .limit(batchSize);
+
+    for (const row of rows) {
+      const html    = row.htmlBody!;
+      const newBody = stripHtmlToText(html).replace(/\s+/g, " ").trim() || "(empty)";
+      const newSnip = snippetOf(newBody, html);
+      await db
+        .update(commMessagesTable)
+        .set({ body: newBody, snippet: newSnip })
+        .where(eq(commMessagesTable.id, row.id));
+      batchHtmlReparsed++;
+    }
+    rowsThisBatch = rows.length;
+    if (rows.length > 0) cursor.lastId = rows[rows.length - 1]!.id;
+
+  } else if (phase === "snippet") {
+    // Re-derive snippet for plain-text-only rows; tally unparseable ones.
+    const rows = await db
+      .select({ id: commMessagesTable.id, body: commMessagesTable.body })
+      .from(commMessagesTable)
+      .where(and(isNull(commMessagesTable.htmlBody), gt(commMessagesTable.id, lastId)))
+      .orderBy(commMessagesTable.id)
+      .limit(batchSize);
+
+    for (const row of rows) {
+      if (isUnparseableBody(row.body)) {
+        batchUnparseable++;
+      } else {
+        const newSnip = snippetOf(row.body, "");
         await db
           .update(commMessagesTable)
-          .set({ body: newBody, snippet: newSnip })
+          .set({ snippet: newSnip })
           .where(eq(commMessagesTable.id, row.id));
-        htmlReparsed++;
+        batchSnippetOnly++;
       }
-
-      lastId = rows[rows.length - 1]!.id;
-      if (rows.length < 200) break;
     }
-  }
+    rowsThisBatch = rows.length;
+    if (rows.length > 0) cursor.lastId = rows[rows.length - 1]!.id;
 
-  // ── Phase 1b: rows WITHOUT htmlBody — re-derive snippet from plain body ────
-  {
-    let lastId = 0;
-    for (;;) {
-      const rows = await db
-        .select({ id: commMessagesTable.id, body: commMessagesTable.body })
-        .from(commMessagesTable)
-        .where(and(isNull(commMessagesTable.htmlBody), gt(commMessagesTable.id, lastId)))
-        .orderBy(commMessagesTable.id)
-        .limit(200);
+  } else {
+    // phase === "clear"
+    // Delete rows whose content cannot be recovered; decrement conv counters.
+    const rows = await db
+      .select({
+        id:             commMessagesTable.id,
+        conversationId: commMessagesTable.conversationId,
+        direction:      commMessagesTable.direction,
+        isRead:         commMessagesTable.isRead,
+      })
+      .from(commMessagesTable)
+      .where(and(
+        isNull(commMessagesTable.htmlBody),
+        gt(commMessagesTable.id, lastId),
+        or(
+          eq(commMessagesTable.body, "(empty)"),
+          sql`${commMessagesTable.body} ilike 'Content-Type: %'`,
+          sql`${commMessagesTable.body} ilike 'Content-Transfer-Encoding: %'`,
+        ),
+      ))
+      .orderBy(commMessagesTable.id)
+      .limit(batchSize);
 
-      if (rows.length === 0) break;
-
-      for (const row of rows) {
-        const body = row.body;
-        // Detect unparseable: literal "(empty)" sentinel or raw MIME headers
-        const isUnparseable =
-          body === "(empty)" ||
-          /^content-type:\s/i.test(body.slice(0, 200)) ||
-          /^content-transfer-encoding:\s/i.test(body.slice(0, 200));
-
-        if (isUnparseable) {
-          unparseableRemaining++;
-        } else {
-          const newSnip = snippetOf(body, "");
-          await db
-            .update(commMessagesTable)
-            .set({ snippet: newSnip })
-            .where(eq(commMessagesTable.id, row.id));
-          snippetOnly++;
-        }
-      }
-
-      lastId = rows[rows.length - 1]!.id;
-      if (rows.length < 200) break;
-    }
-  }
-
-  // ── Phase 2 (opt-in): delete unparseable rows so next sync re-imports them ─
-  if (clearUnparseable && unparseableRemaining > 0) {
-    let lastId = 0;
-    for (;;) {
-      const rows = await db
-        .select({
-          id:             commMessagesTable.id,
-          conversationId: commMessagesTable.conversationId,
-          direction:      commMessagesTable.direction,
-          isRead:         commMessagesTable.isRead,
-        })
-        .from(commMessagesTable)
-        .where(and(
-          isNull(commMessagesTable.htmlBody),
-          gt(commMessagesTable.id, lastId),
-          or(
-            eq(commMessagesTable.body, "(empty)"),
-            sql`${commMessagesTable.body} ilike 'Content-Type: %'`,
-            sql`${commMessagesTable.body} ilike 'Content-Transfer-Encoding: %'`,
-          ),
-        ))
-        .orderBy(commMessagesTable.id)
-        .limit(200);
-
-      if (rows.length === 0) break;
-
-      // Accumulate per-conversation counter deltas
+    if (rows.length > 0) {
+      // Accumulate per-conversation counter deltas before deleting
       const convDeltas = new Map<number, { total: number; unreadInbound: number }>();
       for (const r of rows) {
         const d = convDeltas.get(r.conversationId) ?? { total: 0, unreadInbound: 0 };
@@ -4390,12 +4501,12 @@ router.post("/admin/comm/reparse", requireAdmin, async (req, res): Promise<void>
         convDeltas.set(r.conversationId, d);
       }
 
-      // Delete the rows (externalId lock is removed — next sync will re-import)
+      // Delete rows — removes the externalId dedup lock so next sync re-imports
       await db
         .delete(commMessagesTable)
         .where(inArray(commMessagesTable.id, rows.map(r => r.id)));
 
-      // Decrement conversation counters
+      // Decrement conversation counters (floor at 0 to guard against drift)
       for (const [convId, { total, unreadInbound }] of convDeltas) {
         await db
           .update(commConversationsTable)
@@ -4407,34 +4518,105 @@ router.post("/admin/comm/reparse", requireAdmin, async (req, res): Promise<void>
           .where(eq(commConversationsTable.id, convId));
       }
 
-      unparseableCleared   += rows.length;
-      unparseableRemaining -= rows.length;
-
-      lastId = rows[rows.length - 1]!.id;
-      if (rows.length < 200) break;
+      batchCleared  = rows.length;
+      cursor.lastId = rows[rows.length - 1]!.id;
     }
+    rowsThisBatch = rows.length;
   }
 
-  logger.info({
-    "[COMM-REPARSE] Maintenance complete": {
-      htmlReparsed, snippetOnly, unparseableCleared, unparseableRemaining, clearUnparseable,
-    },
-  });
+  const batchMs = Date.now() - phaseStart;
 
-  const needsSync = clearUnparseable
-    ? unparseableCleared > 0
-      ? `${unparseableCleared} messages cleared — trigger a Communications sync (POST /api/communications/sync) or wait for the cron to re-import them.`
-      : null
-    : unparseableRemaining > 0
-      ? `${unparseableRemaining} messages have raw MIME or (empty) body and cannot be repaired from stored data. Re-run with clearUnparseable=true to delete them so the next sync re-fetches them through the fixed parser.`
-      : null;
+  // ── Update running totals ─────────────────────────────────────────────────
+  tot.htmlReparsed         += batchHtmlReparsed;
+  tot.snippetOnly          += batchSnippetOnly;
+  tot.unparseableCleared   += batchCleared;
+  tot.unparseableRemaining += batchUnparseable;
+  cursor.tot = tot;
+
+  const cumulative = tot.htmlReparsed + tot.snippetOnly + tot.unparseableCleared;
+
+  logger.info(
+    `[COMM-REPARSE] phase=${phase} lastId=${cursor.lastId} rows=${rowsThisBatch} ` +
+    `batchMs=${batchMs} totalMs=${Date.now() - reqStart} ` +
+    `cumulative=${cumulative} html=${tot.htmlReparsed} snip=${tot.snippetOnly} ` +
+    `cleared=${tot.unparseableCleared} unparseable=${tot.unparseableRemaining}`,
+  );
+
+  // ── Determine whether to continue, advance phase, or finish ──────────────
+  const batchWasFull = rowsThisBatch >= batchSize;
+
+  if (batchWasFull) {
+    // Current phase has more rows — return cursor at same phase, advanced lastId
+    const remaining = await countReparseRemaining(cursor.phase, cursor.lastId, clearUnparseable);
+    res.json({
+      completed:  false,
+      processed:  cumulative,
+      remaining,
+      nextCursor: encodeReparseCursor(cursor),
+      batch: {
+        phase,
+        rowsThisBatch,
+        durationMs:     batchMs,
+        totalRequestMs: Date.now() - reqStart,
+        htmlReparsed:   batchHtmlReparsed,
+        snippetOnly:    batchSnippetOnly,
+        cleared:        batchCleared,
+        unparseable:    batchUnparseable,
+      },
+    });
+    return;
+  }
+
+  // Phase is exhausted — advance to next phase
+  const next = nextReparsePhase(phase, clearUnparseable);
+  if (next !== null) {
+    cursor.phase  = next;
+    cursor.lastId = 0;
+    const remaining = await countReparseRemaining(next, 0, clearUnparseable);
+    res.json({
+      completed:  false,
+      processed:  cumulative,
+      remaining,
+      nextCursor: encodeReparseCursor(cursor),
+      batch: {
+        phase,
+        rowsThisBatch,
+        durationMs:     batchMs,
+        totalRequestMs: Date.now() - reqStart,
+        htmlReparsed:   batchHtmlReparsed,
+        snippetOnly:    batchSnippetOnly,
+        cleared:        batchCleared,
+        unparseable:    batchUnparseable,
+        phaseComplete:  true,
+        nextPhase:      next,
+      },
+    });
+    return;
+  }
+
+  // All phases done
+  logger.info(
+    `[COMM-REPARSE] Complete — html=${tot.htmlReparsed} snip=${tot.snippetOnly} ` +
+    `cleared=${tot.unparseableCleared} unparseable=${tot.unparseableRemaining}`,
+  );
+
+  const needsSync =
+    clearUnparseable && tot.unparseableCleared > 0
+      ? `${tot.unparseableCleared} messages cleared — trigger a Communications sync ` +
+        `(POST /api/communications/sync) or wait for the cron to re-import them.`
+      : !clearUnparseable && tot.unparseableRemaining > 0
+        ? `${tot.unparseableRemaining} messages have raw MIME or (empty) body and cannot ` +
+          `be repaired from stored data. Re-run with { clearUnparseable: true } to delete ` +
+          `them so the next sync re-fetches them through the fixed parser.`
+        : undefined;
 
   res.json({
-    success:              true,
-    htmlReparsed,
-    snippetOnly,
-    unparseableCleared,
-    unparseableRemaining,
+    completed:            true,
+    processed:            cumulative,
+    htmlReparsed:         tot.htmlReparsed,
+    snippetOnly:          tot.snippetOnly,
+    unparseableCleared:   tot.unparseableCleared,
+    unparseableRemaining: tot.unparseableRemaining,
     ...(needsSync ? { nextStep: needsSync } : {}),
   });
 });
