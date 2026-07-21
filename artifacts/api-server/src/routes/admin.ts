@@ -6,6 +6,7 @@ import {
   templatesTable, suppressionListTable, processedBouncesTable,
   emailTrackingEventsTable, backupHistoryTable,
   featureRequestsTable, bugReportsTable, announcementsTable,
+  commMessagesTable, commConversationsTable,
 } from "@workspace/db";
 import { count, desc, sql, eq, gte, lte, gt, and, or, ilike, isNotNull, isNull, inArray } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
@@ -22,6 +23,7 @@ import fs from "fs";
 import { startCampaignProcessor } from "./campaigns";
 import { runBounceScanner } from "../lib/bounce-scanner";
 import { getCronJobStates } from "../lib/monitoring-state";
+import { stripHtmlToText, snippetOf } from "../lib/comm-sync";
 
 const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -4247,6 +4249,193 @@ router.get("/admin/tracking-url-check", requireAdmin, async (_req, res): Promise
       REPLIT_DEV_DOMAIN:  process.env.REPLIT_DEV_DOMAIN ?? "(not set)",
     },
     examplePixelUrl: `${settings.trackingUrl}/api/track/open/<trackingId>`,
+  });
+});
+
+// ─── POST /admin/comm/reparse ─────────────────────────────────────────────────
+//
+// Maintenance endpoint: regenerate body, htmlBody-derived text, and snippet for
+// all existing rows in comm_messages.
+//
+// Background: the MIME parser only runs during sync. Rows already stored retain
+// their original (potentially buggy) parsed values. This endpoint:
+//
+//   Phase 1 (always, safe):
+//     For every message where htmlBody IS NOT NULL — re-derive body (plain text)
+//     via stripHtmlToText and re-derive snippet via snippetOf. Idempotent.
+//
+//   Phase 1b (always, safe):
+//     For every message where htmlBody IS NULL and body is valid text — just
+//     re-derive snippet from the stored body.
+//
+//   Phase 2 (opt-in: clearUnparseable=true):
+//     Delete rows where body='(empty)' or body looks like raw MIME headers and
+//     htmlBody IS NULL. The raw source was never stored, so in-place repair is
+//     impossible. Deletion removes the dedup lock (externalId) so the next sync
+//     re-imports those messages through the fixed parser. Conversations are
+//     preserved; their messageCount/unreadCount counters are decremented.
+//
+//     After clearing, call POST /api/communications/sync (or wait for the cron)
+//     to re-import the cleared messages.
+//
+// Returns: { htmlReparsed, snippetOnly, unparseableCleared, unparseableRemaining }
+//
+router.post("/admin/comm/reparse", requireAdmin, async (req, res): Promise<void> => {
+  const { clearUnparseable = false } = (req.body ?? {}) as { clearUnparseable?: boolean };
+
+  let htmlReparsed      = 0;  // rows fixed via stored htmlBody
+  let snippetOnly       = 0;  // rows where only the snippet was re-derived
+  let unparseableCleared   = 0;  // rows deleted (needs re-sync)
+  let unparseableRemaining = 0;  // rows with bad content left in place
+
+  // ── Phase 1: rows WITH htmlBody — re-derive body + snippet ─────────────────
+  {
+    let lastId = 0;
+    for (;;) {
+      const rows = await db
+        .select({ id: commMessagesTable.id, htmlBody: commMessagesTable.htmlBody })
+        .from(commMessagesTable)
+        .where(and(isNotNull(commMessagesTable.htmlBody), gt(commMessagesTable.id, lastId)))
+        .orderBy(commMessagesTable.id)
+        .limit(200);
+
+      if (rows.length === 0) break;
+
+      for (const row of rows) {
+        const html    = row.htmlBody!;
+        const newBody = stripHtmlToText(html).replace(/\s+/g, " ").trim() || "(empty)";
+        const newSnip = snippetOf(newBody, html);
+        await db
+          .update(commMessagesTable)
+          .set({ body: newBody, snippet: newSnip })
+          .where(eq(commMessagesTable.id, row.id));
+        htmlReparsed++;
+      }
+
+      lastId = rows[rows.length - 1]!.id;
+      if (rows.length < 200) break;
+    }
+  }
+
+  // ── Phase 1b: rows WITHOUT htmlBody — re-derive snippet from plain body ────
+  {
+    let lastId = 0;
+    for (;;) {
+      const rows = await db
+        .select({ id: commMessagesTable.id, body: commMessagesTable.body })
+        .from(commMessagesTable)
+        .where(and(isNull(commMessagesTable.htmlBody), gt(commMessagesTable.id, lastId)))
+        .orderBy(commMessagesTable.id)
+        .limit(200);
+
+      if (rows.length === 0) break;
+
+      for (const row of rows) {
+        const body = row.body;
+        // Detect unparseable: literal "(empty)" sentinel or raw MIME headers
+        const isUnparseable =
+          body === "(empty)" ||
+          /^content-type:\s/i.test(body.slice(0, 200)) ||
+          /^content-transfer-encoding:\s/i.test(body.slice(0, 200));
+
+        if (isUnparseable) {
+          unparseableRemaining++;
+        } else {
+          const newSnip = snippetOf(body, "");
+          await db
+            .update(commMessagesTable)
+            .set({ snippet: newSnip })
+            .where(eq(commMessagesTable.id, row.id));
+          snippetOnly++;
+        }
+      }
+
+      lastId = rows[rows.length - 1]!.id;
+      if (rows.length < 200) break;
+    }
+  }
+
+  // ── Phase 2 (opt-in): delete unparseable rows so next sync re-imports them ─
+  if (clearUnparseable && unparseableRemaining > 0) {
+    let lastId = 0;
+    for (;;) {
+      const rows = await db
+        .select({
+          id:             commMessagesTable.id,
+          conversationId: commMessagesTable.conversationId,
+          direction:      commMessagesTable.direction,
+          isRead:         commMessagesTable.isRead,
+        })
+        .from(commMessagesTable)
+        .where(and(
+          isNull(commMessagesTable.htmlBody),
+          gt(commMessagesTable.id, lastId),
+          or(
+            eq(commMessagesTable.body, "(empty)"),
+            sql`${commMessagesTable.body} ilike 'Content-Type: %'`,
+            sql`${commMessagesTable.body} ilike 'Content-Transfer-Encoding: %'`,
+          ),
+        ))
+        .orderBy(commMessagesTable.id)
+        .limit(200);
+
+      if (rows.length === 0) break;
+
+      // Accumulate per-conversation counter deltas
+      const convDeltas = new Map<number, { total: number; unreadInbound: number }>();
+      for (const r of rows) {
+        const d = convDeltas.get(r.conversationId) ?? { total: 0, unreadInbound: 0 };
+        d.total++;
+        if (r.direction === "inbound" && !r.isRead) d.unreadInbound++;
+        convDeltas.set(r.conversationId, d);
+      }
+
+      // Delete the rows (externalId lock is removed — next sync will re-import)
+      await db
+        .delete(commMessagesTable)
+        .where(inArray(commMessagesTable.id, rows.map(r => r.id)));
+
+      // Decrement conversation counters
+      for (const [convId, { total, unreadInbound }] of convDeltas) {
+        await db
+          .update(commConversationsTable)
+          .set({
+            messageCount: sql`GREATEST(0, ${commConversationsTable.messageCount} - ${total})`,
+            unreadCount:  sql`GREATEST(0, ${commConversationsTable.unreadCount} - ${unreadInbound})`,
+            updatedAt:    new Date(),
+          })
+          .where(eq(commConversationsTable.id, convId));
+      }
+
+      unparseableCleared   += rows.length;
+      unparseableRemaining -= rows.length;
+
+      lastId = rows[rows.length - 1]!.id;
+      if (rows.length < 200) break;
+    }
+  }
+
+  logger.info({
+    "[COMM-REPARSE] Maintenance complete": {
+      htmlReparsed, snippetOnly, unparseableCleared, unparseableRemaining, clearUnparseable,
+    },
+  });
+
+  const needsSync = clearUnparseable
+    ? unparseableCleared > 0
+      ? `${unparseableCleared} messages cleared — trigger a Communications sync (POST /api/communications/sync) or wait for the cron to re-import them.`
+      : null
+    : unparseableRemaining > 0
+      ? `${unparseableRemaining} messages have raw MIME or (empty) body and cannot be repaired from stored data. Re-run with clearUnparseable=true to delete them so the next sync re-fetches them through the fixed parser.`
+      : null;
+
+  res.json({
+    success:              true,
+    htmlReparsed,
+    snippetOnly,
+    unparseableCleared,
+    unparseableRemaining,
+    ...(needsSync ? { nextStep: needsSync } : {}),
   });
 });
 

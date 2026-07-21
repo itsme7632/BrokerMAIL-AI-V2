@@ -241,7 +241,7 @@ function isSystemEmail(fromEmail: string, subject: string): boolean {
   return false;
 }
 
-function stripHtmlToText(html: string): string {
+export function stripHtmlToText(html: string): string {
   return html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
@@ -261,7 +261,7 @@ function stripHtmlToText(html: string): string {
     });
 }
 
-function snippetOf(text: string, html: string, max = 160): string {
+export function snippetOf(text: string, html: string, max = 160): string {
   // Produce a raw (line-preserving) version of the content so we can
   // strip greeting LINES before collapsing whitespace.
   let raw = "";
