@@ -21,7 +21,6 @@ import { buildUnsubscribeUrl } from "../lib/unsubscribe-token";
 import type { User } from "@workspace/db";
 import { randomUUID } from "crypto";
 import { sendEmail } from "../lib/smtp";
-import { saveToSent, buildRawMessage } from "../lib/imap";
 import { getTrackingSettings } from "../lib/tracking-settings";
 import { checkEmailLimit, checkCampaignLimit } from "../lib/plan-limits";
 import { isSuppressed, filterSuppressed } from "../lib/suppression";
@@ -401,15 +400,6 @@ export async function processCampaignJobQueue(
           cooldownUntil: null,
           updatedAt: new Date(),
         }).where(eq(campaignsTable.id, campaignId));
-
-        // ── Non-fatal: IMAP sent-folder copy ──
-        if (box.imapHost && box.imapUser && box.imapPassEncrypted) {
-          const raw = buildRawMessage({
-            from: fromAddress, to: item.email, subject,
-            html: trackedHtml, text: bodyText, messageId: info.messageId,
-          });
-          saveToSent(box, raw).catch(() => {});
-        }
 
         // ── Non-fatal: drafts tracking record — failure here must never revert a sent email ──
         // sentAt is set to now() because the email is already delivered; this makes
@@ -957,15 +947,6 @@ export async function processCampaignFully(
           cooldownUntil: null,
           updatedAt: new Date(),
         }).where(eq(campaignsTable.id, campaignId));
-
-        // ── Non-fatal: IMAP sent-folder copy ──
-        if (box.imapHost && box.imapUser && box.imapPassEncrypted) {
-          const raw = buildRawMessage({
-            from: fromAddress, to: item.email, subject,
-            html: trackedHtml, text: bodyText, messageId: info.messageId,
-          });
-          saveToSent(box, raw).catch(() => {});
-        }
 
         // ── Non-fatal: drafts tracking record — failure here must never revert a sent email ──
         // sentAt is set to now() because the email is already delivered; this makes

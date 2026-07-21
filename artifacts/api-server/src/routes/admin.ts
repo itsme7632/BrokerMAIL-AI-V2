@@ -6,7 +6,6 @@ import {
   templatesTable, suppressionListTable, processedBouncesTable,
   emailTrackingEventsTable, backupHistoryTable,
   featureRequestsTable, bugReportsTable, announcementsTable,
-  commMessagesTable, commConversationsTable,
 } from "@workspace/db";
 import { count, desc, sql, eq, gte, lte, gt, and, or, ilike, isNotNull, isNull, inArray } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
@@ -17,13 +16,10 @@ import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { decrypt } from "../lib/crypto";
 import { buildTransportOptions } from "../lib/smtp";
-import { testImap } from "../lib/imap";
 import os from "os";
 import fs from "fs";
 import { startCampaignProcessor } from "./campaigns";
-import { runBounceScanner } from "../lib/bounce-scanner";
 import { getCronJobStates } from "../lib/monitoring-state";
-import { stripHtmlToText, snippetOf } from "../lib/comm-sync";
 
 const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -213,7 +209,6 @@ router.get("/admin/dashboard-overview", requireAdmin, async (_req, res): Promise
       workers: queueCounts[0].count > 0 ? "processing" : "idle",
       queue: { pending: queueCounts[0].count },
       smtp: healthyMailboxPct >= 85 ? "operational" : healthyMailboxPct >= 50 ? "degraded" : "down",
-      imap: "operational",
       mailboxHealthPct: healthyMailboxPct,
     },
     campaignMonitor: {
@@ -747,29 +742,6 @@ router.get("/admin/mailboxes/:id/smtp-usage", requireAdmin, async (req, res): Pr
   const avg  = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + Number(r.total), 0) / rows.length) : 0;
 
   res.json({ data: rows, peak, avg });
-});
-
-// ─── POST /admin/mailboxes/:id/test-imap ─────────────────────────────────────
-
-router.post("/admin/mailboxes/:id/test-imap", requireAdmin, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id as string, 10);
-  const [mailbox] = await db.select().from(mailboxesTable).where(eq(mailboxesTable.id, id));
-  if (!mailbox) { res.status(404).json({ error: "Mailbox not found" }); return; }
-  if (!mailbox.imapHost || !mailbox.imapUser || !mailbox.imapPassEncrypted) {
-    res.json({ ok: false, message: "IMAP is not configured for this mailbox" });
-    return;
-  }
-  try {
-    await testImap({
-      imapHost:          mailbox.imapHost,
-      imapPort:          mailbox.imapPort ?? 993,
-      imapUser:          mailbox.imapUser,
-      imapPassEncrypted: mailbox.imapPassEncrypted,
-    });
-    res.json({ ok: true, message: "IMAP connection verified successfully" });
-  } catch (err: any) {
-    res.status(502).json({ ok: false, error: err?.message ?? "IMAP verification failed" });
-  }
 });
 
 // ─── POST /admin/mailboxes/:id/force-reconnect ────────────────────────────────
@@ -1614,13 +1586,6 @@ router.get("/admin/platform-health", requireAdmin, async (_req, res): Promise<vo
   const usedMemMb  = totalMemMb - freeMemMb;
 
   const cronStates = getCronJobStates();
-  const bounceCron = cronStates.find(c => c.name === "Bounce Scanner");
-  const bounceLastSuccessMs = bounceCron?.lastSuccessAt ? Date.now() - new Date(bounceCron.lastSuccessAt).getTime() : null;
-  const imapStatus = bounceCron?.lastError
-    ? "down"
-    : bounceLastSuccessMs === null
-      ? "checking"
-      : bounceLastSuccessMs < 180_000 ? "operational" : "degraded";
 
   res.json({
     api: {
@@ -1650,12 +1615,6 @@ router.get("/admin/platform-health", requireAdmin, async (_req, res): Promise<vo
     workers: {
       smtpActive: smtpActiveRow.count > 0,
       gmailActive: gmailActiveRow.count > 0,
-      bounceScanner: bounceRecentRow.count > 0 || (bounceLastSuccessMs !== null && bounceLastSuccessMs < 180_000),
-    },
-    imap: {
-      status: imapStatus,
-      lastScanAt: bounceCron?.lastSuccessAt ?? null,
-      detail: bounceCron?.lastError ? bounceCron.lastError : "Bounce scanner IMAP connection",
     },
     cronJobs: cronStates,
     runningJobs: runningCampaigns.map(c => ({
@@ -1679,18 +1638,6 @@ router.get("/admin/platform-health", requireAdmin, async (_req, res): Promise<vo
 });
 
 // ─── Platform Monitoring — Restart Actions ────────────────────────────────────
-
-router.post("/admin/monitoring/run-bounce-scan", requireAdmin, async (_req, res): Promise<void> => {
-  try {
-    runBounceScanner(startCampaignProcessor).catch(err => logger.error({ err }, "[MONITORING] Manual bounce scan failed"));
-    await db.insert(systemLogsTable).values({
-      type: "monitoring", severity: "info", description: "Admin manually triggered a bounce scan",
-    });
-    res.json({ success: true, message: "Bounce scan started" });
-  } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to start bounce scan" });
-  }
-});
 
 router.post("/admin/monitoring/queue/:id/retry", requireAdmin, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string, 10);
@@ -2103,7 +2050,6 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   // Email Provider Management
   gmailDraftsEnabled:       "true",
   smtpSendingEnabled:       "true",
-  imapSyncEnabled:          "true",
   providerGmail:            "true",
   providerOutlook:          "true",
   providerHostinger:        "true",
@@ -4176,57 +4122,6 @@ router.post("/admin/test-click-tracking", requireAdmin, async (req, res): Promis
   }
 });
 
-router.post("/admin/test-bounce-imap", requireAdmin, async (req, res): Promise<void> => {
-  const { host, port, username, password, folder } = req.body as {
-    host?: string; port?: number; username?: string; password?: string; folder?: string;
-  };
-  if (!host || !username || !password) {
-    res.status(400).json({ ok: false, message: "host, username, and password are required" });
-    return;
-  }
-  const imapPort   = Number(port) || 993;
-  const imapFolder = folder || "INBOX";
-
-  const { ImapFlow } = await import("imapflow");
-  const client = new ImapFlow({
-    host,
-    port: imapPort,
-    secure: imapPort === 993,
-    auth: { user: username, pass: password },
-    tls:  { rejectUnauthorized: false },
-    logger: false,
-    connectionTimeout: 10_000,
-    socketTimeout:     15_000,
-  });
-  client.on("error", () => {});
-
-  try {
-    await client.connect();
-    const lock = await client.getMailboxLock(imapFolder);
-    let messageCount = 0;
-    try {
-      const st = await client.status(imapFolder, { messages: true });
-      messageCount = st?.messages ?? 0;
-    } finally { lock.release(); }
-    client.logout().catch(() => {});
-    res.json({
-      ok: true,
-      message: `Connected successfully. "${imapFolder}" has ${messageCount} message(s).`,
-      host, port: imapPort, username, folder: imapFolder, messageCount,
-    });
-  } catch (err: any) {
-    client.logout().catch(() => {});
-    const msg = String(err?.message ?? "Connection failed");
-    const category =
-      /auth|login|credential|password/i.test(msg) ? "Authentication failed" :
-      /timeout/i.test(msg)                         ? "Connection timed out" :
-      /ENOTFOUND|getaddrinfo/i.test(msg)           ? "Host not found" :
-      /mailbox|folder|no such/i.test(msg)          ? "Folder not found" :
-      "Connection failed";
-    res.json({ ok: false, message: category, detail: msg, host, port: imapPort, username, folder: imapFolder });
-  }
-});
-
 // ─── Tracking URL diagnostic endpoint ─────────────────────────────────────────
 // GET /api/admin/tracking-url-check
 // Returns the fully-resolved tracking base URL so operators can verify what
@@ -4249,375 +4144,6 @@ router.get("/admin/tracking-url-check", requireAdmin, async (_req, res): Promise
       REPLIT_DEV_DOMAIN:  process.env.REPLIT_DEV_DOMAIN ?? "(not set)",
     },
     examplePixelUrl: `${settings.trackingUrl}/api/track/open/<trackingId>`,
-  });
-});
-
-// ─── POST /admin/comm/reparse ─────────────────────────────────────────────────
-//
-// Cursor-based maintenance endpoint: regenerates body/snippet for comm_messages
-// ONE BATCH PER REQUEST so no single HTTP call ever hits a proxy timeout.
-//
-// HOW TO USE
-// ----------
-// Call repeatedly, passing `nextCursor` from each response back as `cursor`,
-// until `completed: true` is returned.
-//
-//   1st call  → POST /api/admin/comm/reparse  { clearUnparseable?: bool, batchSize?: 50–200 }
-//   Nth call  → POST /api/admin/comm/reparse  { cursor: "<nextCursor>" }
-//
-// PHASES (order is fixed; one batch of ≤batchSize rows per request)
-// ─────────────────────────────────────────────────────────────────
-//   "html"    – htmlBody IS NOT NULL  → re-derive body (stripHtmlToText) + snippet
-//   "snippet" – htmlBody IS NULL, valid body → re-derive snippet only
-//   "clear"   – htmlBody IS NULL, body=(empty)|raw-MIME → DELETE + fix conv counters
-//               (only runs when clearUnparseable=true)
-//
-// CURSOR (opaque base64url-encoded JSON carried by caller between requests)
-//   { phase, lastId, batchSize, clearUnparseable,
-//     tot: { htmlReparsed, snippetOnly, unparseableCleared, unparseableRemaining } }
-//
-// IN-PROGRESS RESPONSE
-//   { completed:false, processed:<cumulative>, remaining:<estimate>,
-//     nextCursor:"...", batch:{ phase, rowsThisBatch, durationMs, ... } }
-//
-// COMPLETED RESPONSE
-//   { completed:true, processed:<total>,
-//     htmlReparsed, snippetOnly, unparseableCleared, unparseableRemaining,
-//     nextStep?:"..." }
-//
-
-type ReparsePhase = "html" | "snippet" | "clear";
-
-interface ReparseCursor {
-  phase:            ReparsePhase;
-  lastId:           number;
-  batchSize:        number;
-  clearUnparseable: boolean;
-  tot: {
-    htmlReparsed:         number;
-    snippetOnly:          number;
-    unparseableCleared:   number;
-    unparseableRemaining: number;
-  };
-}
-
-function encodeReparseCursor(c: ReparseCursor): string {
-  return Buffer.from(JSON.stringify(c), "utf8").toString("base64url");
-}
-
-function decodeReparseCursor(s: string): ReparseCursor {
-  return JSON.parse(Buffer.from(s, "base64url").toString("utf8")) as ReparseCursor;
-}
-
-function isUnparseableBody(body: string): boolean {
-  const head = body.slice(0, 200);
-  return (
-    body === "(empty)" ||
-    /^content-type:\s/i.test(head) ||
-    /^content-transfer-encoding:\s/i.test(head)
-  );
-}
-
-function nextReparsePhase(
-  current: ReparsePhase,
-  clearUnparseable: boolean,
-): ReparsePhase | null {
-  if (current === "html")    return "snippet";
-  if (current === "snippet") return clearUnparseable ? "clear" : null;
-  return null; // "clear" is always last
-}
-
-async function countReparseRemaining(
-  phase:            ReparsePhase,
-  lastId:           number,
-  clearUnparseable: boolean,
-): Promise<number> {
-  // Count all rows still to process across every remaining phase.
-  // Runs three lightweight index-range COUNT queries in parallel.
-  const [htmlCount, snippetCount, clearCount] = await Promise.all([
-    // html phase: htmlBody IS NOT NULL, id > lastId (0 when phase has passed)
-    phase === "html"
-      ? db.select({ n: sql<number>`count(*)::int` })
-           .from(commMessagesTable)
-           .where(and(isNotNull(commMessagesTable.htmlBody), gt(commMessagesTable.id, lastId)))
-           .then(r => r[0]?.n ?? 0)
-      : phase === "snippet" || phase === "clear"
-        ? db.select({ n: sql<number>`count(*)::int` })
-             .from(commMessagesTable)
-             .where(isNotNull(commMessagesTable.htmlBody))
-             .then(r => r[0]?.n ?? 0)
-        : Promise.resolve(0 as number),
-
-    // snippet phase: htmlBody IS NULL, body valid, id > lastId (0 when phase has passed)
-    phase === "html" || phase === "snippet"
-      ? db.select({ n: sql<number>`count(*)::int` })
-           .from(commMessagesTable)
-           .where(and(
-             isNull(commMessagesTable.htmlBody),
-             phase === "snippet" ? gt(commMessagesTable.id, lastId) : sql`true`,
-             sql`NOT (
-               ${commMessagesTable.body} = '(empty)' OR
-               ${commMessagesTable.body} ilike 'Content-Type: %' OR
-               ${commMessagesTable.body} ilike 'Content-Transfer-Encoding: %'
-             )`,
-           ))
-           .then(r => r[0]?.n ?? 0)
-      : Promise.resolve(0 as number),
-
-    // clear phase: unparseable rows — only relevant when opt-in
-    clearUnparseable
-      ? db.select({ n: sql<number>`count(*)::int` })
-           .from(commMessagesTable)
-           .where(and(
-             isNull(commMessagesTable.htmlBody),
-             phase === "clear" ? gt(commMessagesTable.id, lastId) : sql`true`,
-             or(
-               eq(commMessagesTable.body, "(empty)"),
-               sql`${commMessagesTable.body} ilike 'Content-Type: %'`,
-               sql`${commMessagesTable.body} ilike 'Content-Transfer-Encoding: %'`,
-             ),
-           ))
-           .then(r => r[0]?.n ?? 0)
-      : Promise.resolve(0 as number),
-  ]);
-
-  return (htmlCount ?? 0) + (snippetCount ?? 0) + (clearCount ?? 0);
-}
-
-router.post("/admin/comm/reparse", requireAdmin, async (req, res): Promise<void> => {
-  const reqStart = Date.now();
-
-  // ── Decode or initialise cursor ───────────────────────────────────────────
-  const body = (req.body ?? {}) as {
-    cursor?:           string;
-    clearUnparseable?: boolean;
-    batchSize?:        number;
-  };
-
-  let cursor: ReparseCursor;
-  if (body.cursor) {
-    try {
-      cursor = decodeReparseCursor(body.cursor);
-    } catch {
-      res.status(400).json({ error: "Invalid cursor — start a fresh run by omitting cursor." });
-      return;
-    }
-  } else {
-    cursor = {
-      phase:            "html",
-      lastId:           0,
-      batchSize:        Math.min(200, Math.max(50, body.batchSize ?? 150)),
-      clearUnparseable: body.clearUnparseable ?? false,
-      tot: { htmlReparsed: 0, snippetOnly: 0, unparseableCleared: 0, unparseableRemaining: 0 },
-    };
-  }
-
-  const { phase, lastId, batchSize, clearUnparseable, tot } = cursor;
-  const phaseStart = Date.now();
-  let rowsThisBatch      = 0;
-  let batchHtmlReparsed  = 0;
-  let batchSnippetOnly   = 0;
-  let batchCleared       = 0;
-  let batchUnparseable   = 0;
-
-  // ── Run one batch for the current phase ──────────────────────────────────
-
-  if (phase === "html") {
-    // Re-derive body (plain text) + snippet for rows that have htmlBody stored.
-    const rows = await db
-      .select({ id: commMessagesTable.id, htmlBody: commMessagesTable.htmlBody })
-      .from(commMessagesTable)
-      .where(and(isNotNull(commMessagesTable.htmlBody), gt(commMessagesTable.id, lastId)))
-      .orderBy(commMessagesTable.id)
-      .limit(batchSize);
-
-    for (const row of rows) {
-      const html    = row.htmlBody!;
-      const newBody = stripHtmlToText(html).replace(/\s+/g, " ").trim() || "(empty)";
-      const newSnip = snippetOf(newBody, html);
-      await db
-        .update(commMessagesTable)
-        .set({ body: newBody, snippet: newSnip })
-        .where(eq(commMessagesTable.id, row.id));
-      batchHtmlReparsed++;
-    }
-    rowsThisBatch = rows.length;
-    if (rows.length > 0) cursor.lastId = rows[rows.length - 1]!.id;
-
-  } else if (phase === "snippet") {
-    // Re-derive snippet for plain-text-only rows; tally unparseable ones.
-    const rows = await db
-      .select({ id: commMessagesTable.id, body: commMessagesTable.body })
-      .from(commMessagesTable)
-      .where(and(isNull(commMessagesTable.htmlBody), gt(commMessagesTable.id, lastId)))
-      .orderBy(commMessagesTable.id)
-      .limit(batchSize);
-
-    for (const row of rows) {
-      if (isUnparseableBody(row.body)) {
-        batchUnparseable++;
-      } else {
-        const newSnip = snippetOf(row.body, "");
-        await db
-          .update(commMessagesTable)
-          .set({ snippet: newSnip })
-          .where(eq(commMessagesTable.id, row.id));
-        batchSnippetOnly++;
-      }
-    }
-    rowsThisBatch = rows.length;
-    if (rows.length > 0) cursor.lastId = rows[rows.length - 1]!.id;
-
-  } else {
-    // phase === "clear"
-    // Delete rows whose content cannot be recovered; decrement conv counters.
-    const rows = await db
-      .select({
-        id:             commMessagesTable.id,
-        conversationId: commMessagesTable.conversationId,
-        direction:      commMessagesTable.direction,
-        isRead:         commMessagesTable.isRead,
-      })
-      .from(commMessagesTable)
-      .where(and(
-        isNull(commMessagesTable.htmlBody),
-        gt(commMessagesTable.id, lastId),
-        or(
-          eq(commMessagesTable.body, "(empty)"),
-          sql`${commMessagesTable.body} ilike 'Content-Type: %'`,
-          sql`${commMessagesTable.body} ilike 'Content-Transfer-Encoding: %'`,
-        ),
-      ))
-      .orderBy(commMessagesTable.id)
-      .limit(batchSize);
-
-    if (rows.length > 0) {
-      // Accumulate per-conversation counter deltas before deleting
-      const convDeltas = new Map<number, { total: number; unreadInbound: number }>();
-      for (const r of rows) {
-        const d = convDeltas.get(r.conversationId) ?? { total: 0, unreadInbound: 0 };
-        d.total++;
-        if (r.direction === "inbound" && !r.isRead) d.unreadInbound++;
-        convDeltas.set(r.conversationId, d);
-      }
-
-      // Delete rows — removes the externalId dedup lock so next sync re-imports
-      await db
-        .delete(commMessagesTable)
-        .where(inArray(commMessagesTable.id, rows.map(r => r.id)));
-
-      // Decrement conversation counters (floor at 0 to guard against drift)
-      for (const [convId, { total, unreadInbound }] of convDeltas) {
-        await db
-          .update(commConversationsTable)
-          .set({
-            messageCount: sql`GREATEST(0, ${commConversationsTable.messageCount} - ${total})`,
-            unreadCount:  sql`GREATEST(0, ${commConversationsTable.unreadCount} - ${unreadInbound})`,
-            updatedAt:    new Date(),
-          })
-          .where(eq(commConversationsTable.id, convId));
-      }
-
-      batchCleared  = rows.length;
-      cursor.lastId = rows[rows.length - 1]!.id;
-    }
-    rowsThisBatch = rows.length;
-  }
-
-  const batchMs = Date.now() - phaseStart;
-
-  // ── Update running totals ─────────────────────────────────────────────────
-  tot.htmlReparsed         += batchHtmlReparsed;
-  tot.snippetOnly          += batchSnippetOnly;
-  tot.unparseableCleared   += batchCleared;
-  tot.unparseableRemaining += batchUnparseable;
-  cursor.tot = tot;
-
-  const cumulative = tot.htmlReparsed + tot.snippetOnly + tot.unparseableCleared;
-
-  logger.info(
-    `[COMM-REPARSE] phase=${phase} lastId=${cursor.lastId} rows=${rowsThisBatch} ` +
-    `batchMs=${batchMs} totalMs=${Date.now() - reqStart} ` +
-    `cumulative=${cumulative} html=${tot.htmlReparsed} snip=${tot.snippetOnly} ` +
-    `cleared=${tot.unparseableCleared} unparseable=${tot.unparseableRemaining}`,
-  );
-
-  // ── Determine whether to continue, advance phase, or finish ──────────────
-  const batchWasFull = rowsThisBatch >= batchSize;
-
-  if (batchWasFull) {
-    // Current phase has more rows — return cursor at same phase, advanced lastId
-    const remaining = await countReparseRemaining(cursor.phase, cursor.lastId, clearUnparseable);
-    res.json({
-      completed:  false,
-      processed:  cumulative,
-      remaining,
-      nextCursor: encodeReparseCursor(cursor),
-      batch: {
-        phase,
-        rowsThisBatch,
-        durationMs:     batchMs,
-        totalRequestMs: Date.now() - reqStart,
-        htmlReparsed:   batchHtmlReparsed,
-        snippetOnly:    batchSnippetOnly,
-        cleared:        batchCleared,
-        unparseable:    batchUnparseable,
-      },
-    });
-    return;
-  }
-
-  // Phase is exhausted — advance to next phase
-  const next = nextReparsePhase(phase, clearUnparseable);
-  if (next !== null) {
-    cursor.phase  = next;
-    cursor.lastId = 0;
-    const remaining = await countReparseRemaining(next, 0, clearUnparseable);
-    res.json({
-      completed:  false,
-      processed:  cumulative,
-      remaining,
-      nextCursor: encodeReparseCursor(cursor),
-      batch: {
-        phase,
-        rowsThisBatch,
-        durationMs:     batchMs,
-        totalRequestMs: Date.now() - reqStart,
-        htmlReparsed:   batchHtmlReparsed,
-        snippetOnly:    batchSnippetOnly,
-        cleared:        batchCleared,
-        unparseable:    batchUnparseable,
-        phaseComplete:  true,
-        nextPhase:      next,
-      },
-    });
-    return;
-  }
-
-  // All phases done
-  logger.info(
-    `[COMM-REPARSE] Complete — html=${tot.htmlReparsed} snip=${tot.snippetOnly} ` +
-    `cleared=${tot.unparseableCleared} unparseable=${tot.unparseableRemaining}`,
-  );
-
-  const needsSync =
-    clearUnparseable && tot.unparseableCleared > 0
-      ? `${tot.unparseableCleared} messages cleared — trigger a Communications sync ` +
-        `(POST /api/communications/sync) or wait for the cron to re-import them.`
-      : !clearUnparseable && tot.unparseableRemaining > 0
-        ? `${tot.unparseableRemaining} messages have raw MIME or (empty) body and cannot ` +
-          `be repaired from stored data. Re-run with { clearUnparseable: true } to delete ` +
-          `them so the next sync re-fetches them through the fixed parser.`
-        : undefined;
-
-  res.json({
-    completed:            true,
-    processed:            cumulative,
-    htmlReparsed:         tot.htmlReparsed,
-    snippetOnly:          tot.snippetOnly,
-    unparseableCleared:   tot.unparseableCleared,
-    unparseableRemaining: tot.unparseableRemaining,
-    ...(needsSync ? { nextStep: needsSync } : {}),
   });
 });
 

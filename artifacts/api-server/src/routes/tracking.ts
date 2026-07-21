@@ -1,8 +1,7 @@
 import { Router, type IRouter } from "express";
-import { db, draftsTable, emailTrackingEventsTable, emailQueueTable, commConversationsTable } from "@workspace/db";
+import { db, draftsTable, emailTrackingEventsTable, emailQueueTable } from "@workspace/db";
 import { eq, and, gte, desc, count } from "drizzle-orm";
 import { logger } from "../lib/logger";
-import { broadcastToUser } from "../lib/comm-events";
 
 const router: IRouter = Router();
 
@@ -345,20 +344,6 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
               timestamp:      ts.toISOString(),
             }, "[TRACK/OPEN] 9. SUCCESS — Open event inserted and confirmed");
             // Real-time: notify any open Communications page (fire-and-forget)
-            if (draft && draft.leadId) {
-              db.select({ id: commConversationsTable.id, userId: commConversationsTable.userId })
-                .from(commConversationsTable)
-                .where(eq(commConversationsTable.leadId, draft.leadId))
-                .limit(1)
-                .then(([conv]) => {
-                  if (conv) broadcastToUser(conv.userId, {
-                    type: "tracking_event",
-                    conversationId: conv.id,
-                    data: { eventType: "open" },
-                  });
-                })
-                .catch(() => {});
-            }
           } catch (insertErr) {
             logger.error({ trackingId, draftId: draft.id, insertErr },
               "[TRACK/OPEN] 9. EXIT PATH — FAILED to insert open event — DB error");
@@ -421,20 +406,6 @@ router.get("/track/click/:trackingId", async (req, res): Promise<void> => {
           });
           logger.info({ trackingId, draftId: draft.id, label, url, ip, timestamp: new Date().toISOString() }, "[TRACK/CLICK] Click recorded");
           // Real-time: notify any open Communications page about this click event
-          if (draft.leadId) {
-            db.select({ id: commConversationsTable.id, userId: commConversationsTable.userId })
-              .from(commConversationsTable)
-              .where(eq(commConversationsTable.leadId, draft.leadId))
-              .limit(1)
-              .then(([conv]) => {
-                if (conv) broadcastToUser(conv.userId, {
-                  type: "tracking_event",
-                  conversationId: conv.id,
-                  data: { eventType: "click", url },
-                });
-              })
-              .catch(() => {});
-          }
         }
       }
     }

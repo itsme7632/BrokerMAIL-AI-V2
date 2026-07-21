@@ -7,7 +7,7 @@ import {
   Menu, X, Server, CreditCard, SendHorizonal, Megaphone, LayoutGrid,
   LogOut, Palette, HelpCircle, ChevronDown, ChevronRight, Moon, Sun,
   PenLine, TicketCheck, Zap, Sparkles, Map, MessageSquare, Bug,
-  Bell, Inbox, User,
+  Bell, User,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -36,12 +36,6 @@ type NavGroupDef = {
 };
 
 const NAV_GROUP_DEFS: NavGroupDef[] = [
-  {
-    label: "Communications",
-    icon: Inbox,
-    href: "/communications",   // header IS the nav link — no sub-items
-    items: [],
-  },
   {
     label: "Campaigns",
     icon: Megaphone,
@@ -581,13 +575,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   const isAdmin = location.startsWith("/admin");
-  const isComms = location.startsWith("/communications");
 
   return (
-    <div className={cn(
-      "flex w-full bg-slate-50 dark:bg-slate-950",
-      isComms ? "h-screen overflow-hidden" : "min-h-screen",
-    )}>
+    <div className="flex w-full bg-slate-50 dark:bg-slate-950 min-h-screen">
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex flex-col flex-shrink-0 sticky top-0 h-screen">
         <Sidebar />
@@ -607,18 +597,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopHeader onMobileMenuClick={() => setMobileOpen(true)} />
         <HeaderBanner />
-        {/* Communications gets its own scroll-per-panel layout; admin is full-width padded; others are centered */}
-        {isComms ? (
-          <main className="flex-1 overflow-hidden">
+        <main className="flex-1 overflow-auto">
+          <div className={isAdmin ? "w-full px-5 py-5 min-w-0" : "max-w-6xl mx-auto w-full px-6 py-8"}>
             {children}
-          </main>
-        ) : (
-          <main className="flex-1 overflow-auto">
-            <div className={isAdmin ? "w-full px-5 py-5 min-w-0" : "max-w-6xl mx-auto w-full px-6 py-8"}>
-              {children}
-            </div>
-          </main>
-        )}
+          </div>
+        </main>
       </div>
 
       {/* Global product-hub overlays (rendered once at root level) */}

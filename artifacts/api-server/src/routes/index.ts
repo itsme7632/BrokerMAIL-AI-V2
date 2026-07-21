@@ -22,7 +22,6 @@ import composerRouter from "./composer";
 import supportRouter from "./support";
 import unsubscribeRouter from "./unsubscribe";
 import productHubRouter from "./product-hub";
-import communicationsRouter from "./communications";
 import analyticsRouter from "./analytics";
 
 const router: IRouter = Router();
@@ -50,7 +49,6 @@ router.use(composerRouter);
 router.use(supportRouter);
 router.use(unsubscribeRouter);
 router.use(productHubRouter);
-router.use(communicationsRouter);
 router.use(analyticsRouter);
 
 export default router;

@@ -510,13 +510,10 @@ export default function MailboxSettings() {
   const [isConnected, setIsConnected] = useState(false);
   const [lastVerified, setLastVerified] = useState<string | null>(null);
 
-  const [savingSection, setSavingSection] = useState<null | "info" | "smtp" | "imap" | "sending" | "recovery">(null);
+  const [savingSection, setSavingSection] = useState<null | "info" | "smtp" | "sending" | "recovery">(null);
 
   const [smtpTest, setSmtpTest] = useState<"idle"|"testing"|"ok"|"fail">("idle");
-  const [imapTest, setImapTest] = useState<"idle"|"testing"|"ok"|"fail">("idle");
   const [smtpErr, setSmtpErr]   = useState("");
-  const [imapErr, setImapErr]   = useState("");
-  const [showImap, setShowImap] = useState(false);
   const [customDelay, setCustomDelay]   = useState("");
   const [customHourly, setCustomHourly] = useState("");
 
@@ -550,7 +547,6 @@ export default function MailboxSettings() {
         const data = await res.json();
         if (data) {
           setIsConnected(true);
-          setShowImap(!!data.imapHost);
           setLastVerified(data.updatedAt ?? null);
           setForm({
             smtpHost: data.smtpHost ?? "",
@@ -583,7 +579,6 @@ export default function MailboxSettings() {
       smtpHost: p.smtp, smtpPort: p.smtpPort, smtpSecure: p.secure,
       imapHost: p.imap, imapPort: p.imapPort,
     }));
-    setShowImap(true);
   }
 
   async function handleTestSmtp() {
@@ -602,28 +597,12 @@ export default function MailboxSettings() {
     }
   }
 
-  async function handleTestImap() {
-    setImapTest("testing"); setImapErr("");
-    try {
-      const res = await fetch("/api/mailbox/test-imap", {
-        method: "POST",
-        headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ imapHost: form.imapHost, imapPort: Number(form.imapPort), imapUser: form.imapUser, imapPass: form.imapPass }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Test failed");
-      setImapTest("ok");
-    } catch (err: any) {
-      setImapTest("fail"); setImapErr(err.message);
-    }
-  }
-
   // Every section save sends the full current form (required by the single
   // /api/mailbox/save endpoint) but only the fields belonging to THAT section
   // are ever edited by the user before clicking its button — smtpPass/imapPass
   // stay blank unless explicitly changed, so saving Sending/Recovery settings
   // never requires re-entering SMTP/IMAP credentials.
-  async function saveSection(section: "info" | "smtp" | "imap" | "sending" | "recovery", successMsg: string) {
+  async function saveSection(section: "info" | "smtp" | "sending" | "recovery", successMsg: string) {
     setSavingSection(section);
     try {
       const res = await fetch("/api/mailbox/save", {
@@ -662,7 +641,7 @@ export default function MailboxSettings() {
       await fetch("/api/mailbox/remove", { method: "POST", headers: authHeaders() });
       setIsConnected(false);
       setForm(EMPTY_FORM);
-      setSmtpTest("idle"); setImapTest("idle");
+      setSmtpTest("idle");
       setConfirmDelete(false);
       toast({ title: "Mailbox deleted" });
     } catch {
@@ -803,49 +782,6 @@ export default function MailboxSettings() {
                 Save SMTP
               </Button>
             </CardFooter>
-          </Card>
-
-          {/* Section 3 — IMAP Settings */}
-          <Card>
-            <button type="button" onClick={() => setShowImap(s => !s)} className="w-full text-left">
-              <SectionHeader
-                icon={Mail}
-                title="IMAP Settings"
-                description="Optional — copies sent emails to your Sent folder"
-                badge={showImap ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-              />
-            </button>
-            {showImap && (
-              <>
-                <CardContent className="pt-0 grid sm:grid-cols-2 gap-x-5 gap-y-4">
-                  <Field label="IMAP Host" icon={Server} value={form.imapHost}
-                    onChange={v => set("imapHost", v)} placeholder="imap.hostinger.com" />
-                  <Field label="IMAP Port" icon={Wifi} value={form.imapPort}
-                    onChange={v => set("imapPort", v)} placeholder="993" />
-                  <Field label="Username" icon={User} value={form.imapUser}
-                    onChange={v => set("imapUser", v)} placeholder="sales@yourcompany.com" />
-                  <Field label="Password" icon={Lock} value={form.imapPass} revealable
-                    onChange={v => set("imapPass", v)}
-                    placeholder={isConnected && form.imapHost ? "Leave blank to keep current" : "IMAP password"} />
-                </CardContent>
-                <CardFooter className="flex flex-wrap items-center gap-3">
-                  <Button type="button" variant="outline" size="sm"
-                    onClick={handleTestImap}
-                    disabled={imapTest === "testing" || !form.imapHost || !form.imapUser || !form.imapPass}
-                    className="rounded-xl gap-1.5"
-                  >
-                    {imapTest === "testing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FlaskConical className="h-3.5 w-3.5" />}
-                    Test IMAP
-                  </Button>
-                  <TestBadge state={imapTest} />
-                  {imapErr && <span className="text-xs text-destructive truncate">{imapErr}</span>}
-                  <Button onClick={() => saveSection("imap", "IMAP settings saved.")} disabled={savingSection === "imap"} size="sm" className="rounded-xl gap-2 ml-auto">
-                    {savingSection === "imap" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    Save IMAP
-                  </Button>
-                </CardFooter>
-              </>
-            )}
           </Card>
 
           {/* Section 4 — Sending Settings */}

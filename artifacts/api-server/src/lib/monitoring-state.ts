@@ -17,10 +17,8 @@ export interface CronJobState {
 }
 
 const state: Record<string, CronJobState> = {
-  campaignWatchdog: { name: "Campaign Watchdog",      intervalSec: 60,  lastRunAt: null, lastSuccessAt: null, lastError: null, runCount: 0 },
-  bounceScanner:    { name: "Bounce Scanner",          intervalSec: 60,  lastRunAt: null, lastSuccessAt: null, lastError: null, runCount: 0 },
-  gmailSync:        { name: "Gmail Draft Sync",        intervalSec: 300, lastRunAt: null, lastSuccessAt: null, lastError: null, runCount: 0 },
-  commSync:         { name: "Communications Inbox Sync", intervalSec: 300, lastRunAt: null, lastSuccessAt: null, lastError: null, runCount: 0 },
+  campaignWatchdog: { name: "Campaign Watchdog", intervalSec: 60,  lastRunAt: null, lastSuccessAt: null, lastError: null, runCount: 0 },
+  gmailSync:        { name: "Gmail Draft Sync",  intervalSec: 300, lastRunAt: null, lastSuccessAt: null, lastError: null, runCount: 0 },
 };
 
 export function touchCronStart(key: keyof typeof state): void {

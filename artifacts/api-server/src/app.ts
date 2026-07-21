@@ -8,9 +8,7 @@ import { db, pool, usersTable, plansTable, campaignsTable, emailQueueTable, lead
 import { eq, and, inArray, isNotNull } from "drizzle-orm";
 import { startCampaignProcessor } from "./routes/campaigns";
 import { resumeMailboxQuotaRecovery } from "./lib/smtp-quota";
-import { runBounceScanner } from "./lib/bounce-scanner";
 import { runGmailDraftSync } from "./lib/gmail-draft-sync";
-import { runCommSync } from "./lib/comm-sync";
 import { hashPassword } from "./lib/auth";
 import { maintenanceMiddleware } from "./lib/maintenance";
 import { touchCronStart, touchCronSuccess, touchCronError } from "./lib/monitoring-state";
@@ -275,13 +273,6 @@ async function runWatchdog(): Promise<void> {
   }
 }
 
-function trackedBounceScan(): Promise<void> {
-  touchCronStart("bounceScanner");
-  return runBounceScanner(startCampaignProcessor)
-    .then(() => touchCronSuccess("bounceScanner"))
-    .catch(err => { touchCronError("bounceScanner", err); throw err; });
-}
-
 function trackedGmailSync(): Promise<void> {
   touchCronStart("gmailSync");
   return runGmailDraftSync()
@@ -289,21 +280,11 @@ function trackedGmailSync(): Promise<void> {
     .catch(err => { touchCronError("gmailSync", err); throw err; });
 }
 
-function trackedCommSync(): Promise<void> {
-  touchCronStart("commSync");
-  return runCommSync()
-    .then(() => touchCronSuccess("commSync"))
-    .catch(err => { touchCronError("commSync", err); throw err; });
-}
-
 // Start watchdog 10 s after boot, then every 60 s
-// Also runs bounce scanner and Gmail draft sync on each cycle
 setTimeout(() => {
   runWatchdog().catch(() => {});
-  trackedBounceScan().catch(() => {});
   setInterval(() => {
     runWatchdog().catch(() => {});
-    trackedBounceScan().catch(() => {});
   }, 60_000);
 }, 10_000);
 
@@ -316,17 +297,6 @@ setTimeout(() => {
     trackedGmailSync().catch(() => {});
   }, 5 * 60_000);
 }, 30_000);
-
-// Communications inbox sync — runs every 5 minutes
-// Imports new emails from connected Gmail and IMAP mailboxes into the
-// Communications inbox so the broker never needs to press Refresh manually.
-// Starts 90 s after boot (after the draft-sync has settled).
-setTimeout(() => {
-  trackedCommSync().catch(() => {});
-  setInterval(() => {
-    trackedCommSync().catch(() => {});
-  }, 5 * 60_000);
-}, 90_000);
 
 // ---------------------------------------------------------------------------
 // Startup schema validation — compares DB columns against Drizzle schema

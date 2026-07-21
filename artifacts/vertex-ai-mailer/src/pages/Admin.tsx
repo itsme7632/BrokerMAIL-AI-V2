@@ -8,7 +8,6 @@ import { AdminMailboxes } from "./admin/AdminMailboxes";
 import { AdminAnalytics } from "./admin/AdminAnalytics";
 import { AdminMonitoring } from "./admin/AdminMonitoring";
 import { AdminSupport } from "./admin/AdminSupport";
-import { AdminCommMonitor } from "./admin/AdminCommMonitor";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +21,6 @@ import {
   Sparkles,
   Megaphone,
   Gauge,
-  MessageSquare,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -82,7 +80,7 @@ interface AdminSub {
   stripeCustomerId: string | null; stripeSubscriptionId: string | null;
 }
 
-type Tab = "overview" | "users" | "campaigns" | "mailboxes" | "analytics" | "monitoring" | "comms" | "logs" | "settings" | "billing" | "support" | "product_hub";
+type Tab = "overview" | "users" | "campaigns" | "mailboxes" | "analytics" | "monitoring" | "logs" | "settings" | "billing" | "support" | "product_hub";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -169,7 +167,6 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "mailboxes",   label: "Mailboxes",   icon: Server },
   { id: "analytics",   label: "Analytics",   icon: TrendingUp },
   { id: "monitoring",  label: "Monitoring",  icon: Gauge },
-  { id: "comms",       label: "Comms",       icon: MessageSquare },
   { id: "logs",        label: "Logs",        icon: Activity },
   { id: "settings",    label: "Settings",    icon: Settings },
   { id: "billing",     label: "Billing",     icon: CreditCard },
@@ -420,7 +417,6 @@ export default function Admin() {
 
           {/* ── MONITORING ────────────────────────────────────────────────── */}
           {tab === "monitoring" && <AdminMonitoring />}
-          {tab === "comms" && <AdminCommMonitor />}
 
           {/* ── LOGS ──────────────────────────────────────────────────────── */}
           {tab === "logs" && (

@@ -1,0 +1,240 @@
+STOP.
+
+We have made a product decision.
+
+We are REMOVING the Communications module from BrokerMAIL AI for now.
+
+This is NOT because of a bug.
+
+This is a strategic decision so we can focus on BrokerMAIL AI's core features:
+
+• AI Email Drafting
+• Compose Email
+• Campaigns
+• Upload & Send
+• Templates
+• Template Gallery
+• Mailboxes
+• Analytics
+• Billing & Plans
+
+BrokerMAIL AI is NOT trying to become Gmail or Outlook.
+
+Do NOT spend any more time fixing Communications.
+
+===========================================================
+OBJECTIVE
+===========================================================
+
+Completely remove Communications from the application.
+
+The application should behave as if Communications never existed.
+
+===========================================================
+FRONTEND
+===========================================================
+
+Remove:
+
+• Communications page
+• Communications route
+• Communications sidebar item
+• Inbox badge
+• Communications notifications
+• Communications widgets
+• Dashboard cards related to Communications
+• Any menu links
+• Any references anywhere in the UI
+
+There must be NO broken links.
+
+===========================================================
+BACKEND
+===========================================================
+
+Remove:
+
+• Communications API routes
+• Inbox APIs
+• Thread APIs
+• Message APIs
+• Repair APIs
+• Reparse APIs
+• Sync APIs
+• Communications services
+• Communications schedulers
+• Communications background jobs
+• Communications middleware
+• Communications controllers
+• Communications utilities
+
+If code is shared with another feature, keep only the shared code.
+
+===========================================================
+DATABASE
+===========================================================
+
+IMPORTANT:
+
+DO NOT delete database tables.
+
+DO NOT delete historical data.
+
+DO NOT create destructive migrations.
+
+Simply stop using the Communications tables.
+
+We may build a better Communications system in the future.
+
+===========================================================
+MAILBOXES
+===========================================================
+
+KEEP Mailboxes.
+
+Mailboxes are still required for:
+
+• SMTP Sending
+• Gmail Sending
+• Campaigns
+• Compose Email
+• Upload & Send
+• AI Email Drafting
+
+Only remove inbox-reading functionality.
+
+===========================================================
+KEEP THESE FEATURES
+===========================================================
+
+Everything below must continue working exactly as before:
+
+✓ Dashboard
+
+✓ Compose Email
+
+✓ Campaigns
+
+✓ Sent Emails
+
+✓ Templates
+
+✓ Template Gallery
+
+✓ Upload & Send
+
+✓ Mailboxes
+
+✓ My Profile
+
+✓ Billing & Plans
+
+✓ Analytics
+
+✓ AI Email Drafting
+
+✓ Admin Panel
+
+===========================================================
+CODE CLEANUP
+===========================================================
+
+After removing Communications:
+
+Search the ENTIRE project for:
+
+communications
+
+conversation
+
+thread
+
+comm_
+
+commMessages
+
+commConversations
+
+reparse
+
+repair
+
+sync
+
+imap
+
+mime
+
+email parser
+
+message parser
+
+Remove everything that is no longer used.
+
+Delete unused React components.
+
+Delete unused backend files.
+
+Delete unused imports.
+
+Do NOT leave commented code.
+
+Do NOT leave dead routes.
+
+===========================================================
+VERIFY
+===========================================================
+
+After removal:
+
+Run:
+
+pnpm typecheck
+
+Fix every error.
+
+Run:
+
+pnpm build
+
+Fix every build error.
+
+Verify:
+
+✓ No broken routes
+
+✓ No broken sidebar
+
+✓ No broken navigation
+
+✓ No missing imports
+
+✓ No runtime errors
+
+✓ No API errors
+
+✓ No references to Communications anywhere in the application
+
+===========================================================
+FINAL REPORT
+===========================================================
+
+Provide:
+
+1. Files removed.
+
+2. Files modified.
+
+3. APIs removed.
+
+4. Components removed.
+
+5. Confirmation that database tables were preserved.
+
+6. Confirmation that Mailboxes, Compose Email, Campaigns, Upload & Send, Templates, AI Email Drafting, Billing, Analytics, and Admin continue working normally.
+
+Do NOT replace Communications with a placeholder page.
+
+Remove it completely from the product.
+
+We will revisit this feature in the future with a fresh architecture if we decide to build an inbox again.

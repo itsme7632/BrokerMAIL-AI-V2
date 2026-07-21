@@ -4,7 +4,6 @@ import { eq, and, gte, sql, or, isNull, lte, isNotNull, desc, count, inArray } f
 import { requireAuth } from "../lib/auth";
 import { encrypt, decrypt } from "../lib/crypto";
 import { testSmtp, sendEmail } from "../lib/smtp";
-import { testImap, saveToSent, buildRawMessage } from "../lib/imap";
 import {
   buildHtmlEmail,
   replaceVarsText,
@@ -185,14 +184,6 @@ async function processJobQueue(jobId: string, box: Mailbox, template: Template, 
 
       try {
         const info = await sendEmail(box, { to: item.email, subject, text: bodyText, html: trackedHtml });
-
-        if (box.imapHost && box.imapUser && box.imapPassEncrypted) {
-          const raw = buildRawMessage({
-            from: fromAddress, to: item.email, subject,
-            html: trackedHtml, text: bodyText, messageId: info.messageId,
-          });
-          saveToSent(box, raw).catch(() => {});
-        }
 
         // Critical: mark queue item success with trackingId FIRST (idempotency guard)
         //
@@ -655,27 +646,6 @@ router.post("/mailbox/test-smtp", requireAuth, async (req, res): Promise<void> =
     res.json({ ok: true, message: "SMTP connection successful." });
   } catch (err: any) {
     res.status(400).json({ error: err.message ?? "SMTP connection failed." });
-  }
-});
-
-// ─── POST /api/mailbox/test-imap ──────────────────────────────────────────────
-router.post("/mailbox/test-imap", requireAuth, async (req, res): Promise<void> => {
-  const { imapHost, imapPort, imapUser, imapPass } = req.body as Record<string, string | number>;
-  if (!imapHost || !imapPort || !imapUser || !imapPass) {
-    res.status(400).json({ error: "Host, port, username, and password are required." });
-    return;
-  }
-  try {
-    await testImap({
-      imapHost: String(imapHost),
-      imapPort: Number(imapPort),
-      imapUser: String(imapUser),
-      imapPassEncrypted: "",
-      rawPass: String(imapPass),
-    });
-    res.json({ ok: true, message: "IMAP connection successful." });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message ?? "IMAP connection failed." });
   }
 });
 
