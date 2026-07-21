@@ -215,26 +215,43 @@ function isSystemEmail(fromEmail: string, subject: string): boolean {
 }
 
 function snippetOf(text: string, html: string, max = 160): string {
+  let content = "";
   if (text) {
-    return text.replace(/\s+/g, " ").trim().slice(0, max);
+    content = text.replace(/\s+/g, " ").trim();
+  } else if (html) {
+    // Strip non-text blocks first — otherwise <style>body{margin:0...}</style>
+    // leaks raw CSS into the snippet when there is no plain-text part.
+    const stripped = html
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+      .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&#(\d+);/g, (_, n) => {
+        try { return String.fromCodePoint(Number(n)); } catch { return " "; }
+      });
+    content = stripped.replace(/\s+/g, " ").trim();
   }
-  // Strip non-text blocks first — otherwise <style>body{margin:0...}</style>
-  // leaks raw CSS into the snippet when there is no plain-text part.
-  const stripped = html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&#(\d+);/g, (_, n) => {
-      try { return String.fromCodePoint(Number(n)); } catch { return " "; }
-    });
-  return stripped.replace(/\s+/g, " ").trim().slice(0, max);
+
+  if (!content) return "";
+
+  // Skip past common greeting lines (e.g. "Hello John," / "Hi," / "Dear Name,")
+  // so the snippet surfaces the first meaningful sentence of the email body.
+  // A "greeting line" is the first line when it:
+  //   • starts with a salutation word
+  //   • is short (≤ 60 chars) — longer first lines are body content, not greetings
+  const greetingRe = /^(hello|hi|hey|dear|good\s+(?:morning|afternoon|evening))[^.!?]*[,.]?\s*/i;
+  const trimmed = content.replace(greetingRe, "").trim();
+  // Only use the de-greeted version if it still has meaningful content; otherwise
+  // keep the original so we never return empty for a one-liner email.
+  const result = trimmed.length >= 10 ? trimmed : content;
+
+  return result.slice(0, max);
 }
 
 function escapeRegex(s: string): string {
@@ -280,14 +297,6 @@ function extractGmailBody(payload: any): { text: string; html: string; attachmen
 
 function extractImapBody(source: string): { text: string; html: string; attachments: AttachmentMeta[] } {
   const attachments: AttachmentMeta[] = [];
-  const sep = source.search(/\r?\n\r?\n/);
-  if (sep === -1) return { text: "", html: "", attachments };
-
-  const headerSection = source.slice(0, sep);
-  const bodySection = source.slice(sep + (source.charAt(sep + 1) === "\r" ? 4 : 2));
-
-  const ct = parseHeader(headerSection, "Content-Type");
-  const cte = parseHeader(headerSection, "Content-Transfer-Encoding").toLowerCase();
 
   function decode(raw: string, encoding: string): string {
     if (encoding === "base64") {
@@ -297,65 +306,75 @@ function extractImapBody(source: string): { text: string; html: string; attachme
     return raw;
   }
 
-  // Simple (non-multipart) message
-  if (!ct.toLowerCase().includes("multipart/")) {
-    const decoded = decode(bodySection, cte);
-    if (ct.toLowerCase().includes("text/html")) {
-      return {
-        text: decoded.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 50_000),
-        html: decoded.slice(0, 100_000),
-        attachments,
-      };
-    }
-    return { text: decoded.slice(0, 50_000), html: "", attachments };
-  }
-
-  // Multipart — find boundary and split
-  const bm = ct.match(/boundary="?([^";,\r\n]+)"?/i);
-  if (!bm) return { text: bodySection.slice(0, 2000), html: "", attachments };
-
-  const boundary = bm[1]!.trim();
-  const parts = bodySection.split(new RegExp(`--${escapeRegex(boundary)}(?:--)?`));
-
+  // Recursive MIME part parser. Fills text/html/attachments from the outer scope.
   let text = "";
   let html = "";
 
-  for (const part of parts) {
-    if (!part.trim() || part.trim() === "--") continue;
-    const pSep = part.search(/\r?\n\r?\n/);
-    if (pSep === -1) continue;
+  function parsePart(headers: string, body: string): void {
+    const ct  = parseHeader(headers, "Content-Type");
+    const cte = parseHeader(headers, "Content-Transfer-Encoding").toLowerCase();
+    const ctLower = ct.toLowerCase();
 
-    const ph = part.slice(0, pSep);
-    const pb = part.slice(pSep + (part.charAt(pSep + 1) === "\r" ? 4 : 2)).trim();
+    // ── Nested multipart — recurse into each sub-part ──────────────────────
+    if (ctLower.includes("multipart/")) {
+      const bm = ct.match(/boundary="?([^";,\r\n]+)"?/i);
+      if (!bm) return; // malformed — skip
 
-    const pct = parseHeader(ph, "Content-Type");
-    const pctLower = pct.toLowerCase();
-    const pcte = parseHeader(ph, "Content-Transfer-Encoding").toLowerCase();
-    const decoded = decode(pb, pcte);
-    const cd = parseHeader(ph, "Content-Disposition").toLowerCase();
+      const boundary = bm[1]!.trim();
+      const parts = body.split(new RegExp(`--${escapeRegex(boundary)}(?:--)?`));
 
-    if (pctLower.includes("text/plain") && !text) {
-      text = decoded.slice(0, 50_000);
-    } else if (pctLower.includes("text/html") && !html) {
+      for (const part of parts) {
+        if (!part.trim() || part.trim() === "--") continue;
+        const pSep = part.search(/\r?\n\r?\n/);
+        if (pSep === -1) continue;
+        const ph = part.slice(0, pSep);
+        const pb = part.slice(pSep + (part.charAt(pSep + 1) === "\r" ? 4 : 2));
+        parsePart(ph, pb.trim());
+      }
+      return;
+    }
+
+    // ── Leaf part: text/plain or text/html ─────────────────────────────────
+    const cd = parseHeader(headers, "Content-Disposition").toLowerCase();
+    if (ctLower.includes("text/plain") && !text) {
+      text = decode(body, cte).slice(0, 50_000);
+    } else if (ctLower.includes("text/html") && !html) {
+      const decoded = decode(body, cte);
       html = decoded.slice(0, 100_000);
-    } else if (cd.startsWith("attachment") || (cd.startsWith("inline") && !pctLower.startsWith("text/"))) {
-      // Extract attachment metadata from Content-Disposition or Content-Type filename param
+      // Derive plain text from HTML if we have no text part yet
+      if (!text) {
+        text = decoded
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 50_000);
+      }
+    } else if (cd.startsWith("attachment") || (cd.startsWith("inline") && !ctLower.startsWith("text/"))) {
+      // Attachment metadata
       const fn =
         cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i)?.[1]?.trim() ??
-        pct.match(/name\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i)?.[1]?.trim();
+        ct.match(/name\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i)?.[1]?.trim();
       if (fn) {
-        // Estimate decoded size (base64 → ~75% of encoded chars)
-        const rawLen = pb.replace(/\s/g, "").length;
-        const size = pcte === "base64" ? Math.round(rawLen * 0.75) : rawLen;
+        const rawLen = body.replace(/\s/g, "").length;
+        const size = cte === "base64" ? Math.round(rawLen * 0.75) : rawLen;
         attachments.push({
           name:     decodeURIComponent(fn),
           size,
-          mimeType: pct.split(";")[0]?.trim() ?? "application/octet-stream",
+          mimeType: ct.split(";")[0]?.trim() ?? "application/octet-stream",
         });
       }
     }
   }
 
+  // ── Top-level split: headers vs body ──────────────────────────────────────
+  const sep = source.search(/\r?\n\r?\n/);
+  if (sep === -1) return { text: "", html: "", attachments };
+
+  const topHeaders = source.slice(0, sep);
+  const topBody    = source.slice(sep + (source.charAt(sep + 1) === "\r" ? 4 : 2));
+
+  parsePart(topHeaders, topBody.trim());
   return { text, html, attachments };
 }
 
@@ -378,37 +397,31 @@ async function findOrCreateConversation(opts: {
 }): Promise<{ id: number; isNew: boolean }> {
   const { userId, mailboxId, direction, customerEmail, customerName, subject, inReplyTo, references, messageAt, isSystemNotification } = opts;
 
-  // 1. Thread by In-Reply-To / References — find existing conversation via message externalId.
-  //    Skip for system notifications — each bounce/OOO gets its own conversation.
-  if (!isSystemNotification) {
-    const refIds = [inReplyTo, ...(references ?? [])]
-      .filter((r): r is string => typeof r === "string" && r.trim().length > 0);
-    if (refIds.length > 0) {
-      const [linked] = await db
-        .select({ convId: commMessagesTable.conversationId })
-        .from(commMessagesTable)
-        .where(and(
-          inArray(commMessagesTable.externalId, refIds),
-          // Only thread into a conversation that already contains at least one
-          // outbound message (i.e. the broker replied or initiated it).
-          // Without this guard, automated inbound-only notification chains
-          // (e.g. dispatch alerts that set References headers to previous alerts)
-          // would all be merged into a single conversation even though the broker
-          // never replied in that thread.
-          sql`EXISTS (
-            SELECT 1 FROM comm_messages _cm
-            WHERE _cm.conversation_id = ${commMessagesTable.conversationId}
-              AND _cm.direction = 'outbound'
-          )`,
-        ))
-        .limit(1);
-      if (linked) return { id: linked.convId, isNew: false };
-    }
-
-    // NOTE: Email-address-only fallback was intentionally removed.
-    // Threading must ONLY happen via Message-ID / In-Reply-To / References headers.
-    // Customer email alone is never sufficient — it would merge unrelated quotes
-    // sent to the same person into one conversation.
+  // 1. Thread by In-Reply-To ONLY — find existing conversation via the direct
+  //    parent message's externalId.
+  //
+  //    Rules that prevent incorrect grouping:
+  //    a) Only use In-Reply-To (not the full References chain). References can
+  //       include old message-ids from unrelated threads (e.g. a dispatch system
+  //       that echoes the original broker email in every status update), which
+  //       would incorrectly pull all those notifications into one conversation.
+  //    b) The matched message must itself be OUTBOUND — meaning the customer is
+  //       directly replying to a message the broker sent. An inbound message's
+  //       In-Reply-To pointing to another inbound (e.g. a dispatch chain) must
+  //       NOT cause threading; each automated notification gets its own thread.
+  //    c) Outbound messages never thread into an existing conversation — each
+  //       outbound email the broker sends is its own fresh conversation.
+  //    d) System notifications always get their own conversation (skipped below).
+  if (!isSystemNotification && direction === "inbound" && inReplyTo && inReplyTo.trim()) {
+    const [linked] = await db
+      .select({ convId: commMessagesTable.conversationId })
+      .from(commMessagesTable)
+      .where(and(
+        eq(commMessagesTable.externalId, inReplyTo.trim()),
+        eq(commMessagesTable.direction, "outbound"),
+      ))
+      .limit(1);
+    if (linked) return { id: linked.convId, isNew: false };
   }
 
   // 3. Create new conversation

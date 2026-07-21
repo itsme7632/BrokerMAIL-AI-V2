@@ -584,7 +584,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const isComms = location.startsWith("/communications");
 
   return (
-    <div className="flex min-h-screen w-full bg-slate-50 dark:bg-slate-950">
+    <div className={cn(
+      "flex w-full bg-slate-50 dark:bg-slate-950",
+      isComms ? "h-screen overflow-hidden" : "min-h-screen",
+    )}>
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex flex-col flex-shrink-0 sticky top-0 h-screen">
         <Sidebar />
