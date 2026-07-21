@@ -1942,7 +1942,7 @@ function ThreadEmailCard({
       <div className="px-6 py-4">
         {msg.htmlBody ? (
           <>
-            <HtmlEmailRenderer html={primaryHtml ?? msg.htmlBody} />
+            <HtmlEmailRenderer html={primaryHtml || msg.htmlBody} />
             {quotedHtml && (
               <div className="mt-3">
                 <button

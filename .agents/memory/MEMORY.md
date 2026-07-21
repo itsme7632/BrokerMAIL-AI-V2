@@ -26,3 +26,4 @@
 - [Communications correctness pass (phase 2)](comm-corrections-phase2.md) — RFC2047 decode, system-notification classifier, 14-day threading window, email renderer always-light, infinite scroll, Reply toolbar button
 - [Comm threading & rendering audit](comm-arch-audit.md) — threading header-only rule, system emails in inbox, snippet stripping, pagination switch
 - [Communications corrections phase 3](comm-corrections-phase3.md) — per-message reply removal, inbound-only threading fix, unread optimistic update, min-h-0 scroll fix
+- [MIME parsing root causes](mime-parsing-bugs.md) — four bugs: parseHeader drops folded headers, snippetOf greeting too greedy, extractQuotedContent empty-string primary, missing Content-Type default

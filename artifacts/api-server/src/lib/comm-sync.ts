@@ -87,12 +87,39 @@ function parseEmailAddress(header: string): { name: string; email: string } {
 /**
  * Extract a single header value from a raw RFC 2822 message source,
  * unfolding continuation lines per RFC 2822 §2.2.3.
+ *
+ * The previous implementation used `.+` in a multiline regex, which only
+ * captured the FIRST line of the header value. Folded headers — where the
+ * value continues on the next line(s) starting with whitespace — were silently
+ * truncated. This caused Content-Type boundaries like:
+ *
+ *   Content-Type: multipart/mixed;\r\n\tboundary="abc"\r\n
+ *
+ * to be returned as just "multipart/mixed;" (no boundary), breaking the entire
+ * MIME part parser for those messages.
  */
 function parseHeader(raw: string, name: string): string {
-  const re = new RegExp(`^${name}:[ \\t]*(.+)`, "im");
-  const m = raw.match(re);
-  if (!m) return "";
-  return m[1]!.replace(/\r?\n[ \t]+/g, " ").trim();
+  const lines = raw.split(/\r?\n/);
+  const nameLower = name.toLowerCase();
+  let result = "";
+  let found = false;
+  for (const line of lines) {
+    if (!found) {
+      // Header field names are case-insensitive (RFC 2822 §2.2)
+      const colonIdx = line.indexOf(":");
+      if (colonIdx > 0 && line.slice(0, colonIdx).toLowerCase().trim() === nameLower) {
+        result = line.slice(colonIdx + 1).trim();
+        found = true;
+      }
+    } else if (line.length > 0 && (line[0] === " " || line[0] === "\t")) {
+      // Folded continuation line — append with single space
+      result += " " + line.trim();
+    } else {
+      // Non-continuation line ends the header value
+      break;
+    }
+  }
+  return result;
 }
 
 function decodeQuotedPrintable(s: string): string {
@@ -214,44 +241,69 @@ function isSystemEmail(fromEmail: string, subject: string): boolean {
   return false;
 }
 
+function stripHtmlToText(html: string): string {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, " ")
+    // Preserve line structure: block-level tags → newlines
+    .replace(/<(?:br|BR)\s*\/?>/g, "\n")
+    .replace(/<\/(?:p|div|tr|li|h[1-6]|blockquote)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => {
+      try { return String.fromCodePoint(Number(n)); } catch { return " "; }
+    });
+}
+
 function snippetOf(text: string, html: string, max = 160): string {
-  let content = "";
+  // Produce a raw (line-preserving) version of the content so we can
+  // strip greeting LINES before collapsing whitespace.
+  let raw = "";
   if (text) {
-    content = text.replace(/\s+/g, " ").trim();
+    raw = text;
   } else if (html) {
-    // Strip non-text blocks first — otherwise <style>body{margin:0...}</style>
-    // leaks raw CSS into the snippet when there is no plain-text part.
-    const stripped = html
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
-      .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&#(\d+);/g, (_, n) => {
-        try { return String.fromCodePoint(Number(n)); } catch { return " "; }
-      });
-    content = stripped.replace(/\s+/g, " ").trim();
+    raw = stripHtmlToText(html);
   }
 
-  if (!content) return "";
+  if (!raw.trim()) return "";
 
-  // Skip past common greeting lines (e.g. "Hello John," / "Hi," / "Dear Name,")
-  // so the snippet surfaces the first meaningful sentence of the email body.
-  // A "greeting line" is the first line when it:
-  //   • starts with a salutation word
-  //   • is short (≤ 60 chars) — longer first lines are body content, not greetings
-  const greetingRe = /^(hello|hi|hey|dear|good\s+(?:morning|afternoon|evening))[^.!?]*[,.]?\s*/i;
-  const trimmed = content.replace(greetingRe, "").trim();
-  // Only use the de-greeted version if it still has meaningful content; otherwise
-  // keep the original so we never return empty for a one-liner email.
-  const result = trimmed.length >= 10 ? trimmed : content;
+  // Split by lines so we can detect and drop greeting-only lines.
+  // A greeting line is a SHORT line (≤ 80 chars) whose trimmed text is
+  // ENTIRELY a salutation phrase — "Hello John," / "Hi," / "Dear Name," etc.
+  // We do NOT use a sentence-level regex because that erroneously strips the
+  // body content that follows on the same line ("Hello, Your order has shipped.").
+  const GREETING_ONLY_LINE =
+    /^(?:hello|hi|hey|dear|good\s+(?:morning|afternoon|evening))[\w\s,'.-]*[,.]?\s*$/i;
 
-  return result.slice(0, max);
+  const lines = raw.split(/\r?\n/);
+  const meaningful: string[] = [];
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t) continue;
+    // Drop short greeting-only lines
+    if (t.length <= 80 && GREETING_ONLY_LINE.test(t)) continue;
+    meaningful.push(t);
+  }
+
+  // Re-join and collapse whitespace
+  const joined = meaningful.join(" ").replace(/\s+/g, " ").trim();
+
+  // Safety net: if the joined result STILL starts with an inline greeting
+  // ("Hello, we're writing to …") — strip just the salutation+comma/period
+  // at the very beginning (not the whole sentence).
+  const inlineGreeting = /^(?:hello|hi|hey|dear|good\s+(?:morning|afternoon|evening))[,.]?\s+/i;
+  const degreeted = joined.replace(inlineGreeting, "").trim();
+  // Only accept the degreeted version if it still has meaningful content
+  const result = degreeted.length >= 10 ? degreeted : joined;
+
+  // Absolute fallback: original raw text (never return empty when there's content)
+  return (result || raw.replace(/\s+/g, " ").trim()).slice(0, max);
 }
 
 function escapeRegex(s: string): string {
@@ -310,71 +362,126 @@ function extractImapBody(source: string): { text: string; html: string; attachme
   let text = "";
   let html = "";
 
-  function parsePart(headers: string, body: string): void {
+  function parsePart(headers: string, body: string, depth = 0): void {
+    if (depth > 20) return; // guard against pathological nesting
+
     const ct  = parseHeader(headers, "Content-Type");
-    const cte = parseHeader(headers, "Content-Transfer-Encoding").toLowerCase();
-    const ctLower = ct.toLowerCase();
+    const cte = parseHeader(headers, "Content-Transfer-Encoding").toLowerCase().trim();
+    // RFC 2045 §5.2: missing Content-Type defaults to "text/plain; charset=us-ascii"
+    const ctEffective = ct || "text/plain";
+    const ctLower = ctEffective.toLowerCase();
 
     // ── Nested multipart — recurse into each sub-part ──────────────────────
     if (ctLower.includes("multipart/")) {
-      const bm = ct.match(/boundary="?([^";,\r\n]+)"?/i);
-      if (!bm) return; // malformed — skip
+      const bm = ctEffective.match(/boundary="?([^";,\r\n]+)"?/i);
+      if (!bm) {
+        // Missing boundary — malformed multipart; fall through as plain text
+        if (!text) text = decode(body, cte).slice(0, 50_000);
+        return;
+      }
 
       const boundary = bm[1]!.trim();
-      const parts = body.split(new RegExp(`--${escapeRegex(boundary)}(?:--)?`));
+      // Split on --boundary and --boundary-- (closing delimiter)
+      // Each resulting segment starts with the CRLF that followed the boundary line.
+      const delimRe = new RegExp(`--${escapeRegex(boundary)}(?:--)?[ \\t]*(?:\\r?\\n|$)`);
+      const parts = body.split(delimRe);
 
       for (const part of parts) {
-        if (!part.trim() || part.trim() === "--") continue;
-        const pSep = part.search(/\r?\n\r?\n/);
-        if (pSep === -1) continue;
-        const ph = part.slice(0, pSep);
-        const pb = part.slice(pSep + (part.charAt(pSep + 1) === "\r" ? 4 : 2));
-        parsePart(ph, pb.trim());
+        const trimmedPart = part.trim();
+        if (!trimmedPart || trimmedPart === "--") continue;
+
+        // Find the blank-line separator between part headers and part body.
+        // We locate the raw separator to compute its exact length (handles
+        // both \r\n\r\n and \n\n), avoiding the off-by-2 bug that occurred
+        // when we hardcoded 2 vs 4 based on a single-char lookahead.
+        const sepMatch = part.match(/\r?\n\r?\n/);
+        if (!sepMatch || sepMatch.index == null) continue;
+
+        const ph = part.slice(0, sepMatch.index);
+        const pb = part.slice(sepMatch.index + sepMatch[0].length);
+        parsePart(ph, pb.trim(), depth + 1);
       }
       return;
     }
 
-    // ── Leaf part: text/plain or text/html ─────────────────────────────────
+    // ── Leaf part: text/plain, text/html, or attachment ────────────────────
     const cd = parseHeader(headers, "Content-Disposition").toLowerCase();
-    if (ctLower.includes("text/plain") && !text) {
-      text = decode(body, cte).slice(0, 50_000);
-    } else if (ctLower.includes("text/html") && !html) {
+    if (ctLower.startsWith("text/plain") && !text) {
+      const decoded = decode(body, cte);
+      // Sanity check: if the decoded "plain text" still looks like raw MIME
+      // headers (happens when boundary extraction fails upstream), drop it.
+      const looksLikeMime = /^content-type:/im.test(decoded.slice(0, 500));
+      if (!looksLikeMime) text = decoded.slice(0, 50_000);
+    } else if (ctLower.startsWith("text/html") && !html) {
       const decoded = decode(body, cte);
       html = decoded.slice(0, 100_000);
       // Derive plain text from HTML if we have no text part yet
       if (!text) {
-        text = decoded
-          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
-          .replace(/<[^>]+>/g, " ")
-          .replace(/\s+/g, " ")
-          .trim()
-          .slice(0, 50_000);
+        text = stripHtmlToText(decoded).replace(/\s+/g, " ").trim().slice(0, 50_000);
       }
-    } else if (cd.startsWith("attachment") || (cd.startsWith("inline") && !ctLower.startsWith("text/"))) {
-      // Attachment metadata
+    } else if (
+      ctLower.startsWith("message/") ||
+      cd.startsWith("attachment") ||
+      (cd.startsWith("inline") && !ctLower.startsWith("text/"))
+    ) {
+      // Attachment metadata — record name/size, never render body
       const fn =
         cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i)?.[1]?.trim() ??
-        ct.match(/name\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i)?.[1]?.trim();
+        ctEffective.match(/name\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i)?.[1]?.trim();
       if (fn) {
         const rawLen = body.replace(/\s/g, "").length;
         const size = cte === "base64" ? Math.round(rawLen * 0.75) : rawLen;
         attachments.push({
           name:     decodeURIComponent(fn),
           size,
-          mimeType: ct.split(";")[0]?.trim() ?? "application/octet-stream",
+          mimeType: ctEffective.split(";")[0]?.trim() ?? "application/octet-stream",
         });
       }
     }
+    // All other MIME types (application/*, image/*, etc.) are skipped — no body rendered.
   }
 
   // ── Top-level split: headers vs body ──────────────────────────────────────
-  const sep = source.search(/\r?\n\r?\n/);
-  if (sep === -1) return { text: "", html: "", attachments };
+  // Use match() to get the EXACT separator string length (avoids the
+  // off-by-2 bug that occurred when hardcoding 2 vs 4 based on a
+  // single-char lookahead — \r\n\r\n is 4 chars but the old code
+  // checked charAt(sep+1)=="\r" which was "\n", yielding sep+2).
+  const topSepMatch = source.match(/\r?\n\r?\n/);
+  if (!topSepMatch || topSepMatch.index == null) return { text: "", html: "", attachments };
 
-  const topHeaders = source.slice(0, sep);
-  const topBody    = source.slice(sep + (source.charAt(sep + 1) === "\r" ? 4 : 2));
+  const topHeaders = source.slice(0, topSepMatch.index);
+  const topBody    = source.slice(topSepMatch.index + topSepMatch[0].length);
+
+  const mimeDebug = process.env["COMM_MIME_DEBUG"] === "1";
+  if (mimeDebug) {
+    const topCt  = parseHeader(topHeaders, "Content-Type");
+    const topCte = parseHeader(topHeaders, "Content-Transfer-Encoding");
+    logger.debug({
+      "[MIME-DEBUG] Top-level structure": {
+        "Content-Type":              topCt  || "(none — defaults to text/plain)",
+        "Content-Transfer-Encoding": topCte || "(none)",
+        "sourceLength":              source.length,
+        "headerLength":              topHeaders.length,
+        "bodyLength":                topBody.trim().length,
+      },
+    });
+  }
 
   parsePart(topHeaders, topBody.trim());
+
+  if (mimeDebug) {
+    const snippet = snippetOf(text, html, 80);
+    logger.debug({
+      "[MIME-DEBUG] Parse result": {
+        "textLength":    text.length,
+        "htmlLength":    html.length,
+        "snippetLength": snippet.length,
+        "snippet":       snippet || "(empty)",
+        "attachments":   attachments.length,
+      },
+    });
+  }
+
   return { text, html, attachments };
 }
 
@@ -472,21 +579,10 @@ async function upsertMessage(opts: {
     .limit(1);
   if (existing) return false;
 
-  // Use proper HTML stripping (same logic as snippetOf) so that CSS/style blocks
-  // never leak raw text into the body column used as snippet fallback.
-  const body = text || html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
+  // Derive a plain-text body column. Prefer the text part; fall back to
+  // stripping the HTML body. Uses the shared stripHtmlToText helper so
+  // CSS/style blocks never leak raw text.
+  const body = text || (html ? stripHtmlToText(html).replace(/\s+/g, " ").trim() : "");
   const snippet = snippetOf(text, html);
 
   await db.insert(commMessagesTable).values({

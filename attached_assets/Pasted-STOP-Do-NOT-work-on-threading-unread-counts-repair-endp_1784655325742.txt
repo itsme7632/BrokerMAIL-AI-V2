@@ -1,0 +1,280 @@
+STOP.
+
+Do NOT work on:
+
+- threading
+- unread counts
+- repair endpoint
+- scrolling
+- layout
+
+Those are separate tasks.
+
+The Communications module still has a BROKEN EMAIL PARSING AND RENDERING PIPELINE.
+
+The production screenshots prove this.
+
+===========================================================
+BUG #1 — EVERY EMAIL PREVIEW STILL SHOWS "HELLO"
+===========================================================
+
+Almost every conversation preview displays:
+
+Hello
+
+This is incorrect.
+
+Examples:
+
+- Mail Delivery System
+- Dialpad
+- Zoom
+- Dispatch
+
+The preview should contain the FIRST MEANINGFUL SENTENCE from the decoded email body.
+
+Requirements:
+
+• Decode MIME first.
+
+• Decode Base64.
+
+• Decode quoted-printable.
+
+• Strip HTML.
+
+• Normalize whitespace.
+
+• Remove greetings such as:
+
+Hello
+
+Hi
+
+Dear
+
+Good Morning
+
+Good Afternoon
+
+Good Evening
+
+Then generate the snippet.
+
+Never return "Hello" for almost every email.
+
+The snippet should behave exactly like Gmail.
+
+===========================================================
+BUG #2 — RAW MIME IS STILL DISPLAYED
+===========================================================
+
+Some emails display:
+
+Content-Type:
+
+Content-Transfer-Encoding:
+
+------boundary------
+
+Base64
+
+V2Ug...
+
+This must NEVER appear.
+
+The MIME parser is failing.
+
+Find why.
+
+Support ALL common MIME structures.
+
+Including:
+
+multipart/mixed
+
+multipart/alternative
+
+multipart/related
+
+nested multipart
+
+text/plain
+
+text/html
+
+quoted-printable
+
+base64
+
+7bit
+
+8bit
+
+If HTML exists
+
+render HTML.
+
+Else
+
+render decoded text/plain.
+
+Never render MIME headers.
+
+Never render MIME boundaries.
+
+Never render Base64.
+
+===========================================================
+BUG #3 — EMAIL BODY SHOWS "(empty)"
+===========================================================
+
+This is the biggest clue.
+
+Example:
+
+Preview:
+
+Your verification code...
+
+Opening the email:
+
+(empty)
+
+This proves the snippet parser successfully extracted text,
+
+but the body renderer failed.
+
+Trace the ENTIRE execution path.
+
+IMAP
+
+↓
+
+Raw MIME
+
+↓
+
+Parser
+
+↓
+
+Snippet Generator
+
+↓
+
+Body Renderer
+
+Find exactly where the body becomes empty.
+
+The body renderer MUST use the SAME parsed output that generated the preview.
+
+There should NEVER be a preview with text while the opened email body is empty.
+
+===========================================================
+BUG #4 — PREVIEW PARSER AND BODY PARSER MUST SHARE ONE PIPELINE
+===========================================================
+
+Right now they clearly disagree.
+
+Create ONE parsing pipeline.
+
+The parser should return:
+
+{
+  text,
+  html,
+  snippet,
+  encoding,
+  mimeType
+}
+
+Both:
+
+Conversation List
+
+AND
+
+Reading Pane
+
+must use the SAME parsed result.
+
+Never parse the same email twice with different logic.
+
+===========================================================
+DEBUGGING REQUIREMENT
+===========================================================
+
+For one problematic email add debug logging showing:
+
+Detected MIME structure
+
+Chosen MIME part
+
+Encoding
+
+Decoded body length
+
+HTML length
+
+Plain text length
+
+Snippet length
+
+Rendered body length
+
+This will immediately reveal why some emails become empty while previews still work.
+
+===========================================================
+VERIFY
+===========================================================
+
+Verify with all of these:
+
+✓ Customer HTML email
+
+✓ Customer plain text email
+
+✓ Mail Delivery System
+
+✓ Dialpad
+
+✓ Zoom verification code
+
+✓ Dispatch notifications
+
+✓ Base64 email
+
+✓ quoted-printable email
+
+✓ nested multipart email
+
+Every email must display exactly like Gmail.
+
+===========================================================
+AFTER CODING
+===========================================================
+
+Run:
+
+pnpm typecheck
+
+Run:
+
+pnpm build
+
+Both must pass.
+
+Then explain:
+
+1. Root cause.
+
+2. Files changed.
+
+3. Why previews showed text while bodies were empty.
+
+4. Why raw MIME was rendered.
+
+5. How you verified every MIME format.
+
+Do NOT say "fixed" unless you have tested all of the above email types.
