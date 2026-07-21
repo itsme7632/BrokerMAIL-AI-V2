@@ -387,7 +387,20 @@ async function findOrCreateConversation(opts: {
       const [linked] = await db
         .select({ convId: commMessagesTable.conversationId })
         .from(commMessagesTable)
-        .where(inArray(commMessagesTable.externalId, refIds))
+        .where(and(
+          inArray(commMessagesTable.externalId, refIds),
+          // Only thread into a conversation that already contains at least one
+          // outbound message (i.e. the broker replied or initiated it).
+          // Without this guard, automated inbound-only notification chains
+          // (e.g. dispatch alerts that set References headers to previous alerts)
+          // would all be merged into a single conversation even though the broker
+          // never replied in that thread.
+          sql`EXISTS (
+            SELECT 1 FROM comm_messages _cm
+            WHERE _cm.conversation_id = ${commMessagesTable.conversationId}
+              AND _cm.direction = 'outbound'
+          )`,
+        ))
         .limit(1);
       if (linked) return { id: linked.convId, isNew: false };
     }

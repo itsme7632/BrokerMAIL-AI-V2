@@ -97,61 +97,55 @@ async function ensureConversationsSeeded(userId: number) {
 
     if (drafts.length === 0) return;
 
-    const byEmail = new Map<string, typeof drafts>();
-    for (const d of drafts) {
-      if (!d.email) continue;
-      const key = d.email.toLowerCase();
-      if (!byEmail.has(key)) byEmail.set(key, []);
-      byEmail.get(key)!.push(d);
-    }
-
+    // Each draft becomes its own conversation — grouping multiple drafts to the
+    // same email address into one conversation was wrong: every outbound email
+    // the broker sent is a distinct conversation; only genuine customer replies
+    // (via In-Reply-To/References headers) should appear inside it.
     const leadIds = [...new Set(drafts.map(d => d.leadId).filter(Boolean) as number[])];
     const leads = leadIds.length
       ? await db.select().from(leadsTable).where(inArray(leadsTable.id, leadIds))
       : [];
     const leadMap = new Map(leads.map(l => [l.id, l]));
 
-    for (const [email, draftGroup] of byEmail.entries()) {
-      const last = draftGroup[draftGroup.length - 1];
-      const lead = last.leadId ? leadMap.get(last.leadId) : undefined;
-      const name = lead?.name ?? email.split("@")[0] ?? "Customer";
+    for (const d of drafts) {
+      if (!d.email) continue;
+      const lead = d.leadId ? leadMap.get(d.leadId) : undefined;
+      const name = lead?.name ?? d.email.split("@")[0] ?? "Customer";
 
       const [conv] = await db
         .insert(commConversationsTable)
         .values({
           userId,
           leadId: lead?.id ?? null,
-          campaignId: last.campaignId ?? null,
-          subject: last.subject,
+          campaignId: d.campaignId ?? null,
+          subject: d.subject,
           customerName: name,
-          customerEmail: email,
+          customerEmail: d.email,
           customerPhone: null,
           status: "read",
           starred: false,
-          messageCount: draftGroup.length,
+          messageCount: 1,
           unreadCount: 0,
-          lastMessageAt: last.sentAt ?? last.createdAt,
+          lastMessageAt: d.sentAt ?? d.createdAt,
         })
         .returning();
 
-      for (const d of draftGroup) {
-        const body = d.body ?? "";
-        await db.insert(commMessagesTable).values({
-          conversationId: conv.id,
-          userId,
-          direction: "outbound",
-          fromEmail: email,
-          fromName: "You",
-          toEmail: email,
-          subject: d.subject,
-          body: body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
-          htmlBody: body,
-          snippet: snippet(body),
-          isRead: true,
-          draftId: d.id,
-          sentAt: d.sentAt ?? d.createdAt,
-        });
-      }
+      const body = d.body ?? "";
+      await db.insert(commMessagesTable).values({
+        conversationId: conv.id,
+        userId,
+        direction: "outbound",
+        fromEmail: d.email,
+        fromName: "You",
+        toEmail: d.email,
+        subject: d.subject,
+        body: body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+        htmlBody: body,
+        snippet: snippet(body),
+        isRead: true,
+        draftId: d.id,
+        sentAt: d.sentAt ?? d.createdAt,
+      });
     }
   } catch (err) {
     logger.warn({ err }, "[COMMS] Seed skipped (non-fatal)");
@@ -971,6 +965,113 @@ router.get("/communications/sync-status", requireAuth, async (req, res) => {
     imported:           syncState.imported,
     totalMailboxes:     syncState.totalMailboxes,
     completedMailboxes: syncState.completedMailboxes,
+  });
+});
+
+// ─── POST /api/communications/repair ─────────────────────────────────────────
+// One-time data repair endpoint. Fixes two categories of corrupted data:
+//   1. Stale unreadCount — conversations where status != 'unread' but unreadCount > 0.
+//   2. Incorrectly merged conversations — all-inbound threads with multiple messages
+//      that were grouped due to the old email-address fallback or cross-notification
+//      References chaining. Each message is split into its own conversation.
+
+router.post("/communications/repair", requireAuth, async (req, res) => {
+  const userId = (req as any).user.id as number;
+
+  // ── Step 1: fix stale unreadCount ────────────────────────────────────────
+  const fixedCountRows = await db
+    .update(commConversationsTable)
+    .set({ unreadCount: 0, updatedAt: new Date() })
+    .where(and(
+      eq(commConversationsTable.userId, userId),
+      sql`${commConversationsTable.status} != 'unread'`,
+      sql`${commConversationsTable.unreadCount} > 0`,
+    ))
+    .returning({ id: commConversationsTable.id });
+
+  // ── Step 2: split all-inbound multi-message conversations ────────────────
+  // These are conversations where the broker never replied (no outbound
+  // message), yet multiple inbound messages were merged — typical for
+  // automated notification chains from dispatch/carrier systems.
+  const allInboundConvs = await db
+    .select({ id: commConversationsTable.id })
+    .from(commConversationsTable)
+    .where(and(
+      eq(commConversationsTable.userId, userId),
+      sql`${commConversationsTable.messageCount} > 1`,
+      sql`NOT EXISTS (
+        SELECT 1 FROM comm_messages _cm
+        WHERE _cm.conversation_id = ${commConversationsTable.id}
+          AND _cm.direction = 'outbound'
+      )`,
+    ));
+
+  let conversationsSplit = 0;
+  let messagesMoved = 0;
+
+  for (const { id: convId } of allInboundConvs) {
+    const [origConv] = await db
+      .select()
+      .from(commConversationsTable)
+      .where(eq(commConversationsTable.id, convId));
+    if (!origConv) continue;
+
+    const msgs = await db
+      .select()
+      .from(commMessagesTable)
+      .where(eq(commMessagesTable.conversationId, convId))
+      .orderBy(commMessagesTable.sentAt);
+
+    if (msgs.length <= 1) continue;
+
+    const [firstMsg, ...restMsgs] = msgs;
+
+    // Shrink the original conversation to just the first message
+    await db
+      .update(commConversationsTable)
+      .set({
+        messageCount:  1,
+        subject:       firstMsg.subject ?? origConv.subject,
+        lastMessageAt: firstMsg.sentAt ?? firstMsg.createdAt,
+        updatedAt:     new Date(),
+      })
+      .where(eq(commConversationsTable.id, convId));
+
+    // Each remaining message gets its own conversation
+    for (const msg of restMsgs) {
+      const [newConv] = await db
+        .insert(commConversationsTable)
+        .values({
+          userId:        origConv.userId,
+          mailboxId:     origConv.mailboxId ?? null,
+          leadId:        origConv.leadId ?? null,
+          campaignId:    origConv.campaignId ?? null,
+          subject:       msg.subject ?? origConv.subject,
+          customerName:  origConv.customerName,
+          customerEmail: origConv.customerEmail,
+          customerPhone: origConv.customerPhone ?? null,
+          status:        msg.isRead ? "read" : "unread",
+          starred:       false,
+          messageCount:  1,
+          unreadCount:   msg.isRead ? 0 : 1,
+          lastMessageAt: msg.sentAt ?? msg.createdAt,
+        })
+        .returning({ id: commConversationsTable.id });
+
+      await db
+        .update(commMessagesTable)
+        .set({ conversationId: newConv.id })
+        .where(eq(commMessagesTable.id, msg.id));
+
+      messagesMoved++;
+    }
+    conversationsSplit++;
+  }
+
+  return res.json({
+    fixedUnreadCounts:  fixedCountRows.length,
+    conversationsSplit,
+    messagesMoved,
   });
 });
 

@@ -1,0 +1,318 @@
+STOP.
+
+The previous audit was incorrect.
+
+I deployed your changes to production and tested them.
+
+The screenshots prove several of your conclusions were wrong.
+
+DO NOT tell me "the code is already correct."
+
+The production behavior is the source of truth.
+
+You must investigate WHY production still behaves this way and fix the actual root causes.
+
+====================================================
+BUG #1 — THIS IS STILL A CHAT APPLICATION
+====================================================
+
+The Communications page STILL behaves like a messenger.
+
+I do NOT want a messenger.
+
+I want an EMAIL CLIENT.
+
+Current behavior:
+
+Subject
+
+Message
+
+Reply
+
+Reply All
+
+Forward
+
+Message
+
+Reply
+
+Reply All
+
+Forward
+
+Message
+
+Reply
+
+Reply All
+
+Forward
+
+This is wrong.
+
+Reply controls should belong to the conversation, NOT after every message.
+
+The reading pane should behave like Gmail or Outlook.
+
+Requirements:
+
+• Remove the chat/timeline interaction model.
+• Messages should render as email documents.
+• No messenger behavior.
+• No Slack style.
+• No Discord style.
+• No fake conversation bubbles.
+• Reading an email should feel identical to Gmail.
+
+====================================================
+BUG #2 — THREADING IS STILL WRONG
+====================================================
+
+Your previous audit claimed threading was already correct.
+
+It is NOT.
+
+Production proves it.
+
+Current behavior:
+
+Dispatch
+
+Order posted
+
+Order unposted
+
+Order posted
+
+Order unposted
+
+All inside ONE conversation.
+
+This is completely incorrect.
+
+Every outbound email MUST become its own conversation.
+
+The ONLY exception is:
+
+Customer replies to THAT email.
+
+Example:
+
+Quote #25239405
+
+↓
+
+Customer reply
+
+↓
+
+Broker reply
+
+↓
+
+Customer reply
+
+THAT is one conversation.
+
+NOT
+
+Quote A
+
+Quote B
+
+Quote C
+
+Quote D
+
+No sender-based grouping.
+
+No subject-only grouping.
+
+No customer-email grouping.
+
+Conversation identity MUST ONLY be created using:
+
+• Message-ID
+• In-Reply-To
+• References
+
+If these headers do not link the emails,
+
+CREATE A NEW CONVERSATION.
+
+If existing conversations were incorrectly grouped,
+
+write a migration or repair routine to split them.
+
+Do NOT simply say "old data."
+
+Fix the data.
+
+====================================================
+BUG #3 — UNREAD COUNTER STILL SHOWS 99+
+====================================================
+
+Production still shows 99+ unread.
+
+Your previous fix did not solve it.
+
+Investigate the COMPLETE unread flow.
+
+Trace:
+
+Mailbox Sync
+
+↓
+
+Database
+
+↓
+
+Conversation
+
+↓
+
+API
+
+↓
+
+Frontend Badge
+
+Find exactly where unreadCount becomes incorrect.
+
+Do NOT assume the problem is only in one function.
+
+Use logging if necessary.
+
+Opening a conversation MUST immediately:
+
+• mark conversation as read
+• mark messages as read
+• update database
+• update API response
+• update badge
+• survive page refresh
+
+No permanent 99+.
+
+====================================================
+BUG #4 — SCROLLING IS STILL WRONG
+====================================================
+
+The entire Communications page still scrolls.
+
+This is NOT acceptable.
+
+Desired behavior:
+
+LEFT COLUMN
+
+Conversation list
+
+Independent scrolling.
+
+CENTER
+
+Reading pane
+
+Fixed.
+
+ONLY the email content scrolls.
+
+RIGHT
+
+Customer panel
+
+Fixed.
+
+Exactly like Gmail desktop.
+
+Do NOT patch CSS.
+
+Inspect the layout hierarchy.
+
+Find which parent container is causing the browser page to scroll.
+
+Replace the layout if necessary.
+
+====================================================
+BUG #5 — DO NOT ASSUME YOUR PREVIOUS AUDIT WAS CORRECT
+====================================================
+
+You previously claimed:
+
+✓ Threading correct
+
+✓ Scrolling correct
+
+✓ Chat wrapper removed
+
+Production disproved this.
+
+Perform a REAL audit using the actual rendering path.
+
+Trace every component.
+
+Do not stop at one file.
+
+Verify:
+
+Which component renders conversations.
+
+Which component renders messages.
+
+Which component adds reply buttons.
+
+Which component creates scrolling.
+
+Which backend function creates conversations.
+
+Which backend function updates unreadCount.
+
+====================================================
+REQUIRED OUTPUT
+====================================================
+
+Before writing code:
+
+Provide a ROOT CAUSE report.
+
+For EACH bug include:
+
+1. Exact file.
+
+2. Exact function.
+
+3. Exact reason.
+
+4. Why previous fixes failed.
+
+Only AFTER the audit should you modify the code.
+
+====================================================
+AFTER CODING
+====================================================
+
+Run:
+
+pnpm typecheck
+
+Run:
+
+pnpm build
+
+Both must pass.
+
+Then provide:
+
+• Files changed
+
+• Root cause
+
+• What old architecture was removed
+
+• What new architecture replaced it
+
+Do NOT say "fixed" unless you have verified the behavior through the actual execution path, not just by reading the source code.

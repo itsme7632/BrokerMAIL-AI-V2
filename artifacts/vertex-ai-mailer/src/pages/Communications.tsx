@@ -1131,7 +1131,7 @@ function FolderSidebar({
       </div>
 
       {/* Folder nav */}
-      <nav className="flex-1 overflow-y-auto px-2 space-y-0.5 pb-2">
+      <nav className="flex-1 overflow-y-auto min-h-0 px-2 space-y-0.5 pb-2">
         {FILTER_GROUPS.map((group, gi) => (
           <div key={gi} className={gi > 0 ? "mt-2 pt-2 border-t border-slate-200/80 dark:border-slate-700/40" : ""}>
             {group.label && (
@@ -1279,7 +1279,7 @@ function ConversationListPanel({
       )}
 
       {/* Conversation list */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto min-h-0">
         {isLoading ? (
           <div>
             {Array(8).fill(0).map((_, i) => (
@@ -1818,12 +1818,11 @@ function AIAssistPanel({ convId, onClose, onUseReply }: {
 // ─── Thread Email Card (Gmail-style collapsible) ──────────────────────────────
 
 function ThreadEmailCard({
-  msg, isExpanded, onToggle, isLatest, isSystem, customerName, onReply,
+  msg, isExpanded, onToggle, isSystem, customerName, onReply,
 }: {
   msg: Message;
   isExpanded: boolean;
   onToggle: () => void;
-  isLatest: boolean;
   isSystem: boolean;
   customerName: string;
   onReply?: (mode: ReplyMode) => void;
@@ -1913,19 +1912,6 @@ function ThreadEmailCard({
             className="flex items-center gap-0.5 opacity-0 group-hover/expanded:opacity-100 transition-opacity"
             onClick={e => e.stopPropagation()}
           >
-            {!isSystem && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => onReply?.("reply")}
-                    className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition-colors"
-                  >
-                    <Reply className="h-3.5 w-3.5" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Reply</TooltipContent>
-              </Tooltip>
-            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -1984,29 +1970,7 @@ function ThreadEmailCard({
         {msg.attachmentsMeta && <AttachmentList metaJson={msg.attachmentsMeta} />}
       </div>
 
-      {/* ── Reply strip — only on the latest message ── */}
-      {isLatest && !isSystem && (
-        <div className="px-6 pb-4 pt-1 flex flex-wrap gap-2 border-t border-slate-100 dark:border-slate-800">
-          <button
-            onClick={() => onReply?.("reply")}
-            className="flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-medium text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-400 dark:hover:border-blue-600 transition-colors"
-          >
-            <Reply className="h-3.5 w-3.5" /> Reply
-          </button>
-          <button
-            onClick={() => onReply?.("reply_all")}
-            className="flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-medium text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-400 dark:hover:border-blue-600 transition-colors"
-          >
-            <ReplyAll className="h-3.5 w-3.5" /> Reply all
-          </button>
-          <button
-            onClick={() => onReply?.("forward")}
-            className="flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-medium text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-400 dark:hover:border-blue-600 transition-colors"
-          >
-            <Forward className="h-3.5 w-3.5" /> Forward
-          </button>
-        </div>
-      )}
+      {/* Reply controls live at the conversation level (ReplyComposer), not per-message */}
     </div>
   );
 }
@@ -2116,7 +2080,7 @@ function MiddlePanel({
         <div className="h-14 px-4 flex items-center border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0">
           <Skeleton className="h-5 w-48" />
         </div>
-        <div className="flex-1 overflow-y-auto bg-white dark:bg-slate-900">
+        <div className="flex-1 overflow-y-auto min-h-0 bg-white dark:bg-slate-900">
           <div className="px-6 pt-5 pb-3">
             <Skeleton className="h-6 w-80 mb-2" />
             <Skeleton className="h-3 w-24" />
@@ -2340,7 +2304,7 @@ function MiddlePanel({
       )}
 
       {/* Thread body */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto min-h-0">
         {/* Subject heading */}
         <div className="px-6 pt-5 pb-3">
           <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 leading-snug">{conv.subject}</h2>
@@ -2391,10 +2355,6 @@ function MiddlePanel({
                       msg={item.msg}
                       isExpanded={expandedIds.has(item.msg.id)}
                       onToggle={() => toggleExpanded(item.msg.id)}
-                      isLatest={idx === threadItems.length - 1 || (
-                        item.kind === "message" &&
-                        item.msg.id === messages[messages.length - 1].id
-                      )}
                       isSystem={isSystem}
                       customerName={conv.customerName}
                       onReply={handleThreadReply}
@@ -2749,8 +2709,8 @@ export default function Communications() {
     setSelectedId(id);
     setMobilePanel("thread");
     const conv = conversations.find(c => c.id === id);
-    // Only apply optimistic update if the conversation actually has unread inbound messages
-    if (conv && conv.unreadCount > 0 && conv.status === "unread") {
+    // Apply optimistic update whenever there's a stale unread count
+    if (conv && conv.unreadCount > 0) {
       queryClient.setQueriesData<{ data: Conversation[]; total: number }>(
         { queryKey: ["conversations"] },
         (old) => {
