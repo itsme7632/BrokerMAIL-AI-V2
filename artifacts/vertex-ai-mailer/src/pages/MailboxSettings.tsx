@@ -37,7 +37,6 @@ type Secure = "ssl" | "tls" | "none";
 
 interface MailboxForm {
   smtpHost: string; smtpPort: string; smtpUser: string; smtpPass: string; smtpSecure: Secure;
-  imapHost: string; imapPort: string; imapUser: string; imapPass: string;
   fromName: string; replyTo: string;
   batchSize: number;
   delaySeconds: number;
@@ -48,7 +47,6 @@ interface MailboxForm {
 
 const EMPTY_FORM: MailboxForm = {
   smtpHost: "", smtpPort: "587", smtpUser: "", smtpPass: "", smtpSecure: "tls",
-  imapHost: "", imapPort: "993", imapUser: "", imapPass: "",
   fromName: "", replyTo: "",
   batchSize: 10,
   delaySeconds: 15,
@@ -58,12 +56,12 @@ const EMPTY_FORM: MailboxForm = {
 };
 
 const PRESETS = [
-  { name: "Hostinger",       smtp: "smtp.hostinger.com",    smtpPort: "465", secure: "ssl" as Secure, imap: "imap.hostinger.com",    imapPort: "993" },
-  { name: "cPanel / WHM",    smtp: "mail.yourdomain.com",   smtpPort: "465", secure: "ssl" as Secure, imap: "mail.yourdomain.com",   imapPort: "993" },
-  { name: "Zoho Mail",       smtp: "smtp.zoho.com",         smtpPort: "465", secure: "ssl" as Secure, imap: "imap.zoho.com",         imapPort: "993" },
-  { name: "Outlook / 365",   smtp: "smtp.office365.com",    smtpPort: "587", secure: "tls" as Secure, imap: "outlook.office365.com", imapPort: "993" },
-  { name: "Gmail SMTP",      smtp: "smtp.gmail.com",        smtpPort: "587", secure: "tls" as Secure, imap: "imap.gmail.com",        imapPort: "993" },
-  { name: "Namecheap Email", smtp: "mail.privateemail.com", smtpPort: "465", secure: "ssl" as Secure, imap: "mail.privateemail.com", imapPort: "993" },
+  { name: "Hostinger",       smtp: "smtp.hostinger.com",    smtpPort: "465", secure: "ssl" as Secure },
+  { name: "cPanel / WHM",    smtp: "mail.yourdomain.com",   smtpPort: "465", secure: "ssl" as Secure },
+  { name: "Zoho Mail",       smtp: "smtp.zoho.com",         smtpPort: "465", secure: "ssl" as Secure },
+  { name: "Outlook / 365",   smtp: "smtp.office365.com",    smtpPort: "587", secure: "tls" as Secure },
+  { name: "Gmail SMTP",      smtp: "smtp.gmail.com",        smtpPort: "587", secure: "tls" as Secure },
+  { name: "Namecheap Email", smtp: "mail.privateemail.com", smtpPort: "465", secure: "ssl" as Secure },
 ];
 
 const DELAY_OPTIONS = [
@@ -554,10 +552,6 @@ export default function MailboxSettings() {
             smtpUser: data.smtpUser ?? "",
             smtpPass: "",
             smtpSecure: (data.smtpSecure ?? "tls") as Secure,
-            imapHost: data.imapHost ?? "",
-            imapPort: String(data.imapPort ?? "993"),
-            imapUser: data.imapUser ?? "",
-            imapPass: "",
             fromName: data.fromName ?? "",
             replyTo:  data.replyTo  ?? "",
             batchSize:         data.batchSize         ?? 10,
@@ -577,7 +571,6 @@ export default function MailboxSettings() {
     setForm(f => ({
       ...f,
       smtpHost: p.smtp, smtpPort: p.smtpPort, smtpSecure: p.secure,
-      imapHost: p.imap, imapPort: p.imapPort,
     }));
   }
 
@@ -599,9 +592,9 @@ export default function MailboxSettings() {
 
   // Every section save sends the full current form (required by the single
   // /api/mailbox/save endpoint) but only the fields belonging to THAT section
-  // are ever edited by the user before clicking its button — smtpPass/imapPass
-  // stay blank unless explicitly changed, so saving Sending/Recovery settings
-  // never requires re-entering SMTP/IMAP credentials.
+  // are ever edited by the user before clicking its button — smtpPass
+  // stays blank unless explicitly changed, so saving Sending/Recovery settings
+  // never requires re-entering SMTP credentials.
   async function saveSection(section: "info" | "smtp" | "sending" | "recovery", successMsg: string) {
     setSavingSection(section);
     try {
@@ -612,8 +605,6 @@ export default function MailboxSettings() {
           smtpHost: form.smtpHost, smtpPort: Number(form.smtpPort),
           smtpUser: form.smtpUser, smtpPass: form.smtpPass || undefined,
           smtpSecure: form.smtpSecure,
-          imapHost: form.imapHost || undefined, imapPort: Number(form.imapPort) || 993,
-          imapUser: form.imapUser || undefined, imapPass: form.imapPass || undefined,
           fromName: form.fromName || undefined,
           replyTo:  form.replyTo  || undefined,
           batchSize:         form.batchSize,
@@ -626,7 +617,7 @@ export default function MailboxSettings() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Save failed");
       setIsConnected(true);
-      setForm(f => ({ ...f, smtpPass: "", imapPass: "" }));
+      setForm(f => ({ ...f, smtpPass: "" }));
       setLastVerified(new Date().toISOString());
       toast({ title: successMsg });
     } catch (err: any) {

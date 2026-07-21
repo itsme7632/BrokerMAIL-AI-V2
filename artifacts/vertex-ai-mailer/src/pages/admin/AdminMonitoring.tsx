@@ -71,7 +71,6 @@ interface PlatformHealth {
   database: { status: string; latencyMs: number; };
   queue: { pending: number; sending: number; deferred: number; failed: number; success: number; };
   workers: { smtpActive: boolean; gmailActive: boolean; bounceScanner: boolean; };
-  imap: { status: string; lastScanAt: string | null; detail: string; };
   cronJobs: CronJobState[];
   runningJobs: RunningJob[];
   failedJobs: FailedJob[];
@@ -985,7 +984,6 @@ export function AdminMonitoring() {
               <ServiceCard icon={Server} title="API Server" status={health?.api.status ?? "checking"} detail={health ? `Uptime ${fmtUptime(health.api.uptimeSeconds)} · PID ${health.api.pid}` : ""} accent="emerald" loading={loading} />
               <ServiceCard icon={Database} title="Database" status={health?.database.status ?? "checking"} detail={health ? `${health.database.latencyMs}ms response time` : ""} accent={health?.database.status === "operational" ? "emerald" : "red"} loading={loading} />
               <ServiceCard icon={Inbox} title="Email Queue" status={qActive > 0 ? "active" : "idle"} detail={health ? `${qActive} active · ${q?.deferred ?? 0} deferred · ${q?.failed ?? 0} failed` : ""} accent={qActive > 0 ? "blue" : "emerald"} loading={loading} />
-              <ServiceCard icon={MailSearch} title="IMAP / Bounce Scan" status={health?.imap.status ?? "checking"} detail={health ? `Last scan ${timeAgo(health.imap.lastScanAt)}` : ""} accent={health?.imap.status === "operational" ? "emerald" : health?.imap.status === "checking" ? "blue" : "red"} loading={loading} />
             </div>
           </div>
 

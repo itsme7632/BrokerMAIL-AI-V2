@@ -5,7 +5,6 @@ import {
   draftsTable,
   campaignsTable,
   emailTrackingEventsTable,
-  commMessagesTable,
   mailboxesTable,
   subscriptionsTable,
   plansTable,
@@ -77,7 +76,6 @@ router.get("/analytics/overview", requireAuth, async (req, res): Promise<void> =
     [activeCampaignsRow],
     [completedCampaignsRow],
     opensAndClicks,
-    [repliesRow],
     [failedRow],
     [bouncedRow],
     [mailboxRow],
@@ -130,10 +128,6 @@ router.get("/analytics/overview", requireAuth, async (req, res): Promise<void> =
         sql`${emailTrackingEventsTable.eventType} IN ('open', 'click')`,
       ))
       .groupBy(emailTrackingEventsTable.eventType),
-
-    // Inbound replies via comm_messages
-    db.select({ count: count() }).from(commMessagesTable)
-      .where(and(eq(commMessagesTable.userId, user.id), eq(commMessagesTable.direction, "inbound"))),
 
     // Failed emails
     db.select({ count: count() }).from(emailQueueTable)
@@ -200,7 +194,7 @@ router.get("/analytics/overview", requireAuth, async (req, res): Promise<void> =
     completedCampaigns: completedCampaignsRow.count,
     totalOpens,
     totalClicks,
-    repliesReceived:    repliesRow.count,
+    repliesReceived:    0,
     failedEmails:       failedRow.count,
     bouncedEmails:      bouncedRow.count,
     connectedMailboxes: mailboxRow.count,

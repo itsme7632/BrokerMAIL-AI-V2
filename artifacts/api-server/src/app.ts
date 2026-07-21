@@ -327,7 +327,6 @@ const EXPECTED_SCHEMA: Record<string, string[]> = {
   mailboxes: [
     "id", "user_id", "smtp_host", "smtp_port", "smtp_user",
     "smtp_pass_encrypted", "smtp_secure",
-    "imap_host", "imap_port", "imap_user", "imap_pass_encrypted",
     "from_name", "reply_to", "is_active",
     "batch_size", "delay_seconds", "max_per_hour",
     "quota_status", "quota_reached_at", "quota_cooldown_until",

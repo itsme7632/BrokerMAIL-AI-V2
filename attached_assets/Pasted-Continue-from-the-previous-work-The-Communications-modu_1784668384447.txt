@@ -1,0 +1,180 @@
+Continue from the previous work.
+
+The Communications module removal is approximately 95% complete.
+
+DO NOT start over.
+
+First inspect the existing Git changes and continue from the current state.
+
+Previous work already completed:
+
+✓ Communications page removed
+✓ Sidebar item removed
+✓ Communications routes removed
+✓ Communications APIs removed
+✓ IMAP/MIME parser removed
+✓ Reparse endpoint removed
+✓ Repair endpoint removed
+✓ Sync endpoint removed
+✓ Communications scheduler removed
+✓ Communications background jobs removed
+✓ Mailbox IMAP functionality removed
+✓ Communications navigation removed
+✓ Backend builds clean
+✓ Frontend build succeeds
+
+The previous session stopped only because the Replit daily quota was exhausted.
+
+===========================================================
+YOUR TASK
+===========================================================
+
+Continue ONLY from the current code.
+
+Do NOT recreate Communications.
+
+Do NOT revert any changes.
+
+Finish the remaining cleanup.
+
+===========================================================
+REMAINING WORK
+===========================================================
+
+1.
+
+Remove the remaining Communications reference from analytics.ts.
+
+The previous session already identified this.
+
+Replace inbound replies analytics with a hardcoded value of 0 (or another appropriate placeholder) and remove the unused commMessagesTable import.
+
+2.
+
+Search the ENTIRE repository for:
+
+communications
+
+comm_
+
+commMessages
+
+commConversations
+
+comm-sync
+
+comm-events
+
+reparse
+
+repair
+
+imap
+
+mime
+
+thread
+
+conversation
+
+Remove anything that is now unused.
+
+3.
+
+Delete unused imports.
+
+4.
+
+Delete unused helper functions.
+
+5.
+
+Delete unused React components.
+
+6.
+
+Delete unused backend files.
+
+===========================================================
+VERIFICATION
+===========================================================
+
+Run:
+
+pnpm typecheck
+
+Fix every NEW error caused by the Communications removal.
+
+Ignore ONLY the known pre-existing TS7006 warnings if they are unrelated.
+
+Run:
+
+pnpm build
+
+Both frontend and backend must build successfully.
+
+===========================================================
+FINAL CHECK
+===========================================================
+
+Verify:
+
+✓ No Communications page
+
+✓ No Communications route
+
+✓ No Communications sidebar item
+
+✓ No Communications APIs
+
+✓ No Communications scheduler
+
+✓ No Communications background worker
+
+✓ No Communications cron jobs
+
+✓ No IMAP parser
+
+✓ No MIME parser
+
+✓ No reparse endpoint
+
+✓ No repair endpoint
+
+✓ No sync endpoint
+
+✓ No dead imports
+
+✓ No broken navigation
+
+✓ No broken Dashboard
+
+✓ Mailboxes still work for SMTP/Gmail sending
+
+✓ Compose Email works
+
+✓ Campaigns work
+
+✓ Upload & Send works
+
+✓ Templates work
+
+✓ Analytics works
+
+===========================================================
+FINAL REPORT
+===========================================================
+
+Provide:
+
+1. Files removed
+
+2. Files modified
+
+3. Remaining Communications references (if any)
+
+4. Confirmation that the application no longer contains an active Communications module.
+
+DO NOT rebuild or redesign anything.
+
+Simply finish the cleanup from the current codebase.

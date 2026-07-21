@@ -189,7 +189,6 @@ const DEFAULTS: SettingsMap = {
   // Email Provider Management
   gmailDraftsEnabled:  "true",
   smtpSendingEnabled:  "true",
-  imapSyncEnabled:     "true",
   providerGmail:       "true",
   providerOutlook:     "true",
   providerHostinger:   "true",
@@ -252,11 +251,6 @@ const DEFAULTS: SettingsMap = {
   openTrackingEnabled:  "true",
   clickTrackingEnabled: "true",
   bounceEnabled:        "false",
-  bounceImapHost:       "",
-  bounceImapPort:       "993",
-  bounceImapUser:       "",
-  bounceImapPass:       "",
-  bounceImapFolder:     "INBOX",
   bounceScanInterval:   "60",
   // Super Admin
   superAdminEmail:         "",
@@ -548,9 +542,6 @@ export function AdminSettings() {
   const [testOpenResult,  setTestOpenResult]  = useState<{ ok: boolean; message: string } | null>(null);
   const [testingClick,  setTestingClick]  = useState(false);
   const [testClickResult, setTestClickResult] = useState<{ ok: boolean; message: string } | null>(null);
-  const [testingBounce, setTestingBounce] = useState(false);
-  const [testBounceResult, setTestBounceResult] = useState<{ ok: boolean; message: string; detail?: string } | null>(null);
-
   // Payment methods state
   const [payMethods, setPayMethods] = useState<{
     id: number; displayName: string; type: string; isEnabled: boolean;
@@ -702,26 +693,6 @@ export function AdminSettings() {
     } catch (err: any) {
       setTestClickResult({ ok: false, message: err.message });
     } finally { setTestingClick(false); }
-  }
-
-  async function testBounceImap() {
-    setTestingBounce(true);
-    setTestBounceResult(null);
-    try {
-      const data = await apiFetch("test-bounce-imap", {
-        method: "POST",
-        body: JSON.stringify({
-          host:     settings.bounceImapHost,
-          port:     parseInt(settings.bounceImapPort || "993", 10),
-          username: settings.bounceImapUser,
-          password: settings.bounceImapPass,
-          folder:   settings.bounceImapFolder || "INBOX",
-        }),
-      });
-      setTestBounceResult({ ok: data.ok, message: data.message, detail: data.detail });
-    } catch (err: any) {
-      setTestBounceResult({ ok: false, message: err.message });
-    } finally { setTestingBounce(false); }
   }
 
   async function doExport(type: string) {
@@ -1835,8 +1806,6 @@ export function AdminSettings() {
                   settingsKey="gmailDraftsEnabled" settings={settings} onChange={set} />
                 <Toggle label="SMTP Sending" desc="Allow users to send via custom SMTP mailboxes."
                   settingsKey="smtpSendingEnabled" settings={settings} onChange={set} />
-                <Toggle label="IMAP Sync" desc="Allow users to sync inbox via IMAP."
-                  settingsKey="imapSyncEnabled" settings={settings} onChange={set} />
               </div>
 
               <div className="space-y-3">
@@ -1870,7 +1839,7 @@ export function AdminSettings() {
               </div>
 
               <SaveBar saving={saving} onSave={() => saveSection([
-                "gmailDraftsEnabled", "smtpSendingEnabled", "imapSyncEnabled",
+                "gmailDraftsEnabled", "smtpSendingEnabled",
                 "providerGmail", "providerOutlook", "providerHostinger",
                 "providerGoDaddy", "providerZoho", "providerNamecheap", "providerPrivateMail",
               ])} label="Save Provider Settings" />
@@ -2396,55 +2365,20 @@ export function AdminSettings() {
               {/* ── Bounce Processing ─────────────────────────────────────── */}
               <div className="space-y-4">
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Bounce Processing</p>
-                <Toggle label="Enable Dedicated Bounce Mailbox"
-                  desc="Scans the IMAP inbox below for DSN bounce notifications and marks affected records automatically. Independent of user mailboxes."
+                <Toggle label="Enable Bounce Detection"
+                  desc="Automatically mark emails as bounced based on SMTP delivery status codes."
                   settingsKey="bounceEnabled" settings={settings} onChange={set} />
                 {settings.bounceEnabled === "true" && (
                   <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
-                    <p className="text-xs font-semibold text-slate-600">Bounce Mailbox (IMAP)</p>
-                    <div className="grid sm:grid-cols-2 gap-3">
-                      <Field label="IMAP Host" settingsKey="bounceImapHost" settings={settings} onChange={set}
-                        placeholder="mail.yourdomain.com" mono />
-                      <Field label="Port" settingsKey="bounceImapPort" settings={settings} onChange={set}
-                        type="number" placeholder="993" mono hint="993 = SSL, 143 = STARTTLS" />
-                    </div>
-                    <div className="grid sm:grid-cols-2 gap-3">
-                      <Field label="Username / Email" settingsKey="bounceImapUser" settings={settings} onChange={set}
-                        placeholder="bounces@yourdomain.com" mono />
-                      <SecretField label="Password" settingsKey="bounceImapPass" settings={settings} onChange={set}
-                        placeholder="IMAP password" />
-                    </div>
-                    <div className="grid sm:grid-cols-2 gap-3">
-                      <Field label="Folder" settingsKey="bounceImapFolder" settings={settings} onChange={set}
-                        placeholder="INBOX" mono hint="Folder to scan for bounce messages." />
-                      <Field label="Scan Interval (seconds)" settingsKey="bounceScanInterval" settings={settings} onChange={set}
-                        type="number" placeholder="60" mono hint="How often the scanner checks for new bounces." />
-                    </div>
+                    <Field label="Scan Interval (seconds)" settingsKey="bounceScanInterval" settings={settings} onChange={set}
+                      type="number" placeholder="60" mono hint="How often the bounce processor runs." />
                   </div>
-                )}
-                <div className="flex flex-wrap items-center gap-3">
-                  <Button variant="outline" size="sm" onClick={testBounceImap}
-                    disabled={testingBounce || settings.bounceEnabled !== "true"}
-                    className="rounded-xl gap-1.5">
-                    {testingBounce ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-                    Test IMAP Connection
-                  </Button>
-                  {testBounceResult && (
-                    <span className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl ${testBounceResult.ok ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
-                      {testBounceResult.ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
-                      {testBounceResult.message}
-                    </span>
-                  )}
-                </div>
-                {testBounceResult && !testBounceResult.ok && testBounceResult.detail && (
-                  <p className="text-xs text-red-600 font-mono bg-red-50 rounded-lg px-3 py-2 break-all">{testBounceResult.detail}</p>
                 )}
               </div>
 
               <SaveBar saving={saving} onSave={() => saveSection([
                 "appUrl", "trackingUrl", "openTrackingEnabled", "clickTrackingEnabled",
-                "bounceEnabled", "bounceImapHost", "bounceImapPort", "bounceImapUser",
-                "bounceImapPass", "bounceImapFolder", "bounceScanInterval",
+                "bounceEnabled", "bounceScanInterval",
               ])} label="Save Tracking & Deliverability" />
             </div>
           )}

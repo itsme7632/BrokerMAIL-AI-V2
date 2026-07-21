@@ -67,9 +67,6 @@ interface AdminMailbox {
   smtpSecure: string;
   fromName: string | null;
   replyTo: string | null;
-  imapHost: string | null;
-  imapPort: number | null;
-  imapUser: string | null;
   isActive: boolean;
   maxPerHour: number;
   batchSize: number;
@@ -1047,8 +1044,6 @@ function DetailDrawer({ mailbox, open, onClose, onAction, onOpenHistory, onOpenQ
   const { toast } = useToast();
   const [testResult,  setTestResult]  = useState<{ ok: boolean; msg: string } | null>(null);
   const [testing,     setTesting]     = useState(false);
-  const [imapResult,  setImapResult]  = useState<{ ok: boolean; msg: string } | null>(null);
-  const [testingImap, setTestingImap] = useState(false);
   const [errorModalOpen, setErrorModalOpen] = useState(false);
   const [copiedSMTP,  setCopiedSMTP]  = useState(false);
   const [actionBusy,  setActionBusy]  = useState<string | null>(null);
@@ -1056,7 +1051,7 @@ function DetailDrawer({ mailbox, open, onClose, onAction, onOpenHistory, onOpenQ
 
   useEffect(() => {
     if (!open) {
-      setTestResult(null); setImapResult(null);
+      setTestResult(null);
       setCopiedSMTP(false); setConfirmClear(null);
     }
   }, [open]);
@@ -1067,7 +1062,6 @@ function DetailDrawer({ mailbox, open, onClose, onAction, onOpenHistory, onOpenQ
   const { label: healthLabel, cls: healthCls } = getHealthInfo(health);
   const provider = inferProvider(mailbox.smtpHost);
   const quotaUsedPct = mailbox.maxPerHour > 0 ? Math.min((mailbox.usedThisHour / mailbox.maxPerHour) * 100, 100) : 0;
-  const hasImap  = !!(mailbox.imapHost && mailbox.imapUser);
   const reason   = getWarningReason(mailbox);
   const smtpError = smtpDisplayError(mailbox.lastError);
 
@@ -1079,16 +1073,6 @@ function DetailDrawer({ mailbox, open, onClose, onAction, onOpenHistory, onOpenQ
     } catch (e) {
       setTestResult({ ok: false, msg: e instanceof Error ? e.message : "Test failed" });
     } finally { setTesting(false); }
-  };
-
-  const handleTestImap = async () => {
-    setTestingImap(true); setImapResult(null);
-    try {
-      const r = await apiFetch(`mailboxes/${mailbox.id}/test-imap`, { method: "POST" });
-      setImapResult({ ok: r.ok, msg: r.message ?? r.error ?? "IMAP checked" });
-    } catch (e) {
-      setImapResult({ ok: false, msg: e instanceof Error ? e.message : "Test failed" });
-    } finally { setTestingImap(false); }
   };
 
   const handleQuickAction = async (action: string, status?: string) => {
@@ -1274,20 +1258,6 @@ function DetailDrawer({ mailbox, open, onClose, onAction, onOpenHistory, onOpenQ
               {testResult.ok ? <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> : <XCircle className="h-4 w-4 flex-shrink-0" />}
               {testResult.msg}
             </div>
-          )}
-          {hasImap && (
-            <>
-              <Button variant="outline" size="sm" className="w-full rounded-xl h-9 gap-2" disabled={testingImap} onClick={handleTestImap}>
-                {testingImap ? <Loader2 className="h-4 w-4 animate-spin" /> : <Inbox className="h-4 w-4" />}
-                {testingImap ? "Testing…" : "Test IMAP Connection"}
-              </Button>
-              {imapResult && (
-                <div className={`rounded-lg p-2.5 text-xs flex items-center gap-2 ${imapResult.ok ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-red-500/10 text-red-600 dark:text-red-400"}`}>
-                  {imapResult.ok ? <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> : <XCircle className="h-4 w-4 flex-shrink-0" />}
-                  {imapResult.msg}
-                </div>
-              )}
-            </>
           )}
         </div>
 
@@ -1714,7 +1684,6 @@ export function AdminMailboxes() {
                         <DropdownMenuItem onClick={() => setHistoryMailbox(m)}><History className="h-4 w-4 mr-2" /> SMTP Event History</DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={() => handleAction("test-connection", m.id)}><Wifi className="h-4 w-4 mr-2" /> Test SMTP</DropdownMenuItem>
-                        {m.imapHost && <DropdownMenuItem onClick={() => handleAction("test-imap", m.id)}><Inbox className="h-4 w-4 mr-2" /> Test IMAP</DropdownMenuItem>}
                         <DropdownMenuItem onClick={() => handleAction("force-reconnect", m.id)} className="text-blue-600 dark:text-blue-400"><Zap className="h-4 w-4 mr-2" /> Force Reconnect</DropdownMenuItem>
                         {m.deferredCount > 0 && <DropdownMenuItem onClick={() => handleAction("retry-deferred", m.id)} className="text-amber-600 dark:text-amber-400"><RotateCcw className="h-4 w-4 mr-2" /> Retry Deferred ({m.deferredCount})</DropdownMenuItem>}
                         {m.failedCount > 0 && <DropdownMenuItem onClick={() => handleAction("retry-failed", m.id)} className="text-red-600 dark:text-red-400"><RotateCcw className="h-4 w-4 mr-2" /> Retry Failed ({m.failedCount})</DropdownMenuItem>}

@@ -38,7 +38,7 @@ interface DashboardOverview {
   };
   systemStatus: {
     database: string; api: string; workers: string;
-    queue: { pending: number }; smtp: string; imap: string; mailboxHealthPct: number;
+    queue: { pending: number }; smtp: string; mailboxHealthPct: number;
   };
 }
 
@@ -429,7 +429,6 @@ export function AdminOverview({ onNavigateTab }: { onNavigateTab: (tab: string) 
                   <StatusRow label="Workers"  status={data.systemStatus.workers} />
                   <StatusRow label="Queue"    status={data.systemStatus.queue.pending > 0 ? "processing" : "idle"} sub={`${data.systemStatus.queue.pending} pending`} />
                   <StatusRow label="SMTP"     status={data.systemStatus.smtp}  sub={`${data.systemStatus.mailboxHealthPct}% healthy`} />
-                  <StatusRow label="IMAP"     status={data.systemStatus.imap} />
                 </div>
               )}
           </Card>

@@ -21,8 +21,7 @@ import { logger } from "./logger";
 const TRACKING_KEYS = [
   "trackingUrl", "appUrl",
   "openTrackingEnabled", "clickTrackingEnabled",
-  "bounceEnabled", "bounceImapHost", "bounceImapPort",
-  "bounceImapUser", "bounceImapPass", "bounceImapFolder", "bounceScanInterval",
+  "bounceEnabled", "bounceScanInterval",
 ];
 
 export interface TrackingSettings {
@@ -31,11 +30,6 @@ export interface TrackingSettings {
   openTrackingEnabled:  boolean;
   clickTrackingEnabled: boolean;
   bounceEnabled:        boolean;
-  bounceImapHost:       string;
-  bounceImapPort:       number;
-  bounceImapUser:       string;
-  bounceImapPass:       string;
-  bounceImapFolder:     string;
   bounceScanInterval:   number;
 }
 
@@ -86,11 +80,6 @@ export async function getTrackingSettings(): Promise<TrackingSettings> {
       openTrackingEnabled:  (map.openTrackingEnabled  ?? "true")  !== "false",
       clickTrackingEnabled: (map.clickTrackingEnabled ?? "true")  !== "false",
       bounceEnabled:        (map.bounceEnabled         ?? "false") === "true",
-      bounceImapHost:       map.bounceImapHost   || "",
-      bounceImapPort:       parseInt(map.bounceImapPort  || "993", 10),
-      bounceImapUser:       map.bounceImapUser   || "",
-      bounceImapPass:       map.bounceImapPass   || "",
-      bounceImapFolder:     map.bounceImapFolder || "INBOX",
       bounceScanInterval:   parseInt(map.bounceScanInterval || "60", 10),
     };
 
@@ -139,9 +128,7 @@ export async function getTrackingSettings(): Promise<TrackingSettings> {
     return {
       trackingUrl: envBase, appUrl: envBase,
       openTrackingEnabled: true, clickTrackingEnabled: true,
-      bounceEnabled: false, bounceImapHost: "", bounceImapPort: 993,
-      bounceImapUser: "", bounceImapPass: "", bounceImapFolder: "INBOX",
-      bounceScanInterval: 60,
+      bounceEnabled: false, bounceScanInterval: 60,
     };
   }
 }

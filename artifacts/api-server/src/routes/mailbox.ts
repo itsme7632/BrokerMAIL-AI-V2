@@ -330,10 +330,6 @@ router.get("/mailbox", requireAuth, async (req, res): Promise<void> => {
     smtpUser:      box.smtpUser,
     smtpPassSet:   !!box.smtpPassEncrypted,
     smtpSecure:    box.smtpSecure,
-    imapHost:      box.imapHost      ?? "",
-    imapPort:      box.imapPort      ?? 993,
-    imapUser:      box.imapUser      ?? "",
-    imapPassSet:   !!box.imapPassEncrypted,
     fromName:      box.fromName      ?? "",
     replyTo:       box.replyTo       ?? "",
     isActive:           box.isActive,
@@ -483,7 +479,6 @@ router.put("/mailbox", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
   const {
     smtpHost, smtpPort, smtpUser, smtpPass, smtpSecure,
-    imapHost, imapPort, imapUser, imapPass,
     fromName, replyTo,
     batchSize, delaySeconds, maxPerHour,
     cooldownMinutes, probeRetryMinutes,
@@ -498,7 +493,6 @@ router.put("/mailbox", requireAuth, async (req, res): Promise<void> => {
     .select({
       id: mailboxesTable.id,
       smtpPassEncrypted: mailboxesTable.smtpPassEncrypted,
-      imapPassEncrypted: mailboxesTable.imapPassEncrypted,
     })
     .from(mailboxesTable)
     .where(eq(mailboxesTable.userId, user.id));
@@ -507,10 +501,6 @@ router.put("/mailbox", requireAuth, async (req, res): Promise<void> => {
     ? encrypt(String(smtpPass))
     : (existing?.smtpPassEncrypted ?? "");
 
-  const imapPassEncrypted = imapPass
-    ? encrypt(String(imapPass))
-    : (existing?.imapPassEncrypted ?? "");
-
   const values = {
     userId:            user.id,
     smtpHost:          String(smtpHost),
@@ -518,10 +508,6 @@ router.put("/mailbox", requireAuth, async (req, res): Promise<void> => {
     smtpUser:          String(smtpUser),
     smtpPassEncrypted,
     smtpSecure:        String(smtpSecure ?? "tls"),
-    imapHost:          imapHost ? String(imapHost) : null,
-    imapPort:          imapPort ? Number(imapPort) : 993,
-    imapUser:          imapUser ? String(imapUser) : null,
-    imapPassEncrypted: imapPassEncrypted || null,
     fromName:          fromName ? String(fromName) : null,
     replyTo:           replyTo  ? String(replyTo)  : null,
     isActive:          true,
@@ -558,7 +544,6 @@ router.post("/mailbox/save", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
   const {
     smtpHost, smtpPort, smtpUser, smtpPass, smtpSecure,
-    imapHost, imapPort, imapUser, imapPass,
     fromName, replyTo,
     batchSize, delaySeconds, maxPerHour,
     cooldownMinutes, probeRetryMinutes,
@@ -573,7 +558,6 @@ router.post("/mailbox/save", requireAuth, async (req, res): Promise<void> => {
     .select({
       id: mailboxesTable.id,
       smtpPassEncrypted: mailboxesTable.smtpPassEncrypted,
-      imapPassEncrypted: mailboxesTable.imapPassEncrypted,
     })
     .from(mailboxesTable)
     .where(eq(mailboxesTable.userId, user.id));
@@ -582,10 +566,6 @@ router.post("/mailbox/save", requireAuth, async (req, res): Promise<void> => {
     ? encrypt(String(smtpPass))
     : (existing?.smtpPassEncrypted ?? "");
 
-  const imapPassEncrypted = imapPass
-    ? encrypt(String(imapPass))
-    : (existing?.imapPassEncrypted ?? "");
-
   const values = {
     userId:            user.id,
     smtpHost:          String(smtpHost),
@@ -593,10 +573,6 @@ router.post("/mailbox/save", requireAuth, async (req, res): Promise<void> => {
     smtpUser:          String(smtpUser),
     smtpPassEncrypted,
     smtpSecure:        String(smtpSecure ?? "tls"),
-    imapHost:          imapHost ? String(imapHost) : null,
-    imapPort:          imapPort ? Number(imapPort) : 993,
-    imapUser:          imapUser ? String(imapUser) : null,
-    imapPassEncrypted: imapPassEncrypted || null,
     fromName:          fromName ? String(fromName) : null,
     replyTo:           replyTo  ? String(replyTo)  : null,
     isActive:          true,
