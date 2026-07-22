@@ -79,7 +79,7 @@ export default function AdminLogin() {
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="admin@brokermail.ai"
+                placeholder="admin@getbrokermail.com"
                 required
                 autoComplete="email"
                 className="h-11 rounded-xl"
