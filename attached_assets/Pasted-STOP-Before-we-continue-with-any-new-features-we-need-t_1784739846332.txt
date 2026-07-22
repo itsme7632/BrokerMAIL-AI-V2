@@ -1,0 +1,129 @@
+STOP.
+
+Before we continue with any new features, we need to fix an email branding issue.
+
+==================================================
+ISSUE
+==================================================
+
+System emails sent through Resend still use:
+
+support@brokermail.ai
+
+This is no longer our support email.
+
+The correct support email everywhere is:
+
+support@getbrokermail.com
+
+==================================================
+IMPORTANT
+==================================================
+
+This ONLY applies to BrokerMAIL AI system emails sent via Resend.
+
+Examples:
+
+• Welcome Email
+• Email Verification
+• Password Reset
+• Magic Link (if applicable)
+• Invitation Emails
+• Account Notifications
+• Subscription Emails
+• Billing Emails
+• Any other Resend-powered transactional email
+
+==================================================
+DO NOT CHANGE
+==================================================
+
+DO NOT modify SMTP campaign emails.
+
+SMTP campaigns must continue using the sender mailbox selected by the user.
+
+Only change Resend transactional/system emails.
+
+==================================================
+WHAT TO DO
+==================================================
+
+1. Search the entire project for:
+
+support@brokermail.ai
+
+2. Replace every active reference used by transactional/system emails with:
+
+support@getbrokermail.com
+
+3. Also search for any hardcoded:
+
+brokermail.ai
+
+that should now be:
+
+getbrokermail.com
+
+ONLY for transactional email branding.
+
+Do NOT change API domains or unrelated configuration.
+
+==================================================
+CHECK FOR
+==================================================
+
+• Email templates
+• React Email templates
+• HTML templates
+• MJML templates
+• Resend helpers
+• Notification services
+• Footer components
+• Contact sections
+• Reply-To headers
+• From Name helpers
+• Support links
+• Help links
+• Signature blocks
+
+==================================================
+VERIFY
+==================================================
+
+After changes:
+
+1. Search again for:
+
+support@brokermail.ai
+
+There should be ZERO active references in transactional email code.
+
+2. Send test emails for:
+
+• Welcome Email
+• Email Verification
+
+Confirm they now display:
+
+support@getbrokermail.com
+
+3. Run:
+
+pnpm typecheck
+
+4. Run:
+
+pnpm build
+
+Fix any issues before finishing.
+
+==================================================
+REPORT
+==================================================
+
+Provide:
+
+• Files modified
+• Every place that was updated
+• Confirmation that ONLY Resend transactional emails were changed
+• Confirmation that SMTP campaign emails were NOT modified

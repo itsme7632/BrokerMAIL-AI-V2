@@ -3,7 +3,7 @@
  *
  * Provider: Resend (https://resend.com)
  * Requires: RESEND_API_KEY env var
- * From address: configure RESEND_FROM (defaults to "BrokerMAIL AI <noreply@brokermail.ai>")
+ * From address: configure RESEND_FROM (defaults to "BrokerMAIL AI <noreply@getbrokermail.com>")
  *
  * Dev fallback: when RESEND_API_KEY is absent, emails are logged to stdout instead of sent.
  *
@@ -25,7 +25,7 @@ function getResend(): Resend | null {
 }
 
 function getFromAddress(): string {
-  return process.env.RESEND_FROM ?? "BrokerMAIL AI <noreply@brokermail.ai>";
+  return process.env.RESEND_FROM ?? "BrokerMAIL AI <noreply@getbrokermail.com>";
 }
 
 // ─── HTML escaping ────────────────────────────────────────────────────────────
@@ -122,7 +122,7 @@ function emailFooter(year: number): string {
           © ${year} BrokerMAIL AI · AI-powered outreach for auto transport brokers
         </p>
         <p style="margin:0;font-size:12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-          <a href="mailto:support@brokermail.ai" style="color:#94a3b8;text-decoration:none;">support@brokermail.ai</a>
+          <a href="mailto:support@getbrokermail.com" style="color:#94a3b8;text-decoration:none;">support@getbrokermail.com</a>
         </p>
       </td>
     </tr>`;
@@ -231,7 +231,7 @@ Enter this code on the verification page. It expires in 10 minutes and can only 
 If you didn't create a BrokerMAIL AI account, you can safely ignore this email.
 
 — BrokerMAIL AI Team
-support@brokermail.ai`;
+support@getbrokermail.com`;
 
   return { html, text };
 }
@@ -316,7 +316,7 @@ export function buildWelcomeEmail(name: string, dashboardUrl: string): { html: s
 
         <p style="margin:0;font-size:13px;color:#94a3b8;text-align:center;line-height:1.5;">
           Questions? Reply to this email or contact
-          <a href="mailto:support@brokermail.ai" style="color:#64748b;">support@brokermail.ai</a>
+          <a href="mailto:support@getbrokermail.com" style="color:#64748b;">support@getbrokermail.com</a>
         </p>
 
       </td>
@@ -335,7 +335,7 @@ Getting Started:
 
 Go to your dashboard: ${dashboardUrl}
 
-Questions? Reply to this email or contact support@brokermail.ai
+Questions? Reply to this email or contact support@getbrokermail.com
 
 — BrokerMAIL AI Team`;
 
@@ -431,7 +431,7 @@ This link expires in 60 minutes and can only be used once.
 If you didn't request this, you can safely ignore this email.
 
 — BrokerMAIL AI Team
-support@brokermail.ai`;
+support@getbrokermail.com`;
 
   return { html, text };
 }
@@ -512,7 +512,7 @@ export function buildPasswordChangedEmail(
             <td style="padding:14px 18px;">
               <p style="margin:0;font-size:13px;color:#991b1b;line-height:1.5;text-align:center;">
                 🚨 <strong>Didn't make this change?</strong> Reset your password immediately and
-                contact <a href="mailto:support@brokermail.ai" style="color:#991b1b;">support@brokermail.ai</a>
+                contact <a href="mailto:support@getbrokermail.com" style="color:#991b1b;">support@getbrokermail.com</a>
               </p>
             </td>
           </tr>
@@ -527,7 +527,7 @@ Your BrokerMAIL AI password was successfully changed.
 
 Time: ${formattedAt}
 ${ip ? `IP Address: ${ip}\n` : ""}${device ? `Device: ${device}\n` : ""}
-If you didn't make this change, reset your password immediately and contact support@brokermail.ai
+If you didn't make this change, reset your password immediately and contact support@getbrokermail.com
 
 — BrokerMAIL AI Team`;
 
