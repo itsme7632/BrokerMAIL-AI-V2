@@ -7,7 +7,14 @@
  */
 
 import { Router, type IRouter } from "express";
-import { db, suppressionListTable } from "@workspace/db";
+import {
+  db,
+  suppressionListTable,
+  notificationsTable,
+  campaignsTable,
+  templatesTable,
+  leadsTable,
+} from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { verifyUnsubscribeToken } from "../lib/unsubscribe-token";
 import { logger } from "../lib/logger";
@@ -22,6 +29,97 @@ const VALID_REASONS = new Set([
   "spam",
   "other",
 ]);
+
+// ─── Notification helper ──────────────────────────────────────────────────────
+
+interface UnsubscribeNotificationParams {
+  suppressionId: number;
+  userId:        number;
+  email:         string;
+  campaignId:    number | null;
+  leadId:        number | null;
+  source:        string;
+  reason:        string;
+}
+
+/**
+ * Creates an "unsubscribe" notification for the account owner.
+ * Non-fatal — a failure here must never surface to the unsubscribing recipient.
+ */
+async function createUnsubscribeNotification(params: UnsubscribeNotificationParams): Promise<void> {
+  try {
+    const { suppressionId, userId, email, campaignId, leadId, source, reason } = params;
+
+    // Look up campaign + template name (best-effort; scoped to the owning user)
+    let campaignName: string | null = null;
+    let templateId:   number | null = null;
+    let templateName: string | null = null;
+
+    if (campaignId) {
+      const [campaign] = await db
+        .select({ name: campaignsTable.name, templateId: campaignsTable.templateId })
+        .from(campaignsTable)
+        .where(and(eq(campaignsTable.id, campaignId), eq(campaignsTable.userId, userId)));
+      if (campaign) {
+        campaignName = campaign.name;
+        templateId   = campaign.templateId ?? null;
+      }
+      if (templateId) {
+        const [tmpl] = await db
+          .select({ name: templatesTable.name })
+          .from(templatesTable)
+          .where(and(eq(templatesTable.id, templateId), eq(templatesTable.userId, userId)));
+        if (tmpl) templateName = tmpl.name;
+      }
+    }
+
+    // Look up lead name (best-effort)
+    let recipientName: string | null = null;
+    if (leadId) {
+      const [lead] = await db
+        .select({ name: leadsTable.name })
+        .from(leadsTable)
+        .where(eq(leadsTable.id, leadId));
+      if (lead?.name?.trim()) recipientName = lead.name.trim();
+    }
+
+    const displayName = recipientName ?? email;
+    const title   = "Customer Unsubscribed";
+    const message = `${displayName} (${email}) unsubscribed from your emails.`;
+    const link    = `/suppression-list?highlight=${encodeURIComponent(email)}`;
+
+    const metadata: Record<string, unknown> = {
+      suppressionId,
+      recipientEmail:    email,
+      recipientName:     recipientName ?? null,
+      campaignId:        campaignId    ?? null,
+      campaignName:      campaignName  ?? null,
+      templateId:        templateId    ?? null,
+      templateName:      templateName  ?? null,
+      unsubscribeReason: reason,
+      source,
+      timestamp: new Date().toISOString(),
+    };
+
+    await db.insert(notificationsTable).values({
+      userId,
+      type:    "unsubscribe",
+      title,
+      message,
+      link,
+      refId:   suppressionId,
+      refType: "suppression",
+      metadata,
+    });
+
+    logger.info({ userId, email, suppressionId }, "[UNSUBSCRIBE] Notification created");
+  } catch (err) {
+    // Non-fatal — the unsubscribe already succeeded; don't surface this error
+    logger.warn({ err }, "[UNSUBSCRIBE] Failed to create unsubscribe notification");
+  }
+}
+
+// ─── Routes ───────────────────────────────────────────────────────────────────
 
 // GET /api/unsubscribe?token=...
 // Validates the token, inserts into suppression_list, returns JSON.
@@ -46,22 +144,38 @@ router.get("/unsubscribe", async (req, res): Promise<void> => {
   }
 
   try {
-    await db
+    // Use .returning() to detect whether this is a new suppression or a duplicate.
+    // onConflictDoNothing() returns an empty array on conflict — no row inserted.
+    const inserted = await db
       .insert(suppressionListTable)
       .values({
         userId:     payload.userId,
         email,
         reason:     "unsubscribe",
         source:     "unsubscribe_link",
-        leadId:     payload.leadId   ?? null,
+        leadId:     payload.leadId    ?? null,
         campaignId: payload.campaignId ?? null,
       })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ id: suppressionListTable.id });
 
     logger.info(
       { userId: payload.userId, email, leadId: payload.leadId, campaignId: payload.campaignId },
       "[UNSUBSCRIBE] Email unsubscribed via link",
     );
+
+    // Only notify on a genuinely new suppression — never on a duplicate request
+    if (inserted.length > 0) {
+      void createUnsubscribeNotification({
+        suppressionId: inserted[0].id,
+        userId:        payload.userId,
+        email,
+        campaignId:    payload.campaignId ?? null,
+        leadId:        payload.leadId     ?? null,
+        source:        "unsubscribe_link",
+        reason:        "unsubscribe",
+      });
+    }
 
     res.json({ success: true, email });
   } catch (err) {

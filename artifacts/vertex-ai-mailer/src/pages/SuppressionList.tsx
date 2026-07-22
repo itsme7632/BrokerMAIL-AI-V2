@@ -130,7 +130,31 @@ export default function SuppressionList() {
   const [adding, setAdding] = useState(false);
   const [addMsg, setAddMsg] = useState<string | null>(null);
 
+  // Highlight state — populated from ?highlight=<email> query param (set by unsubscribe notifications)
+  const [highlightEmail, setHighlightEmail] = useState<string | null>(null);
+  const highlightRowRef = useRef<HTMLTableRowElement | null>(null);
+
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // On mount: read ?highlight=<email> from URL, pre-fill search so the row is visible
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const h = params.get("highlight");
+    if (h) {
+      const decoded = decodeURIComponent(h);
+      setHighlightEmail(decoded);
+      setSearchInput(decoded);
+      setSearch(decoded);
+      setPage(1);
+    }
+  }, []);
+
+  // Scroll highlighted row into view after data loads
+  useEffect(() => {
+    if (!loading && highlightEmail && highlightRowRef.current) {
+      highlightRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [loading, highlightEmail]);
 
   async function load(p: number, q: string, rf: string) {
     setLoading(true);
@@ -425,8 +449,20 @@ export default function SuppressionList() {
                   </TableCell>
                 </TableRow>
               ) : (
-                entries.map(entry => (
-                  <TableRow key={entry.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                entries.map(entry => {
+                  const isHighlighted = highlightEmail !== null &&
+                    entry.email.toLowerCase() === highlightEmail.toLowerCase();
+                  return (
+                  <TableRow
+                    key={entry.id}
+                    ref={isHighlighted ? highlightRowRef : undefined}
+                    className={[
+                      "hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors",
+                      isHighlighted
+                        ? "ring-2 ring-inset ring-blue-400 bg-blue-50/70 dark:bg-blue-900/30"
+                        : "",
+                    ].join(" ")}
+                  >
                     <TableCell className="py-3.5 overflow-hidden">
                       <EmailCell email={entry.email} />
                     </TableCell>
@@ -480,7 +516,8 @@ export default function SuppressionList() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))
+                  );
+                })
               )}
             </TableBody>
           </Table>

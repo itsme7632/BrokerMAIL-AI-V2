@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Bell, Eye, Mail, X, AlertCircle, CheckCircle2,
   RefreshCw, ExternalLink, BellOff, Sparkles, Megaphone,
-  Map, MessageSquare, Bug, Lightbulb, Trash2,
+  Map, MessageSquare, Bug, Lightbulb, Trash2, UserMinus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link, useLocation } from "wouter";
@@ -10,7 +10,7 @@ import { Link, useLocation } from "wouter";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type EmailNotifType = "open" | "failed_delivery" | "campaign_completed" | "smtp_error" | "draft_completed";
-type HubNotifType   = "new_version" | "announcement" | "roadmap_update" | "feedback_reply" | "bug_reply" | "feature_reply";
+type HubNotifType   = "new_version" | "announcement" | "roadmap_update" | "feedback_reply" | "bug_reply" | "feature_reply" | "unsubscribe";
 
 interface NotifItem {
   id: string;
@@ -23,6 +23,7 @@ interface NotifItem {
   href?: string;
   isAppleMail?: boolean;
   isRead?: boolean;
+  metadata?: Record<string, unknown>;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -56,6 +57,7 @@ function getIconForType(n: NotifItem) {
       case "feedback_reply": return { bg: "bg-emerald-50", icon: <MessageSquare className="h-3.5 w-3.5 text-emerald-600"/> };
       case "bug_reply":      return { bg: "bg-red-50",     icon: <Bug           className="h-3.5 w-3.5 text-red-500"    /> };
       case "feature_reply":  return { bg: "bg-indigo-50",  icon: <Lightbulb     className="h-3.5 w-3.5 text-indigo-600" /> };
+      case "unsubscribe":    return { bg: "bg-orange-50",  icon: <UserMinus     className="h-3.5 w-3.5 text-orange-600" /> };
       default:               return { bg: "bg-slate-100",  icon: <Bell          className="h-3.5 w-3.5 text-slate-400"  /> };
     }
   }
@@ -231,6 +233,7 @@ export function NotificationBell() {
             timestamp: n.createdAt,
             href,
             isRead:    n.isRead,
+            metadata:  n.metadata as Record<string, unknown> | undefined,
           });
         }
       }
@@ -436,6 +439,22 @@ export function NotificationBell() {
                           <span className="text-[11px] text-slate-400 flex-shrink-0 mt-0.5">{timeAgo(n.timestamp)}</span>
                         </div>
                         <p className="text-xs text-slate-500 truncate mt-0.5 leading-relaxed">{n.body}</p>
+                        {n.type === "unsubscribe" && n.metadata && (
+                          <div className="mt-1.5 space-y-0.5">
+                            <p className="text-[11px] text-slate-400 leading-snug">
+                              <span className="font-medium text-slate-500">Campaign:</span>{" "}
+                              {(n.metadata.campaignName as string) || "Unknown"}
+                            </p>
+                            <p className="text-[11px] text-slate-400 leading-snug">
+                              <span className="font-medium text-slate-500">Template:</span>{" "}
+                              {(n.metadata.templateName as string) || "Unknown"}
+                            </p>
+                            <p className="text-[11px] text-slate-400 leading-snug">
+                              <span className="font-medium text-slate-500">Reason:</span>{" "}
+                              {((n.metadata.unsubscribeReason as string) || "").replace(/_/g, " ") || "Not provided"}
+                            </p>
+                          </div>
+                        )}
                         {n.isAppleMail && (
                           <span className="inline-block mt-0.5 text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full">
                             Apple Mail

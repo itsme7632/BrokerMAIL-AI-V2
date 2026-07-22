@@ -1,0 +1,198 @@
+Implement unsubscribe notifications for BrokerMAIL AI.
+
+This should integrate with the existing notification system and the Suppression List.
+
+==================================================
+GOAL
+==================================================
+
+Whenever a recipient unsubscribes and is automatically added to the Suppression List, generate a notification for the account owner.
+
+The notification should include:
+
+• Recipient email
+• Recipient full name (if available)
+• Date & time
+• Unsubscribe reason (if available)
+• Campaign name (if available)
+• Email template name (if available)
+• Source (unsubscribe link, one-click unsubscribe, manual suppression, complaint, etc.)
+
+==================================================
+NOTIFICATION CONTENT
+==================================================
+
+Notification Title:
+
+Customer Unsubscribed
+
+Example Notification:
+
+John Smith (john@example.com) unsubscribed from your emails.
+
+Campaign:
+Summer Promotion 2026
+
+Template:
+July Newsletter
+
+Reason:
+Too many emails
+
+If campaign or template information is unavailable, display:
+
+Campaign:
+Unknown
+
+Template:
+Unknown
+
+If no reason is available, display:
+
+Reason:
+Not provided
+
+==================================================
+NOTIFICATION TYPE
+==================================================
+
+Create a new notification type:
+
+unsubscribe
+
+Include:
+
+• Icon appropriate for unsubscribe
+• Timestamp
+• Unread status
+• Read status
+• Account ownership
+• Metadata for navigation
+
+==================================================
+WHEN TO CREATE
+==================================================
+
+Automatically create ONE notification whenever a NEW suppression record is created because of:
+
+• Email unsubscribe link
+• One-click unsubscribe
+• List-Unsubscribe header
+• Complaint feedback loop
+• Automatic unsubscribe processing
+
+Do NOT create notifications for:
+
+• Duplicate suppression records
+• Existing suppressed recipients
+• Repeated unsubscribe requests from the same recipient
+
+Only notify once per newly suppressed email.
+
+==================================================
+BACKEND
+==================================================
+
+Notification creation must be part of the suppression workflow.
+
+Create the suppression record and notification in the same transaction (or equivalent atomic operation) so they remain synchronized.
+
+Store metadata including:
+
+• suppressionId
+• recipientEmail
+• recipientName
+• campaignId (if available)
+• campaignName (if available)
+• templateId (if available)
+• templateName (if available)
+• unsubscribeReason
+• source
+• timestamp
+
+==================================================
+FRONTEND
+==================================================
+
+Display unsubscribe notifications inside the existing notification center.
+
+Unread count should increase immediately.
+
+Notification should clearly display:
+
+• Recipient name
+• Recipient email
+• Campaign name
+• Template name
+• Reason
+• Time
+
+==================================================
+CLICK ACTION
+==================================================
+
+When the user clicks the notification:
+
+• Mark notification as read
+• Navigate directly to the Suppression List
+• Preserve browser history
+
+If supported:
+
+• Automatically highlight the matching suppression record
+OR
+• Scroll directly to the corresponding suppressed recipient
+
+==================================================
+OPTIONAL ENHANCEMENTS
+==================================================
+
+If the notification system supports rich actions, include:
+
+View Suppression Record
+
+This button should open the exact suppression entry.
+
+==================================================
+TEST
+==================================================
+
+Verify:
+
+✓ Recipient unsubscribes
+✓ Suppression record created
+✓ Notification created
+✓ Notification appears immediately
+✓ Unread notification count increases
+✓ Campaign name is shown (when available)
+✓ Template name is shown (when available)
+✓ Reason is shown
+✓ Clicking notification opens Suppression List
+✓ Matching suppression record is highlighted (if supported)
+✓ Notification is marked as read
+✓ Duplicate unsubscribe does not generate duplicate notifications
+
+==================================================
+VERIFY
+==================================================
+
+Run:
+
+pnpm typecheck
+
+pnpm build
+
+Fix any issues before finishing.
+
+==================================================
+REPORT
+==================================================
+
+Provide:
+
+• Files modified
+• Database/schema changes (if any)
+• Notification payload structure
+• Navigation implementation
+• Metadata stored with each notification
+• Test results
