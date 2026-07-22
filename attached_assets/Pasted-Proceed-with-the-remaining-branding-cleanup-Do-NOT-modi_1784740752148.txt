@@ -1,0 +1,102 @@
+Proceed with the remaining branding cleanup.
+
+Do NOT modify transactional emails (already completed).
+
+Do NOT modify SMTP campaign sending.
+
+Do NOT modify internal seed accounts, MIME Content-ID values, developer documentation, or placeholder/example text.
+
+Only update active user-facing branding.
+
+==================================================
+UPDATE PUBLIC WEBSITE PAGES
+==================================================
+
+Replace all remaining active references to:
+
+brokermail.ai
+
+with the appropriate getbrokermail.com branding.
+
+Update:
+
+• Contact page
+• Privacy Policy
+• Terms of Service
+• Refund Policy
+
+Replace support, sales, billing, legal, privacy, and security email addresses with their @getbrokermail.com equivalents where appropriate.
+
+Also update website URLs to:
+
+https://getbrokermail.com
+
+where they are active user-facing links.
+
+==================================================
+UPDATE DEFAULT PLATFORM SETTINGS
+==================================================
+
+Update the default values used when a new installation has not yet configured platform settings.
+
+Examples:
+
+support@getbrokermail.com
+
+sales@getbrokermail.com
+
+billing@getbrokermail.com
+
+https://getbrokermail.com
+
+These are only default values and should remain fully configurable from the Admin Settings page.
+
+==================================================
+DO NOT CHANGE
+==================================================
+
+Do NOT change:
+
+• Internal seed admin accounts
+• MIME Content-ID values
+• Documentation
+• Comments
+• Placeholder/example text
+• API configuration
+• SMTP sending logic
+• Resend transactional email code (already completed)
+
+==================================================
+VERIFY
+==================================================
+
+After making the changes:
+
+1. Search again for:
+
+brokermail.ai
+
+Classify every remaining occurrence.
+
+The only remaining matches should be internal-only items (seed accounts, MIME IDs, documentation, or placeholders).
+
+2. Run:
+
+pnpm typecheck
+
+3. Run:
+
+pnpm build
+
+Fix any issues before finishing.
+
+==================================================
+REPORT
+==================================================
+
+Provide:
+
+• Files modified
+• Active branding references updated
+• Remaining brokermail.ai references (with justification)
+• Confirmation that all user-facing branding now consistently uses getbrokermail.com

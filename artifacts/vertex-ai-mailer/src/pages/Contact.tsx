@@ -48,8 +48,8 @@ export default function Contact() {
     }
   }
 
-  const supportEmail    = platform.supportEmail    || "support@brokermail.ai";
-  const salesEmail      = platform.salesEmail      || "sales@brokermail.ai";
+  const supportEmail    = platform.supportEmail    || "support@getbrokermail.com";
+  const salesEmail      = platform.salesEmail      || "sales@getbrokermail.com";
   const responseTime    = platform.supportResponseTime || "1 business day";
 
   const contactCards = [

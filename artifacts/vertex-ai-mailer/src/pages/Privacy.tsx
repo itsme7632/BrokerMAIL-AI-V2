@@ -95,7 +95,7 @@ const sections: Section[] = [
           <li><strong>Access controls:</strong> Internal access to production data is limited to authorized personnel and logged</li>
           <li><strong>Database security:</strong> Our database is not publicly accessible and is protected by network-level firewalls</li>
         </ul>
-        <p>No security measure is 100% foolproof. If you discover a security vulnerability, please report it responsibly to <a href="mailto:security@brokermail.ai">security@brokermail.ai</a>.</p>
+        <p>No security measure is 100% foolproof. If you discover a security vulnerability, please report it responsibly to <a href="mailto:security@getbrokermail.com">security@getbrokermail.com</a>.</p>
       </>
     ),
   },
@@ -112,7 +112,7 @@ const sections: Section[] = [
           <li><strong>Portability:</strong> Request your data in a machine-readable format</li>
           <li><strong>Objection:</strong> Object to processing of your data in certain circumstances</li>
         </ul>
-        <p>To exercise any of these rights, contact us at <a href="mailto:privacy@brokermail.ai">privacy@brokermail.ai</a>. We will respond within 30 days. We may need to verify your identity before processing your request.</p>
+        <p>To exercise any of these rights, contact us at <a href="mailto:privacy@getbrokermail.com">privacy@getbrokermail.com</a>. We will respond within 30 days. We may need to verify your identity before processing your request.</p>
       </>
     ),
   },
@@ -123,7 +123,7 @@ const sections: Section[] = [
       <>
         <p>If you wish to permanently delete your BrokerMAIL AI account and all associated data:</p>
         <ul>
-          <li>Email <a href="mailto:privacy@brokermail.ai">privacy@brokermail.ai</a> with the subject line "Account Deletion Request"</li>
+          <li>Email <a href="mailto:privacy@getbrokermail.com">privacy@getbrokermail.com</a> with the subject line "Account Deletion Request"</li>
           <li>Include the email address associated with your account</li>
           <li>We will confirm receipt within 2 business days and complete the deletion within 30 days</li>
         </ul>
@@ -160,8 +160,8 @@ const sections: Section[] = [
       <>
         <p>For any privacy-related questions, requests, or concerns:</p>
         <ul>
-          <li>Email: <a href="mailto:privacy@brokermail.ai">privacy@brokermail.ai</a></li>
-          <li>General support: <a href="mailto:support@brokermail.ai">support@brokermail.ai</a></li>
+          <li>Email: <a href="mailto:privacy@getbrokermail.com">privacy@getbrokermail.com</a></li>
+          <li>General support: <a href="mailto:support@getbrokermail.com">support@getbrokermail.com</a></li>
         </ul>
         <p>We will update this Privacy Policy as needed to reflect changes in our practices or applicable law. Material changes will be communicated via email at least 14 days before they take effect.</p>
       </>
@@ -173,7 +173,7 @@ export default function Privacy() {
   const [active, setActive] = useState(sections[0].id);
   const platform = usePlatformSettings();
 
-  const supportEmail  = platform.supportEmail  || "support@brokermail.ai";
+  const supportEmail  = platform.supportEmail  || "support@getbrokermail.com";
   const dynamicSections = sections.map(s => s.id !== "contact" ? s : {
     ...s,
     content: (

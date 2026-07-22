@@ -17,7 +17,7 @@ const sections: Section[] = [
         <ul>
           <li>Provide accurate and complete registration information</li>
           <li>Maintain the confidentiality of your password and account access credentials</li>
-          <li>Promptly notify us at <a href="mailto:support@brokermail.ai">support@brokermail.ai</a> of any unauthorized use of your account</li>
+          <li>Promptly notify us at <a href="mailto:support@getbrokermail.com">support@getbrokermail.com</a> of any unauthorized use of your account</li>
           <li>Be solely responsible for all activities that occur under your account</li>
           <li>Not share your account with any third party or allow concurrent unauthorized sessions</li>
         </ul>
@@ -119,7 +119,7 @@ const sections: Section[] = [
     title: "Cancellation",
     content: (
       <>
-        <p>You may cancel your BrokerMAIL AI subscription at any time by contacting support at <a href="mailto:support@brokermail.ai">support@brokermail.ai</a>. Upon cancellation:</p>
+        <p>You may cancel your BrokerMAIL AI subscription at any time by contacting support at <a href="mailto:support@getbrokermail.com">support@getbrokermail.com</a>. Upon cancellation:</p>
         <ul>
           <li>Your account will remain active until the end of the current billing period</li>
           <li>You will not be billed for subsequent periods</li>
@@ -143,7 +143,7 @@ const sections: Section[] = [
           <li>Your payment is declined or a chargeback is filed</li>
           <li>We receive a valid legal order requiring suspension</li>
         </ul>
-        <p>In cases of non-abusive violations, we will attempt to provide prior notice and an opportunity to remedy the issue. In cases of abuse or legal requirement, suspension may be immediate. You may appeal a suspension by contacting <a href="mailto:support@brokermail.ai">support@brokermail.ai</a>.</p>
+        <p>In cases of non-abusive violations, we will attempt to provide prior notice and an opportunity to remedy the issue. In cases of abuse or legal requirement, suspension may be immediate. You may appeal a suspension by contacting <a href="mailto:support@getbrokermail.com">support@getbrokermail.com</a>.</p>
       </>
     ),
   },
@@ -181,8 +181,8 @@ const sections: Section[] = [
       <>
         <p>If you have any questions about these Terms, please contact us:</p>
         <ul>
-          <li>Email: <a href="mailto:legal@brokermail.ai">legal@brokermail.ai</a></li>
-          <li>Support: <a href="mailto:support@brokermail.ai">support@brokermail.ai</a></li>
+          <li>Email: <a href="mailto:legal@getbrokermail.com">legal@getbrokermail.com</a></li>
+          <li>Support: <a href="mailto:support@getbrokermail.com">support@getbrokermail.com</a></li>
         </ul>
         <p>We reserve the right to update these Terms at any time. Material changes will be communicated via email to active subscribers at least 14 days before they take effect. Continued use of BrokerMAIL AI after the effective date constitutes acceptance of the updated Terms.</p>
       </>
@@ -194,7 +194,7 @@ export default function Terms() {
   const [active, setActive] = useState(sections[0].id);
   const platform = usePlatformSettings();
 
-  const supportEmail  = platform.supportEmail  || "support@brokermail.ai";
+  const supportEmail  = platform.supportEmail  || "support@getbrokermail.com";
   const dynamicSections = sections.map(s => s.id !== "contact" ? s : {
     ...s,
     content: (

@@ -1980,7 +1980,7 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   // General
   platformName:        "BrokerMail AI",
   legalCompanyName:    "BrokerMAIL AI LLC",
-  websiteUrl:          "https://brokermail.ai",
+  websiteUrl:          "https://getbrokermail.com",
   supportEmail:        "",
   salesEmail:          "",
   billingEmail:        "",

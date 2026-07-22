@@ -164,7 +164,7 @@ export default function DesignTemplateLibrary() {
       <strong style="color:#1e293b;">Jane Smith</strong><br>
       BrokerMAIL Auto Transport<br>
       📞 (555) 123-4567<br>
-      <a href="https://brokermail.ai" style="color:#2563eb;">brokermail.ai</a>
+      <a href="https://getbrokermail.com" style="color:#2563eb;">getbrokermail.com</a>
     </div>`;
     return htmlLayout
       .replace("{{content}}", sampleContent)

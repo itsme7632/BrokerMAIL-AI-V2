@@ -30,7 +30,7 @@ const sections: Section[] = [
           <li>After 7 days, or if you have used the plan, monthly subscription fees are non-refundable for the current billing period</li>
           <li>You may cancel your subscription at any time — your access continues until the end of the paid period</li>
         </ul>
-        <p>To request a refund within the eligibility window, contact <a href="mailto:billing@brokermail.ai">billing@brokermail.ai</a> with your account email and the reason for the request.</p>
+        <p>To request a refund within the eligibility window, contact <a href="mailto:billing@getbrokermail.com">billing@getbrokermail.com</a> with your account email and the reason for the request.</p>
       </>
     ),
   },
@@ -99,7 +99,7 @@ const sections: Section[] = [
           <li>Permanent account termination if the chargeback is found to be fraudulent or unjustified</li>
           <li>Reporting of fraudulent chargebacks to payment networks</li>
         </ul>
-        <p>To resolve a billing dispute, contact <a href="mailto:billing@brokermail.ai">billing@brokermail.ai</a>. We aim to respond within 1 business day.</p>
+        <p>To resolve a billing dispute, contact <a href="mailto:billing@getbrokermail.com">billing@getbrokermail.com</a>. We aim to respond within 1 business day.</p>
       </>
     ),
   },
@@ -126,7 +126,7 @@ const sections: Section[] = [
       <>
         <p>All refund requests are reviewed manually by our billing team. Here's how the process works:</p>
         <ul>
-          <li>Submit your request to <a href="mailto:billing@brokermail.ai">billing@brokermail.ai</a> with your account email, the plan you're on, and the reason for your request</li>
+          <li>Submit your request to <a href="mailto:billing@getbrokermail.com">billing@getbrokermail.com</a> with your account email, the plan you're on, and the reason for your request</li>
           <li>We will review your request and respond within 2 business days</li>
           <li>Approved refunds are processed within 5–10 business days, depending on your payment method</li>
           <li>Refunds are issued to the original payment method</li>
@@ -142,10 +142,10 @@ const sections: Section[] = [
       <>
         <p>For all billing questions, refund requests, or payment disputes:</p>
         <ul>
-          <li>Email: <a href="mailto:billing@brokermail.ai">billing@brokermail.ai</a></li>
+          <li>Email: <a href="mailto:billing@getbrokermail.com">billing@getbrokermail.com</a></li>
           <li>Subject line: include your account email and "Refund Request" or "Billing Question"</li>
         </ul>
-        <p>For general support: <a href="mailto:support@brokermail.ai">support@brokermail.ai</a></p>
+        <p>For general support: <a href="mailto:support@getbrokermail.com">support@getbrokermail.com</a></p>
         <p>
           See also:{" "}
           <Link href="/terms"><span className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">Terms & Conditions</span></Link>
@@ -161,8 +161,8 @@ export default function Refund() {
   const [active, setActive] = useState(sections[0].id);
   const platform = usePlatformSettings();
 
-  const billingEmail  = platform.billingEmail  || "billing@brokermail.ai";
-  const supportEmail  = platform.supportEmail  || "support@brokermail.ai";
+  const billingEmail  = platform.billingEmail  || "billing@getbrokermail.com";
+  const supportEmail  = platform.supportEmail  || "support@getbrokermail.com";
   const dynamicSections = sections.map(s => s.id !== "contact" ? s : {
     ...s,
     content: (
