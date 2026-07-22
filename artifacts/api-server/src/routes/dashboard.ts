@@ -18,7 +18,7 @@ router.get("/dashboard/stats", requireAuth, async (req, res): Promise<void> => {
   const [aiCalls] = await db.select({ count: count() }).from(draftsTable)
     .where(eq(draftsTable.userId, user.id));
   const [activeCampaigns] = await db.select({ count: count() }).from(campaignsTable)
-    .where(sql`${campaignsTable.userId} = ${user.id} AND ${campaignsTable.status} = 'pending'`);
+    .where(sql`${campaignsTable.userId} = ${user.id} AND ${campaignsTable.status} IN ('sending', 'pending', 'cooling_down')`);
 
   const totalDrafts = draftsCreated.count;
   const successCount = successDrafts.count;

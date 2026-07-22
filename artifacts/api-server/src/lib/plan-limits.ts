@@ -1,7 +1,7 @@
 import {
   db, plansTable, subscriptionsTable, draftsTable, mailboxesTable, campaignsTable,
 } from "@workspace/db";
-import { eq, and, count, sql } from "drizzle-orm";
+import { eq, and, count, sql, isNotNull } from "drizzle-orm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -62,7 +62,13 @@ async function getPlanLimits(userId: number): Promise<PlanLimits | null> {
   return freePlan ?? null;
 }
 
-async function getCurrentUsage(userId: number): Promise<Usage> {
+// ─── Canonical monthly-usage query ───────────────────────────────────────────
+// Single source of truth used by checkEmailLimit, billing, and analytics.
+// Counts every email actually sent (all paths: campaign SMTP, campaign Gmail,
+// composer SMTP, composer Gmail) exactly once via the drafts table.
+// Rows with sentAt = null are unconfirmed Gmail drafts (not yet sent) and are
+// intentionally excluded so they don't consume quota prematurely.
+export async function getCurrentUsage(userId: number): Promise<Usage> {
   const monthStart = new Date();
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
@@ -72,7 +78,8 @@ async function getCurrentUsage(userId: number): Promise<Usage> {
       .where(and(
         eq(draftsTable.userId, userId),
         eq(draftsTable.status, "success"),
-        sql`${draftsTable.createdAt} >= ${monthStart}`,
+        isNotNull(draftsTable.sentAt),
+        sql`${draftsTable.sentAt} >= ${monthStart}`,
       )),
     db.select({ count: count() }).from(mailboxesTable)
       .where(and(eq(mailboxesTable.userId, userId), eq(mailboxesTable.isActive, true))),

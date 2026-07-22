@@ -1,11 +1,11 @@
 import { Router, type IRouter } from "express";
 import {
   db, usersTable, plansTable, subscriptionsTable, planRequestsTable,
-  systemLogsTable, emailQueueTable, mailboxesTable, campaignsTable,
-  paymentMethodsTable,
+  systemLogsTable, paymentMethodsTable,
 } from "@workspace/db";
-import { eq, and, count, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../lib/auth";
+import { getCurrentUsage } from "../lib/plan-limits";
 
 const router: IRouter = Router();
 
@@ -43,27 +43,6 @@ async function getOrCreateSubscription(userId: number) {
   return created ?? null;
 }
 
-async function getCurrentUsage(userId: number) {
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-
-  const [[emailsSent], [smtpUsed], [campaigns]] = await Promise.all([
-    db.select({ count: count() }).from(emailQueueTable)
-      .where(and(eq(emailQueueTable.userId, userId), eq(emailQueueTable.status, "sent"),
-        sql`${emailQueueTable.sentAt} >= ${monthStart}`)),
-    db.select({ count: count() }).from(mailboxesTable)
-      .where(and(eq(mailboxesTable.userId, userId), eq(mailboxesTable.isActive, true))),
-    db.select({ count: count() }).from(campaignsTable)
-      .where(eq(campaignsTable.userId, userId)),
-  ]);
-
-  return {
-    emailsSentThisMonth: emailsSent.count,
-    smtpAccountsUsed: smtpUsed.count,
-    campaignsCount: campaigns.count,
-  };
-}
 
 // ─── Public: list plans ───────────────────────────────────────────────────────
 
@@ -347,10 +326,11 @@ router.get("/admin/subscriptions", requireAdmin, async (_req, res): Promise<void
     stripeCustomerId: subscriptionsTable.stripeCustomerId,
     stripeSubscriptionId: subscriptionsTable.stripeSubscriptionId,
     emailsSentThisMonth: sql<number>`(
-      SELECT COUNT(*)::int FROM email_queue
-      WHERE email_queue.user_id = ${usersTable.id}
-        AND email_queue.status = 'sent'
-        AND email_queue.sent_at >= date_trunc('month', CURRENT_DATE)
+      SELECT COUNT(*)::int FROM drafts
+      WHERE drafts.user_id = ${usersTable.id}
+        AND drafts.status = 'success'
+        AND drafts.sent_at IS NOT NULL
+        AND drafts.sent_at >= date_trunc('month', CURRENT_DATE)
     )`,
     smtpAccountsUsed: sql<number>`(
       SELECT COUNT(*)::int FROM mailboxes

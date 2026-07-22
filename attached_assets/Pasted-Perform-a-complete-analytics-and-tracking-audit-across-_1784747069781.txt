@@ -1,0 +1,214 @@
+Perform a complete analytics and tracking audit across BrokerMAIL AI.
+
+DO NOT make cosmetic or UI styling changes.
+
+Do NOT guess or patch values.
+
+First trace every statistic and tracking event to its source, then fix the root cause.
+
+==================================================
+PART 1 — DASHBOARD ANALYTICS AUDIT
+==================================================
+
+Audit every dashboard statistics card and verify the backend calculation.
+
+Specifically verify:
+
+• Emails Sent (Total)
+• Gmail Drafts Created
+• Active Campaigns
+• Quota Used
+• Quota Remaining
+• Campaign Status
+• Subscription
+• Account Health
+
+Determine exactly where each value originates.
+
+Verify that:
+
+• SMTP sends
+• Gmail sends
+• Campaign sends
+• Upload & Send
+• Single Compose Email
+
+are counted consistently.
+
+Quota calculations must come from ONE centralized quota service.
+
+Do NOT allow one card to use lifetime statistics while another uses hourly statistics.
+
+If multiple calculations exist, consolidate them into a single shared service.
+
+==================================================
+PART 2 — MY PROFILE AUDIT
+==================================================
+
+Audit every statistic shown on the My Profile page.
+
+Verify:
+
+• Emails Sent
+• Campaigns
+• Success Rate
+• Mailboxes
+• Any other account statistics
+
+Document exactly:
+
+• Which tables are queried
+• Which records are included
+• Whether deleted campaigns are counted
+• Whether drafts are counted
+• Whether failed sends are counted
+
+Ensure Dashboard and My Profile stay synchronized where appropriate.
+
+==================================================
+PART 3 — SINGLE COMPOSE EMAIL TRACKING AUDIT
+==================================================
+
+Investigate the entire lifecycle of an email sent from:
+
+Compose Email
+
+Trace:
+
+Send
+↓
+
+Database insert
+↓
+
+Tracking token generation
+↓
+
+Tracking pixel generation
+↓
+
+Tracking pixel request
+↓
+
+Open event recording
+
+Verify that an email is NEVER marked as opened immediately after sending.
+
+An email should ONLY be marked as opened when:
+
+• the recipient loads the tracking pixel
+• using a valid tracking token
+
+Verify that NONE of the following can generate false opens:
+
+• Sending the email
+• Rendering previews
+• Sender viewing the email
+• Admin views
+• Internal processing
+• Background jobs
+• Browser prefetching
+• Image proxy generation
+• SMTP send completion
+
+Check:
+
+• opened
+• openedAt
+• openCount
+• firstOpenedAt
+• lastOpenedAt
+
+Ensure these fields remain empty/zero until a genuine recipient open occurs.
+
+==================================================
+PART 4 — CAMPAIGN TRACKING CONSISTENCY
+==================================================
+
+Compare tracking between:
+
+• Campaign Emails
+• Upload & Send
+• Single Compose Email
+
+Ensure all three use ONE shared tracking implementation.
+
+Open tracking logic should not be duplicated across multiple code paths.
+
+==================================================
+PART 5 — OPEN TRACKING VALIDATION
+==================================================
+
+Verify that open events are ONLY recorded when:
+
+• Valid tracking token exists
+• Matching email exists
+• Recipient requests tracking pixel
+• Event is not duplicated
+
+Verify repeated opens increment only the correct counters.
+
+Verify sender actions never count as recipient opens.
+
+==================================================
+PART 6 — QUOTA VALIDATION
+==================================================
+
+Audit hourly quota calculations.
+
+Verify:
+
+• Current hourly limit
+• Emails sent this hour
+• Remaining quota
+• Reset timing
+
+Ensure Dashboard, My Profile, Campaigns, Upload & Send, and Compose Email all reference the same quota service.
+
+==================================================
+PART 7 — FIX ROOT CAUSES
+==================================================
+
+After completing the audit:
+
+Fix every confirmed issue.
+
+Do NOT hardcode values.
+
+Do NOT create duplicate calculations.
+
+Refactor shared analytics/tracking logic where necessary so all modules use the same centralized implementation.
+
+==================================================
+VERIFY
+==================================================
+
+Run:
+
+pnpm typecheck
+
+pnpm build
+
+Fix any issues before finishing.
+
+==================================================
+REPORT
+==================================================
+
+For every issue found provide:
+
+• Root cause
+• Files involved
+• Previous behavior
+• Correct behavior
+• Changes made
+
+Also provide:
+
+• Dashboard calculation summary
+• My Profile calculation summary
+• Quota calculation summary
+• Compose Email tracking summary
+• Campaign tracking summary
+• Confirmation that false opens can no longer occur
+• Confirmation that Dashboard and My Profile statistics are now accurate and synchronized

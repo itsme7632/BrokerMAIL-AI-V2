@@ -15,6 +15,8 @@ import { logger } from "../lib/logger";
 import { randomUUID } from "crypto";
 import { getTrackingSettings } from "../lib/tracking-settings";
 import { isSuppressed } from "../lib/suppression";
+import { checkEmailLimit } from "../lib/plan-limits";
+import { invalidateAnalyticsCache } from "./analytics";
 
 const router = Router();
 
@@ -459,6 +461,13 @@ router.post("/composer/send", requireAuth, uploadMem.array("attachments"), async
       return;
     }
 
+    // Enforce monthly plan email quota (same limit used by campaigns and mailbox sends)
+    const emailLimitErr = await checkEmailLimit(user.id);
+    if (emailLimitErr) {
+      res.status(429).json(emailLimitErr);
+      return;
+    }
+
     // Resolve stored attachment IDs → buffers
     const storedIds: string[] = attachmentIds ? JSON.parse(attachmentIds) : [];
     const storedAttachments = resolveAttachmentIds(storedIds);
@@ -547,6 +556,9 @@ router.post("/composer/send", requireAuth, uploadMem.array("attachments"), async
     for (const id of storedIds) {
       try { fs.unlinkSync(path.join(UPLOAD_DIR, id)); } catch { /* ignore */ }
     }
+
+    // Invalidate analytics cache so the dashboard/profile immediately reflect the new send
+    invalidateAnalyticsCache(user.id);
 
     logger.info({ userId: user.id, to, mailboxType, trackingId }, "[COMPOSER] Email sent");
     res.json({ ok: true, trackingId });

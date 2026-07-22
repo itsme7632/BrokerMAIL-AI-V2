@@ -9,7 +9,7 @@ import {
   subscriptionsTable,
   plansTable,
 } from "@workspace/db";
-import { eq, and, count, max, sql } from "drizzle-orm";
+import { eq, and, count, max, sql, isNotNull } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -85,23 +85,35 @@ router.get("/analytics/overview", requireAuth, async (req, res): Promise<void> =
     subRows,
   ] = await Promise.all([
 
-    // SMTP emails sent (email_queue status = 'sent', all time)
-    db.select({ count: count() }).from(emailQueueTable)
-      .where(and(eq(emailQueueTable.userId, user.id), eq(emailQueueTable.status, "sent"))),
-
-    // Gmail emails sent (drafts status = 'success', not smtp: synthetic rows)
+    // SMTP emails sent: all send paths whose drafts row has a 'smtp' prefix.
+    // Covers: campaign SMTP ('smtp:…'), composer SMTP ('smtp-composer:…'),
+    // recovered/retried SMTP ('smtp:recovered:…', 'smtp:retry:…', etc.).
+    // Uses draftsTable (not emailQueueTable) because processors write status='success'
+    // to email_queue, never 'sent'. sentAt IS NOT NULL excludes unconfirmed Gmail drafts.
     db.select({ count: count() }).from(draftsTable)
       .where(and(
         eq(draftsTable.userId, user.id),
         eq(draftsTable.status, "success"),
-        sql`(${draftsTable.gmailDraftId} IS NULL OR ${draftsTable.gmailDraftId} NOT LIKE 'smtp:%')`,
+        isNotNull(draftsTable.sentAt),
+        sql`${draftsTable.gmailDraftId} LIKE 'smtp%'`,
       )),
 
-    // All Gmail drafts ever created (mirrors dashboard/stats logic)
+    // Gmail emails sent: anything that is NOT an SMTP path.
+    // Covers: campaign Gmail drafts (raw Gmail IDs) and composer Gmail ('gmail-composer:…').
+    // sentAt IS NOT NULL excludes drafts not yet confirmed as sent.
     db.select({ count: count() }).from(draftsTable)
       .where(and(
         eq(draftsTable.userId, user.id),
-        sql`(${draftsTable.gmailDraftId} IS NULL OR ${draftsTable.gmailDraftId} NOT LIKE 'smtp:%')`,
+        eq(draftsTable.status, "success"),
+        isNotNull(draftsTable.sentAt),
+        sql`(${draftsTable.gmailDraftId} IS NULL OR ${draftsTable.gmailDraftId} NOT LIKE 'smtp%')`,
+      )),
+
+    // All Gmail drafts ever created (unconfirmed + confirmed; used for "drafts created" card).
+    db.select({ count: count() }).from(draftsTable)
+      .where(and(
+        eq(draftsTable.userId, user.id),
+        sql`(${draftsTable.gmailDraftId} IS NULL OR ${draftsTable.gmailDraftId} NOT LIKE 'smtp%')`,
       )),
 
     // Total campaigns ever created
@@ -141,25 +153,32 @@ router.get("/analytics/overview", requireAuth, async (req, res): Promise<void> =
     db.select({ count: count() }).from(mailboxesTable)
       .where(and(eq(mailboxesTable.userId, user.id), eq(mailboxesTable.isActive, true))),
 
-    // Last SMTP email sent timestamp
-    db.select({ lastSent: max(emailQueueTable.sentAt) }).from(emailQueueTable)
-      .where(and(eq(emailQueueTable.userId, user.id), eq(emailQueueTable.status, "sent"))),
-
-    // Monthly SMTP usage (since month start)
-    db.select({ count: count() }).from(emailQueueTable)
+    // Last email sent timestamp (any path — SMTP or Gmail)
+    db.select({ lastSent: max(draftsTable.sentAt) }).from(draftsTable)
       .where(and(
-        eq(emailQueueTable.userId, user.id),
-        eq(emailQueueTable.status, "sent"),
-        sql`${emailQueueTable.sentAt} >= ${monthStart}`,
+        eq(draftsTable.userId, user.id),
+        eq(draftsTable.status, "success"),
+        isNotNull(draftsTable.sentAt),
       )),
 
-    // Monthly Gmail usage (since month start)
+    // Monthly SMTP usage (since month start — all smtp-prefixed sent drafts)
     db.select({ count: count() }).from(draftsTable)
       .where(and(
         eq(draftsTable.userId, user.id),
         eq(draftsTable.status, "success"),
-        sql`(${draftsTable.gmailDraftId} IS NULL OR ${draftsTable.gmailDraftId} NOT LIKE 'smtp:%')`,
-        sql`${draftsTable.createdAt} >= ${monthStart}`,
+        isNotNull(draftsTable.sentAt),
+        sql`${draftsTable.gmailDraftId} LIKE 'smtp%'`,
+        sql`${draftsTable.sentAt} >= ${monthStart}`,
+      )),
+
+    // Monthly Gmail usage (since month start — non-smtp-prefixed sent drafts)
+    db.select({ count: count() }).from(draftsTable)
+      .where(and(
+        eq(draftsTable.userId, user.id),
+        eq(draftsTable.status, "success"),
+        isNotNull(draftsTable.sentAt),
+        sql`(${draftsTable.gmailDraftId} IS NULL OR ${draftsTable.gmailDraftId} NOT LIKE 'smtp%')`,
+        sql`${draftsTable.sentAt} >= ${monthStart}`,
       )),
 
     // Active subscription + plan
