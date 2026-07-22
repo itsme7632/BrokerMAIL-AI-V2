@@ -21,11 +21,12 @@ A production-ready AI SaaS for vehicle shipping brokers — upload CSV/XLSX lead
 3. Start the **API Server** workflow — seeds default plans and an admin account (`admin@brokermail.ai`) on first boot
 4. Start the **Start application** workflow — serves the Vite frontend on port 24622
 
-### Initial setup status (completed 2026-07-21)
-- `pnpm install` run — all 582 packages installed
+### Initial setup status (completed 2026-07-22)
+- `pnpm install` run — all 570 packages installed
 - `pnpm --filter @workspace/db run push` run — all tables created
-- API Server restarted — schema validated OK, plans seeded, admin account seeded
+- API Server restarted — schema validated OK, plans seeded, admin account (`admin@getbrokermail.com`) seeded
 - Both workflows running: frontend on port 24622, API on port 8080
+- Workflows updated with self-healing preflight: `node_modules` check + `pnpm install` runs automatically if missing; API Server also runs `db push` on every start
 - **Still needed:** `OPENAI_API_KEY` (AI generation), `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REDIRECT_URI` (Gmail OAuth)
 
 ## Stack

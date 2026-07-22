@@ -1,0 +1,143 @@
+We do NOT want to restore the Communications module.
+
+We only want to restore IMAP support for Sent Items synchronization.
+
+==================================================
+GOAL
+==================================================
+
+Whenever BrokerMAIL AI successfully sends an email through SMTP, it should automatically save a copy of that exact email into the mailbox's Sent folder using IMAP.
+
+This is NOT inbox synchronization.
+
+This is NOT email reading.
+
+This is NOT Communications.
+
+This is ONLY Sent Items synchronization.
+
+==================================================
+RESTORE IMAP SETTINGS
+==================================================
+
+Restore IMAP configuration inside the Mailboxes page.
+
+Allow users to configure:
+
+• IMAP Host
+• IMAP Port
+• Username
+• Password
+• Encryption (SSL/TLS)
+
+These settings are ONLY used for appending sent messages.
+
+Do NOT implement inbox synchronization.
+
+==================================================
+SEND FLOW
+==================================================
+
+After a successful SMTP send:
+
+1. Build the final RFC822 email exactly as sent.
+
+2. Connect via IMAP.
+
+3. Locate the mailbox's Sent folder automatically.
+
+Support common folder names such as:
+
+• Sent
+• Sent Items
+• Sent Mail
+• INBOX.Sent
+• INBOX.Sent Items
+
+4. Append the message to the Sent folder.
+
+5. Disconnect.
+
+If IMAP append fails:
+
+• Do NOT fail the SMTP send.
+• Log the error.
+• Continue normally.
+
+==================================================
+COMPATIBILITY
+==================================================
+
+This must work for:
+
+• Compose Email
+• Campaigns
+• Upload & Send
+
+Every SMTP email should appear in Outlook's Sent folder exactly like emails sent from Outlook itself.
+
+==================================================
+DO NOT RESTORE
+==================================================
+
+Do NOT restore:
+
+• Communications
+• Inbox synchronization
+• Email reading
+• Reply parsing
+• Threading
+• MIME parsing
+• Conversation storage
+• Background IMAP sync
+• Message indexing
+
+Only restore the ability to save sent messages.
+
+==================================================
+TEST
+==================================================
+
+Verify:
+
+✓ SMTP send succeeds.
+
+✓ Email appears in recipient inbox.
+
+✓ Same email appears in Outlook Sent Items.
+
+✓ Campaign emails also appear.
+
+✓ Upload & Send emails also appear.
+
+✓ Compose emails also appear.
+
+✓ SMTP send still succeeds even if IMAP append fails.
+
+==================================================
+VERIFY
+==================================================
+
+Run:
+
+pnpm typecheck
+
+pnpm build
+
+Fix any issues.
+
+==================================================
+REPORT
+==================================================
+
+Provide:
+
+• Files modified
+
+• IMAP append implementation
+
+• Folder detection logic
+
+• Error handling
+
+• Confirmation that only Sent Items synchronization was restored and that Communications remains removed.

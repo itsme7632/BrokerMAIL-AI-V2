@@ -17,6 +17,10 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
+args = "[ -d node_modules ] || pnpm install --frozen-lockfile"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
 args = "PORT=24622 BASE_PATH=/ pnpm --filter @workspace/vertex-ai-mailer run dev"
 waitForPort = 24622
 
@@ -26,6 +30,14 @@ outputType = "webview"
 [[workflows.workflow]]
 name = "API Server"
 author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "[ -d node_modules ] || pnpm install --frozen-lockfile"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/db run push"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
