@@ -84,7 +84,7 @@ app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
 // Idempotent admin seed — creates default admin account on first boot
 // ---------------------------------------------------------------------------
 async function seedAdmin(): Promise<void> {
-  const ADMIN_EMAIL = "admin@brokermail.ai";
+  const ADMIN_EMAIL = "admin@getbrokermail.com";
   const ADMIN_PASSWORD = "Admin@12345";
   try {
     const [existing] = await db
