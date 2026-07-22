@@ -4,6 +4,7 @@ import { eq, and, gte, sql, or, isNull, lte, isNotNull, desc, count, inArray } f
 import { requireAuth } from "../lib/auth";
 import { encrypt, decrypt } from "../lib/crypto";
 import { testSmtp, sendEmail } from "../lib/smtp";
+import { tryAppendToSent } from "../lib/imap-sent";
 import {
   buildHtmlEmail,
   replaceVarsText,
@@ -238,6 +239,10 @@ async function processJobQueue(jobId: string, box: Mailbox, template: Template, 
             "[MAILBOX] Non-fatal: drafts table insert failed — email WAS sent, queue marked success. Tracking will use SMTP fallback.");
         }
 
+        // Non-fatal: append to IMAP Sent folder so the email appears in Outlook/webmail Sent Items
+        tryAppendToSent(box, { to: item.email, subject, text: bodyText, html: trackedHtml },
+          { jobId, mailboxId: box.id, queueItemId: item.id }).catch(() => {});
+
         // Non-fatal: if this was a probe send after SMTP quota, clear the quota state.
         clearMailboxQuotaIfNeeded(box.id, user.id).catch(err2 =>
           logger.warn({ err: err2 }, "[SMTP-QUOTA] clearMailboxQuotaIfNeeded failed (non-fatal)"));
@@ -339,6 +344,11 @@ router.get("/mailbox", requireAuth, async (req, res): Promise<void> => {
     cooldownMinutes:    box.cooldownMinutes    ?? 60,
     probeRetryMinutes:  box.probeRetryMinutes  ?? 5,
     updatedAt:          box.updatedAt?.toISOString() ?? null,
+    imapHost:           box.imapHost   ?? "",
+    imapPort:           box.imapPort   ?? 993,
+    imapUser:           box.imapUser   ?? "",
+    imapPassSet:        !!box.imapPassEncrypted,
+    imapSecure:         box.imapSecure ?? "ssl",
   });
 });
 
@@ -482,6 +492,7 @@ router.put("/mailbox", requireAuth, async (req, res): Promise<void> => {
     fromName, replyTo,
     batchSize, delaySeconds, maxPerHour,
     cooldownMinutes, probeRetryMinutes,
+    imapHost, imapPort, imapUser, imapPass, imapSecure,
   } = req.body as Record<string, string | number>;
 
   if (!smtpHost || !smtpPort || !smtpUser) {
@@ -493,6 +504,7 @@ router.put("/mailbox", requireAuth, async (req, res): Promise<void> => {
     .select({
       id: mailboxesTable.id,
       smtpPassEncrypted: mailboxesTable.smtpPassEncrypted,
+      imapPassEncrypted: mailboxesTable.imapPassEncrypted,
     })
     .from(mailboxesTable)
     .where(eq(mailboxesTable.userId, user.id));
@@ -500,6 +512,10 @@ router.put("/mailbox", requireAuth, async (req, res): Promise<void> => {
   const smtpPassEncrypted = smtpPass
     ? encrypt(String(smtpPass))
     : (existing?.smtpPassEncrypted ?? "");
+
+  const newImapPassEncrypted = imapPass
+    ? encrypt(String(imapPass))
+    : (existing?.imapPassEncrypted ?? null);
 
   const values = {
     userId:            user.id,
@@ -516,6 +532,11 @@ router.put("/mailbox", requireAuth, async (req, res): Promise<void> => {
     maxPerHour:         maxPerHour         ? Number(maxPerHour)         : 50,
     cooldownMinutes:    cooldownMinutes    ? Number(cooldownMinutes)    : 60,
     probeRetryMinutes:  probeRetryMinutes  ? Number(probeRetryMinutes)  : 5,
+    imapHost:           imapHost  ? String(imapHost)  : null,
+    imapPort:           imapPort  ? Number(imapPort)  : null,
+    imapUser:           imapUser  ? String(imapUser)  : null,
+    imapPassEncrypted:  newImapPassEncrypted,
+    imapSecure:         imapSecure ? String(imapSecure) : null,
     updatedAt:         new Date(),
   };
 
@@ -547,6 +568,7 @@ router.post("/mailbox/save", requireAuth, async (req, res): Promise<void> => {
     fromName, replyTo,
     batchSize, delaySeconds, maxPerHour,
     cooldownMinutes, probeRetryMinutes,
+    imapHost, imapPort, imapUser, imapPass, imapSecure,
   } = req.body as Record<string, string | number>;
 
   if (!smtpHost || !smtpPort || !smtpUser) {
@@ -558,6 +580,7 @@ router.post("/mailbox/save", requireAuth, async (req, res): Promise<void> => {
     .select({
       id: mailboxesTable.id,
       smtpPassEncrypted: mailboxesTable.smtpPassEncrypted,
+      imapPassEncrypted: mailboxesTable.imapPassEncrypted,
     })
     .from(mailboxesTable)
     .where(eq(mailboxesTable.userId, user.id));
@@ -565,6 +588,10 @@ router.post("/mailbox/save", requireAuth, async (req, res): Promise<void> => {
   const smtpPassEncrypted = smtpPass
     ? encrypt(String(smtpPass))
     : (existing?.smtpPassEncrypted ?? "");
+
+  const newImapPassEncrypted = imapPass
+    ? encrypt(String(imapPass))
+    : (existing?.imapPassEncrypted ?? null);
 
   const values = {
     userId:            user.id,
@@ -581,6 +608,11 @@ router.post("/mailbox/save", requireAuth, async (req, res): Promise<void> => {
     maxPerHour:         maxPerHour         ? Number(maxPerHour)         : 50,
     cooldownMinutes:    cooldownMinutes    ? Number(cooldownMinutes)    : 60,
     probeRetryMinutes:  probeRetryMinutes  ? Number(probeRetryMinutes)  : 5,
+    imapHost:           imapHost  ? String(imapHost)  : null,
+    imapPort:           imapPort  ? Number(imapPort)  : null,
+    imapUser:           imapUser  ? String(imapUser)  : null,
+    imapPassEncrypted:  newImapPassEncrypted,
+    imapSecure:         imapSecure ? String(imapSecure) : null,
     updatedAt:         new Date(),
   };
 

@@ -43,6 +43,8 @@ interface MailboxForm {
   maxPerHour: number;
   cooldownMinutes: number;
   probeRetryMinutes: number;
+  // IMAP — optional, used only for Sent Items sync
+  imapHost: string; imapPort: string; imapUser: string; imapPass: string; imapSecure: Secure;
 }
 
 const EMPTY_FORM: MailboxForm = {
@@ -53,6 +55,7 @@ const EMPTY_FORM: MailboxForm = {
   maxPerHour: 50,
   cooldownMinutes: 60,
   probeRetryMinutes: 5,
+  imapHost: "", imapPort: "993", imapUser: "", imapPass: "", imapSecure: "ssl",
 };
 
 const PRESETS = [
@@ -508,7 +511,7 @@ export default function MailboxSettings() {
   const [isConnected, setIsConnected] = useState(false);
   const [lastVerified, setLastVerified] = useState<string | null>(null);
 
-  const [savingSection, setSavingSection] = useState<null | "info" | "smtp" | "sending" | "recovery">(null);
+  const [savingSection, setSavingSection] = useState<null | "info" | "smtp" | "imap" | "sending" | "recovery">(null);
 
   const [smtpTest, setSmtpTest] = useState<"idle"|"testing"|"ok"|"fail">("idle");
   const [smtpErr, setSmtpErr]   = useState("");
@@ -559,6 +562,11 @@ export default function MailboxSettings() {
             maxPerHour:        data.maxPerHour        ?? 50,
             cooldownMinutes:   data.cooldownMinutes   ?? 60,
             probeRetryMinutes: data.probeRetryMinutes ?? 5,
+            imapHost:   data.imapHost   ?? "",
+            imapPort:   String(data.imapPort ?? "993"),
+            imapUser:   data.imapUser   ?? "",
+            imapPass:   "",
+            imapSecure: (data.imapSecure ?? "ssl") as Secure,
           });
         }
       }
@@ -595,7 +603,7 @@ export default function MailboxSettings() {
   // are ever edited by the user before clicking its button — smtpPass
   // stays blank unless explicitly changed, so saving Sending/Recovery settings
   // never requires re-entering SMTP credentials.
-  async function saveSection(section: "info" | "smtp" | "sending" | "recovery", successMsg: string) {
+  async function saveSection(section: "info" | "smtp" | "imap" | "sending" | "recovery", successMsg: string) {
     setSavingSection(section);
     try {
       const res = await fetch("/api/mailbox/save", {
@@ -612,12 +620,17 @@ export default function MailboxSettings() {
           maxPerHour:        form.maxPerHour,
           cooldownMinutes:   form.cooldownMinutes,
           probeRetryMinutes: form.probeRetryMinutes,
+          imapHost:   form.imapHost  || undefined,
+          imapPort:   form.imapHost  ? Number(form.imapPort) : undefined,
+          imapUser:   form.imapUser  || undefined,
+          imapPass:   form.imapPass  || undefined,
+          imapSecure: form.imapHost  ? form.imapSecure : undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Save failed");
       setIsConnected(true);
-      setForm(f => ({ ...f, smtpPass: "" }));
+      setForm(f => ({ ...f, smtpPass: "", imapPass: "" }));
       setLastVerified(new Date().toISOString());
       toast({ title: successMsg });
     } catch (err: any) {
@@ -771,6 +784,71 @@ export default function MailboxSettings() {
               <Button onClick={() => saveSection("smtp", "SMTP settings saved.")} disabled={savingSection === "smtp" || !form.smtpHost || !form.smtpUser} size="sm" className="rounded-xl gap-2">
                 {savingSection === "smtp" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Save SMTP
+              </Button>
+            </CardFooter>
+          </Card>
+
+          {/* Section 3 — IMAP Settings (Sent Items sync) */}
+          <Card>
+            <SectionHeader
+              icon={Mail}
+              title="IMAP Settings"
+              description="Optional — enables Sent Items sync so sent emails appear in Outlook / webmail"
+            />
+            <CardContent className="pt-0 space-y-4">
+              <div className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50">
+                <Server className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
+                  <span className="font-semibold">SMTP-only setup:</span> Emails are sent but won't appear in Outlook's Sent folder.
+                  Fill in IMAP credentials below to automatically save a copy after every send.
+                  Leave blank to skip.
+                </p>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-x-5 gap-y-4">
+                <Field label="IMAP Host" icon={Server} value={form.imapHost}
+                  onChange={v => set("imapHost", v)} placeholder="imap.hostinger.com"
+                  hint="Same provider as SMTP — e.g. imap.hostinger.com, outlook.office365.com"
+                />
+                <Field label="IMAP Port" icon={Wifi} value={form.imapPort}
+                  onChange={v => set("imapPort", v)} placeholder="993" />
+                <Field label="Username" icon={User} value={form.imapUser}
+                  onChange={v => set("imapUser", v)} placeholder="sales@yourcompany.com"
+                  hint="Usually the same as your SMTP username / email address"
+                />
+                <Field label="Password" icon={Lock} value={form.imapPass} revealable
+                  onChange={v => set("imapPass", v)}
+                  placeholder={form.imapHost && isConnected ? "Leave blank to keep current" : "IMAP password"}
+                  hint={form.imapHost && isConnected ? "Only fill to change the saved password" : undefined}
+                />
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium flex items-center gap-1.5 text-foreground">
+                    <Wifi className="h-3.5 w-3.5 text-muted-foreground" /> Encryption
+                  </label>
+                  <div className="flex gap-2">
+                    {(["ssl", "tls", "none"] as Secure[]).map(s => (
+                      <button
+                        key={s} type="button" onClick={() => set("imapSecure", s)}
+                        className={`flex-1 py-2 rounded-xl border text-xs font-semibold transition-colors ${
+                          form.imapSecure === s ? "border-primary bg-accent text-accent-foreground" : "border-border text-muted-foreground hover:border-primary/40 bg-card"
+                        }`}
+                      >
+                        {s.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">SSL=993 (recommended), TLS/STARTTLS=143</p>
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className="justify-end">
+              <Button
+                onClick={() => saveSection("imap", "IMAP settings saved.")}
+                disabled={savingSection === "imap"}
+                size="sm"
+                className="rounded-xl gap-2"
+              >
+                {savingSection === "imap" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save IMAP Settings
               </Button>
             </CardFooter>
           </Card>

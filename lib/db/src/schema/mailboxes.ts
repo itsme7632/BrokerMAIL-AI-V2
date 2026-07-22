@@ -29,6 +29,13 @@ export const mailboxesTable = pgTable("mailboxes", {
   // ── Per-mailbox quota recovery settings ─────────────────────────────────────
   cooldownMinutes:    integer("cooldown_minutes").notNull().default(60),  // initial cooldown on quota detection
   probeRetryMinutes:  integer("probe_retry_minutes").notNull().default(5), // extra wait on each failed probe
+  // ── IMAP settings — used ONLY for appending sent messages to Sent folder ────
+  // Not used for inbox sync, reading, or any other IMAP operation.
+  imapHost:          text("imap_host"),
+  imapPort:          integer("imap_port"),
+  imapUser:          text("imap_user"),
+  imapPassEncrypted: text("imap_pass_encrypted"),
+  imapSecure:        text("imap_secure"),             // 'ssl' | 'tls' | 'none'
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

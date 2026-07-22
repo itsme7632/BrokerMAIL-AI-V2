@@ -10,6 +10,7 @@ import type { User } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { sendEmail } from "../lib/smtp";
+import { tryAppendToSent } from "../lib/imap-sent";
 import { sendGmailMessage, getGmailClient } from "../lib/gmail";
 import { logger } from "../lib/logger";
 import { randomUUID } from "crypto";
@@ -514,6 +515,12 @@ router.post("/composer/send", requireAuth, uploadMem.array("attachments"), async
         html:        finalHtml,
         attachments: allAttachments,
       });
+
+      // Non-fatal: append to IMAP Sent folder so the email appears in Outlook/webmail Sent Items
+      tryAppendToSent(mailbox, {
+        to, cc: cc || undefined, bcc: bcc || undefined,
+        subject: subject ?? "", text: textBody, html: finalHtml,
+      }, { userId: user.id, mailboxId: mailbox.id }).catch(() => {});
     }
 
     // Build rowDataJson with recipient info so the Sent Emails page can display names

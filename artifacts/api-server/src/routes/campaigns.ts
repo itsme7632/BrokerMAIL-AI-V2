@@ -21,6 +21,7 @@ import { buildUnsubscribeUrl } from "../lib/unsubscribe-token";
 import type { User } from "@workspace/db";
 import { randomUUID } from "crypto";
 import { sendEmail } from "../lib/smtp";
+import { tryAppendToSent } from "../lib/imap-sent";
 import { getTrackingSettings } from "../lib/tracking-settings";
 import { checkEmailLimit, checkCampaignLimit } from "../lib/plan-limits";
 import { isSuppressed, filterSuppressed } from "../lib/suppression";
@@ -415,6 +416,10 @@ export async function processCampaignJobQueue(
           logger.warn({ draftErr, jobId, campaignId, queueItemId: item.id },
             "[QUEUE] Non-fatal: drafts table insert failed — email WAS sent and queue/lead already marked success");
         }
+
+        // Non-fatal: append to IMAP Sent folder so the email appears in Outlook/webmail Sent Items
+        tryAppendToSent(box, { to: item.email, subject, text: bodyText, html: trackedHtml },
+          { jobId, campaignId, queueItemId: item.id }).catch(() => {});
 
         // Non-fatal: if this was a probe send after SMTP quota, clear the quota state.
         // The recovery loop detects quota_status=null and exits cleanly.
@@ -962,6 +967,10 @@ export async function processCampaignFully(
           logger.warn({ draftErr, campaignId, queueItemId: item.id },
             "[CAMPAIGN] Non-fatal: drafts table insert failed — email WAS sent and queue/lead already marked success");
         }
+
+        // Non-fatal: append to IMAP Sent folder so the email appears in Outlook/webmail Sent Items
+        tryAppendToSent(box, { to: item.email, subject, text: bodyText, html: trackedHtml },
+          { campaignId, queueItemId: item.id }).catch(() => {});
 
         // Non-fatal: if this was a probe send after SMTP quota, clear the quota state.
         // The recovery loop detects quota_status=null and exits cleanly.

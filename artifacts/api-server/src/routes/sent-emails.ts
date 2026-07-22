@@ -11,6 +11,7 @@ import {
 } from "../lib/email-html";
 import { buildUnsubscribeUrl } from "../lib/unsubscribe-token";
 import { sendEmail } from "../lib/smtp";
+import { tryAppendToSent } from "../lib/imap-sent";
 import { randomUUID } from "crypto";
 import type { User } from "@workspace/db";
 import { getTrackingSettings } from "../lib/tracking-settings";
@@ -715,6 +716,10 @@ router.post("/sent-emails/:id/retry", requireAuth, async (req, res): Promise<voi
   try {
     await sendEmail(mailbox, { to: item.email, subject, text: bodyText, html: trackedHtml });
 
+    // Non-fatal: append to IMAP Sent folder so the email appears in Outlook/webmail Sent Items
+    tryAppendToSent(mailbox, { to: item.email, subject, text: bodyText, html: trackedHtml },
+      { queueItemId: id, mailboxId: mailbox.id }).catch(() => {});
+
     // ── Critical: queue update FIRST — this is the idempotency guard ───────
     // If the draft insert below throws, the email was already delivered and
     // the queue must reflect that. Reversing the order (draft before queue)
@@ -863,6 +868,10 @@ router.post("/sent-emails/:id/edit-resend", requireAuth, async (req, res): Promi
 
   try {
     await sendEmail(mailbox, { to: recipientEmail, subject: finalSubject, text: bodyText, html: trackedHtml });
+
+    // Non-fatal: append to IMAP Sent folder so the email appears in Outlook/webmail Sent Items
+    tryAppendToSent(mailbox, { to: recipientEmail, subject: finalSubject, text: bodyText, html: trackedHtml },
+      { originalQueueId: id, mailboxId: mailbox.id }).catch(() => {});
 
     // ── Critical: create the new queue row FIRST so a sent email is always
     // recorded even if the draft insert below throws. Prior ordering (draft
