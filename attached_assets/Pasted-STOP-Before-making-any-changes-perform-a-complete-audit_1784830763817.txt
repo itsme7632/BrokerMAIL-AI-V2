@@ -1,0 +1,413 @@
+STOP.
+
+Before making any changes, perform a complete audit of the Gmail Drafts flow, Campaign sending flow, SMTP sending flow, Compose Email flow, Upload & Send flow, and failure recovery.
+
+Do NOT make cosmetic changes.
+
+Fix the architecture and user experience.
+
+==================================================
+GOAL
+==================================================
+
+BrokerMAIL AI should never leave the user stuck after a failed send, failed draft creation, expired authentication, or SMTP failure.
+
+Every failure should clearly explain WHY it failed and provide the correct recovery action.
+
+==================================================
+ISSUE 1
+GMAIL DRAFTS PAGE WAS REMOVED
+==================================================
+
+The previous Gmail Drafts page existed and displayed:
+
+• Gmail Drafts
+• Draft status
+• Open count
+• Click count
+• Activity
+
+It has disappeared.
+
+Audit why it was removed.
+
+Restore it.
+
+Do NOT recreate it from scratch if the backend already exists.
+
+Reconnect the existing functionality.
+
+Verify:
+
+• Drafts are listed
+• Open tracking works
+• Click tracking works
+• Pagination works
+• Search works
+• Filters work
+• Statistics remain correct
+
+==================================================
+ISSUE 2
+EXPIRED GMAIL TOKEN
+==================================================
+
+Currently when Gmail OAuth expires the user only sees:
+
+"Failed"
+
+or
+
+"Error"
+
+This is unacceptable.
+
+Detect the exact failure reason.
+
+If Gmail returns:
+
+• invalid_grant
+• invalid_token
+• unauthorized
+• token expired
+• refresh token revoked
+
+Display a friendly error.
+
+Example:
+
+"Gmail authorization has expired.
+Please reconnect your Gmail account from
+Settings → Brand Settings."
+
+Provide:
+
+• Reconnect Gmail button
+
+which navigates directly to Brand Settings.
+
+Do NOT expose raw Google API errors.
+
+==================================================
+ISSUE 3
+FAILED GMAIL DRAFTS
+==================================================
+
+If draft creation fails:
+
+Store the failure.
+
+Show:
+
+• failed reason
+• timestamp
+• mailbox used
+
+Allow:
+
+• Retry Draft
+• Retry Selected Drafts
+• Retry All Failed Drafts
+
+Only retry failed drafts.
+
+Do NOT recreate successful drafts.
+
+==================================================
+ISSUE 4
+FAILED SMTP EMAILS
+==================================================
+
+Campaigns currently have failed emails but no recovery.
+
+Implement:
+
+• Retry Failed Email
+• Retry Selected
+• Retry All Failed
+
+Only retry failed emails.
+
+Never resend successful emails.
+
+==================================================
+ISSUE 5
+FAILED SMTP AUTH
+==================================================
+
+If SMTP authentication fails:
+
+Show:
+
+SMTP authentication failed.
+
+Possible causes:
+
+• Wrong username
+• Wrong password
+• Mail server rejected login
+
+Provide:
+
+Go to Mailbox Settings
+
+Button.
+
+==================================================
+ISSUE 6
+FAILED GMAIL AUTH
+==================================================
+
+If Gmail authentication fails:
+
+Show:
+
+Reconnect Gmail
+
+Button.
+
+==================================================
+ISSUE 7
+ERROR CLASSIFICATION
+==================================================
+
+Classify failures.
+
+Examples:
+
+• Authentication
+• Rate Limit
+• Quota
+• Recipient Invalid
+• Mailbox Disabled
+• SMTP Connection
+• DNS
+• Timeout
+• Network
+• Unknown
+
+Each failure should display:
+
+• Reason
+• Technical detail (expandable)
+• Recovery suggestion
+• Retry availability
+
+==================================================
+ISSUE 8
+CAMPAIGN RECOVERY
+==================================================
+
+Campaigns should support:
+
+• Retry Failed
+• Retry Selected
+• Retry All Failed
+• Resume Campaign
+• Continue from failed recipient
+
+Never restart completed recipients.
+
+==================================================
+ISSUE 9
+UPLOAD & SEND
+==================================================
+
+Same recovery.
+
+Support:
+
+• Retry Failed
+• Retry Selected
+• Retry All Failed
+
+Retry failed sends only.
+
+Never resend successful emails.
+
+==================================================
+ISSUE 10
+SINGLE COMPOSE EMAIL
+==================================================
+
+If sending fails:
+
+Display:
+
+• Exact reason
+• Suggested fix
+• Retry button
+
+Do not force the user to rewrite the email.
+
+==================================================
+ISSUE 11
+NOTIFICATIONS
+==================================================
+
+Create notifications for:
+
+• Gmail token expired
+• SMTP authentication failed
+• Campaign paused because authentication failed
+• Campaign resumed
+• Retry completed
+• Retry failed
+
+Each notification should navigate to the appropriate page.
+
+==================================================
+ISSUE 12
+AUDIT
+==================================================
+
+Search the entire project.
+
+Find every place where the UI currently displays generic messages like:
+
+• Error
+• Failed
+• Unknown
+
+without useful explanation.
+
+Replace generic errors with user-friendly messages.
+
+==================================================
+ISSUE 13
+AUTHENTICATION RECOVERY
+==================================================
+
+If a campaign is running and authentication expires:
+
+For Gmail:
+
+• Pause the campaign automatically.
+• Mark the campaign as:
+  "Authentication Required"
+
+• Show:
+  "Reconnect Gmail to continue."
+
+Provide:
+
+• Reconnect Gmail button
+
+After Gmail is reconnected:
+
+• Resume from the first failed recipient.
+• Never resend completed recipients.
+• Preserve campaign statistics.
+
+For SMTP:
+
+If authentication fails:
+
+• Pause automatically.
+• Mark campaign:
+  "Authentication Required"
+
+Show:
+
+"SMTP authentication failed.
+Please update your mailbox credentials."
+
+Provide:
+
+• Go to Mailbox Settings
+
+button.
+
+After SMTP credentials are corrected:
+
+• Resume from the first failed recipient.
+• Never restart completed recipients.
+• Preserve campaign statistics.
+
+==================================================
+ISSUE 14
+CENTRALIZED FAILURE RECOVERY
+==================================================
+
+Do NOT duplicate retry logic.
+
+Create one centralized Recovery Service used by:
+
+• Gmail Drafts
+• Campaigns
+• Upload & Send
+• Compose Email
+
+The service should handle:
+
+• Retry
+• Resume
+• Authentication recovery
+• Failure classification
+• Notification generation
+• Progress restoration
+
+==================================================
+IMPORTANT
+==================================================
+
+Do NOT rebuild working systems.
+
+Audit the existing architecture first.
+
+Reuse existing APIs, services, database tables, and components whenever possible.
+
+Only add new code where necessary.
+
+Preserve all existing user data.
+
+Do not break existing campaigns.
+
+==================================================
+VERIFY
+==================================================
+
+Run:
+
+pnpm typecheck
+
+Fix every issue.
+
+Run:
+
+pnpm build
+
+Fix every build error.
+
+Verify:
+
+✓ Gmail Drafts page restored
+✓ Gmail Draft creation works
+✓ Gmail draft retry works
+✓ SMTP retry works
+✓ Compose retry works
+✓ Upload & Send retry works
+✓ Campaign resume works
+✓ Authentication recovery works
+✓ Friendly errors everywhere
+✓ Notifications work
+✓ No duplicate retry logic
+✓ Existing campaigns remain compatible
+
+==================================================
+REPORT
+==================================================
+
+Provide:
+
+1. Root causes found
+2. Files modified
+3. Files created
+4. APIs added
+5. Database changes (if any)
+6. Gmail Drafts restoration summary
+7. Retry & Recovery architecture
+8. Authentication recovery architecture
+9. Error handling improvements
+10. Confirmation that all modules now share one centralized recovery system without duplicate logic.
+```
