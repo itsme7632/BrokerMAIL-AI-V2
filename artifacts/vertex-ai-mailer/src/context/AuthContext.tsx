@@ -1,13 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { User, AuthResponse, LoginInput, RegisterInput, setAuthTokenGetter, useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
+import { User, AuthResponse, LoginInput, RegisterInput, useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
 import { login as apiLogin, register as apiRegister, logout as apiLogout } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-
-// Register the auth token getter at module load time — BEFORE any React
-// Query hooks fire their first request. This eliminates the race condition
-// where useGetMe fires on mount before the useEffect inside AuthProvider
-// could call setAuthTokenGetter, causing 401s on page refresh.
-setAuthTokenGetter(() => localStorage.getItem("auth_token"));
 
 interface AuthContextType {
   user: User | null;
