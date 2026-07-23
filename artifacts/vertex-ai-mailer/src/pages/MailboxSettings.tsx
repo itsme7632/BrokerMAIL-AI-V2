@@ -515,6 +515,8 @@ export default function MailboxSettings() {
 
   const [smtpTest, setSmtpTest] = useState<"idle"|"testing"|"ok"|"fail">("idle");
   const [smtpErr, setSmtpErr]   = useState("");
+  const [imapTest, setImapTest] = useState<"idle"|"testing"|"ok"|"fail">("idle");
+  const [imapErr, setImapErr]   = useState("");
   const [customDelay, setCustomDelay]   = useState("");
   const [customHourly, setCustomHourly] = useState("");
 
@@ -582,6 +584,28 @@ export default function MailboxSettings() {
     }));
   }
 
+  async function handleTestImap() {
+    setImapTest("testing"); setImapErr("");
+    try {
+      const res = await fetch("/api/mailbox/test-imap", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imapHost:   form.imapHost,
+          imapPort:   Number(form.imapPort),
+          imapUser:   form.imapUser,
+          imapPass:   form.imapPass || undefined,
+          imapSecure: form.imapSecure,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Test failed");
+      setImapTest("ok");
+    } catch (err: any) {
+      setImapTest("fail"); setImapErr(err.message);
+    }
+  }
+
   async function handleTestSmtp() {
     setSmtpTest("testing"); setSmtpErr("");
     try {
@@ -645,7 +669,7 @@ export default function MailboxSettings() {
       await fetch("/api/mailbox/remove", { method: "POST", headers: authHeaders() });
       setIsConnected(false);
       setForm(EMPTY_FORM);
-      setSmtpTest("idle");
+      setSmtpTest("idle"); setImapTest("idle"); setImapErr("");
       setConfirmDelete(false);
       toast({ title: "Mailbox deleted" });
     } catch {
@@ -837,6 +861,21 @@ export default function MailboxSettings() {
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground">SSL=993 (recommended), TLS/STARTTLS=143</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium flex items-center gap-1.5 text-foreground opacity-0 select-none">Test</label>
+                  <Button type="button" variant="outline" size="sm"
+                    onClick={handleTestImap}
+                    disabled={imapTest === "testing" || !form.imapHost || !form.imapUser}
+                    className="rounded-xl gap-1.5 w-full"
+                  >
+                    {imapTest === "testing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FlaskConical className="h-3.5 w-3.5" />}
+                    Test Connection
+                  </Button>
+                  <div className="flex items-center gap-2">
+                    <TestBadge state={imapTest} />
+                    {imapErr && <span className="text-xs text-destructive truncate">{imapErr}</span>}
+                  </div>
                 </div>
               </div>
             </CardContent>

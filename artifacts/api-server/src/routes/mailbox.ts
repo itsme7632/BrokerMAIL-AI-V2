@@ -5,6 +5,7 @@ import { requireAuth } from "../lib/auth";
 import { encrypt, decrypt } from "../lib/crypto";
 import { testSmtp, sendEmail } from "../lib/smtp";
 import { tryAppendToSent } from "../lib/imap-sent";
+import { ImapFlow } from "imapflow";
 import {
   buildHtmlEmail,
   replaceVarsText,
@@ -655,6 +656,57 @@ router.post("/mailbox/test-smtp", requireAuth, async (req, res): Promise<void> =
     res.json({ ok: true, message: "SMTP connection successful." });
   } catch (err: any) {
     res.status(400).json({ error: err.message ?? "SMTP connection failed." });
+  }
+});
+
+// ─── POST /api/mailbox/test-imap ─────────────────────────────────────────────
+router.post("/mailbox/test-imap", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+  const { imapHost, imapPort, imapUser, imapPass, imapSecure } = req.body as Record<string, string | number>;
+
+  if (!imapHost || !imapPort || !imapUser) {
+    res.status(400).json({ error: "Host, port, and username are required." });
+    return;
+  }
+
+  // Use the password from the form if provided; otherwise fall back to the
+  // stored encrypted password — so users don't need to re-type it just to test.
+  let rawPass: string;
+  if (imapPass) {
+    rawPass = String(imapPass);
+  } else {
+    const [box] = await db
+      .select({ imapPassEncrypted: mailboxesTable.imapPassEncrypted })
+      .from(mailboxesTable)
+      .where(eq(mailboxesTable.userId, user.id));
+    if (!box?.imapPassEncrypted) {
+      res.status(400).json({ error: "Password is required — enter it in the Password field." });
+      return;
+    }
+    rawPass = decrypt(box.imapPassEncrypted);
+  }
+
+  const isSSL = String(imapSecure ?? "ssl") === "ssl";
+  const client = new ImapFlow({
+    host:              String(imapHost),
+    port:              Number(imapPort),
+    secure:            isSSL,
+    auth:              { user: String(imapUser), pass: rawPass },
+    tls:               { rejectUnauthorized: false },
+    logger:            false,
+    connectionTimeout: 15_000,
+    greetingTimeout:   15_000,
+    socketTimeout:     15_000,
+  });
+
+  try {
+    await client.connect();
+    await client.logout();
+    res.json({ ok: true, message: "IMAP connection successful." });
+  } catch (err: any) {
+    const msg = String(err?.message ?? "IMAP connection failed.");
+    logger.warn({ imapHost, imapPort, imapUser, err: msg }, "[IMAP-TEST] Connection test failed");
+    res.status(400).json({ error: msg });
   }
 });
 
