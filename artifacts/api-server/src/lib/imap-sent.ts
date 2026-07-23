@@ -8,7 +8,12 @@
  * - Background IMAP sync
  *
  * All operations are non-fatal: SMTP send success is never affected by IMAP errors.
+ *
+ * Fidelity: uses nodemailer's own streamTransport to produce the exact same
+ * RFC 822 bytes that the SMTP send transmitted — same MIME structure, same
+ * Message-ID (preserving reply threading in Outlook), same attachments.
  */
+import nodemailer from "nodemailer";
 import { ImapFlow } from "imapflow";
 import { decrypt } from "./crypto";
 import { logger } from "./logger";
@@ -23,7 +28,7 @@ const SENT_FOLDER_CANDIDATES = [
   "INBOX.Sent Items",
 ];
 
-// ─── RFC 822 message builder ──────────────────────────────────────────────────
+// ─── Message options ──────────────────────────────────────────────────────────
 
 export interface AppendEmailOpts {
   to: string;
@@ -32,61 +37,73 @@ export interface AppendEmailOpts {
   subject: string;
   text: string;
   html: string;
-  replyTo?: string;
+  /** The Message-ID returned by sendEmail(). Pass it to preserve exact threading. */
+  messageId?: string;
+  /** Timestamp of the SMTP send. Defaults to now. */
   date?: Date;
+  /** Attachments from the Compose route. Passed through to nodemailer unchanged. */
+  attachments?: Array<{ filename: string; content: Buffer; contentType: string }>;
 }
 
+// ─── RFC 822 builder via nodemailer streamTransport ───────────────────────────
+
 /**
- * Build a minimal RFC 822 / MIME message buffer suitable for IMAP APPEND.
- * Uses base64 content-transfer-encoding for both text and HTML parts.
- * No external dependencies — pure Node.js Buffer / string operations.
+ * Use nodemailer's own MIME engine to produce the exact same RFC 822 bytes
+ * that were transmitted via SMTP:
+ *   - Same Message-ID (pass info.messageId from sendEmail to preserve threading)
+ *   - Same MIME structure (multipart/mixed when attachments present, etc.)
+ *   - Same Content-Transfer-Encoding decisions
+ *   - Same attachment payloads
+ *
+ * CRLF line endings (newline: 'windows') per RFC 3501 §6.3.11 APPEND.
  */
-function buildRfc822(from: string, opts: AppendEmailOpts): Buffer {
-  const boundary = `_bm_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  const date = (opts.date ?? new Date()).toUTCString();
+async function buildExactRfc822(
+  from: string,
+  opts: AppendEmailOpts,
+  replyTo?: string,
+): Promise<Buffer> {
+  const streamTransport = nodemailer.createTransport({
+    streamTransport: true,
+    newline: "windows", // CRLF required by RFC 3501 APPEND
+  });
 
-  // Encode subject as UTF-8 Base64 if non-ASCII characters are present
-  const subjectEncoded = /[^\x00-\x7F]/.test(opts.subject)
-    ? `=?UTF-8?B?${Buffer.from(opts.subject, "utf-8").toString("base64")}?=`
-    : opts.subject;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result: any = await streamTransport.sendMail({
+    from,
+    to:      opts.to,
+    cc:      opts.cc,
+    bcc:     opts.bcc,
+    subject: opts.subject,
+    text:    opts.text,
+    html:    opts.html,
+    replyTo,
+    // Preserve the exact Message-ID from the SMTP send so that recipient
+    // replies (which carry In-Reply-To / References headers pointing at this
+    // Message-ID) thread correctly inside Outlook's Sent folder.
+    messageId: opts.messageId,
+    date:      opts.date ?? new Date(),
+    ...(opts.attachments?.length
+      ? {
+          attachments: opts.attachments.map(a => ({
+            filename:    a.filename,
+            content:     a.content,
+            contentType: a.contentType,
+          })),
+        }
+      : {}),
+  });
 
-  const toBase64Lines = (s: string): string =>
-    Buffer.from(s, "utf-8")
-      .toString("base64")
-      .match(/.{1,76}/g)
-      ?.join("\r\n") ?? "";
+  // Drain the PassThrough stream into a Buffer
+  const chunks: Buffer[] = [];
+  await new Promise<void>((resolve, reject) => {
+    result.message.on("data",  (chunk: Buffer | string) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    result.message.on("end",   resolve);
+    result.message.on("error", reject);
+  });
 
-  const headers: string[] = [
-    `From: ${from}`,
-    `To: ${opts.to}`,
-    ...(opts.cc  ? [`CC: ${opts.cc}`]  : []),
-    ...(opts.bcc ? [`BCC: ${opts.bcc}`] : []),
-    ...(opts.replyTo ? [`Reply-To: ${opts.replyTo}`] : []),
-    `Subject: ${subjectEncoded}`,
-    `Date: ${date}`,
-    `MIME-Version: 1.0`,
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
-  ];
-
-  const body: string[] = [
-    "",
-    `--${boundary}`,
-    `Content-Type: text/plain; charset=UTF-8`,
-    `Content-Transfer-Encoding: base64`,
-    "",
-    toBase64Lines(opts.text),
-    "",
-    `--${boundary}`,
-    `Content-Type: text/html; charset=UTF-8`,
-    `Content-Transfer-Encoding: base64`,
-    "",
-    toBase64Lines(opts.html),
-    "",
-    `--${boundary}--`,
-    "",
-  ];
-
-  return Buffer.from([...headers, ...body].join("\r\n"), "utf-8");
+  return Buffer.concat(chunks);
 }
 
 // ─── Core IMAP append ─────────────────────────────────────────────────────────
@@ -102,15 +119,16 @@ interface ImapCredentials {
 async function appendToSentFolder(
   creds: ImapCredentials,
   rawMessage: Buffer,
+  sentAt: Date,
   context: Record<string, unknown> = {},
 ): Promise<void> {
-  const pass   = decrypt(creds.imapPassEncrypted);
-  const isSSL  = creds.imapSecure === "ssl";
+  const pass  = decrypt(creds.imapPassEncrypted);
+  const isSSL = creds.imapSecure === "ssl";
 
   const client = new ImapFlow({
     host:              creds.imapHost,
     port:              creds.imapPort,
-    secure:            isSSL,  // true = implicit TLS (993); false = STARTTLS or plain (143)
+    secure:            isSSL, // true = implicit TLS (993); false = STARTTLS or plain (143)
     auth:              { user: creds.imapUser, pass },
     tls:               { rejectUnauthorized: false },
     logger:            false,
@@ -144,14 +162,16 @@ async function appendToSentFolder(
     if (!sentPath) {
       logger.warn({
         ...context,
-        imapHost: creds.imapHost,
-        imapUser: creds.imapUser,
+        imapHost:         creds.imapHost,
+        imapUser:         creds.imapUser,
         availableFolders: mailboxList.map(m => m.path),
       }, "[IMAP-SENT] Could not locate Sent folder — message not appended");
       return;
     }
 
-    await client.append(sentPath, rawMessage, ["\\Seen"], new Date());
+    // Append with \Seen flag and the send timestamp so Outlook shows the
+    // correct time rather than the append time
+    await client.append(sentPath, rawMessage, ["\\Seen"], sentAt);
     logger.info({ ...context, sentPath, imapHost: creds.imapHost },
       "[IMAP-SENT] Message appended to Sent folder");
   } finally {
@@ -162,9 +182,12 @@ async function appendToSentFolder(
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Non-fatal wrapper: build a raw RFC 822 message and append it to the
- * mailbox's Sent folder via IMAP. Silently no-ops if IMAP is not configured.
- * Never throws — SMTP send success is never affected by this call.
+ * Non-fatal wrapper: build the exact RFC 822 bytes (via nodemailer streamTransport)
+ * and append them to the mailbox's IMAP Sent folder.
+ *
+ * Pass messageId from sendEmail's return value to preserve reply threading.
+ * Pass attachments from the Compose route so the Sent copy includes them.
+ * Silently no-ops if IMAP is not configured. Never throws.
  */
 export async function tryAppendToSent(
   mailbox: Mailbox,
@@ -177,11 +200,10 @@ export async function tryAppendToSent(
     ? `"${mailbox.fromName.replace(/"/g, "")}" <${mailbox.smtpUser}>`
     : mailbox.smtpUser;
 
+  const sentAt = opts.date ?? new Date();
+
   try {
-    const rawMessage = buildRfc822(from, {
-      ...opts,
-      replyTo: mailbox.replyTo ?? undefined,
-    });
+    const rawMessage = await buildExactRfc822(from, opts, mailbox.replyTo ?? undefined);
     await appendToSentFolder(
       {
         imapHost:          mailbox.imapHost,
@@ -191,6 +213,7 @@ export async function tryAppendToSent(
         imapSecure:        mailbox.imapSecure ?? "ssl",
       },
       rawMessage,
+      sentAt,
       context,
     );
   } catch (err) {

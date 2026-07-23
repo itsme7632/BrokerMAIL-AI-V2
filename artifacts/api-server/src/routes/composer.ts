@@ -506,7 +506,7 @@ router.post("/composer/send", requireAuth, uploadMem.array("attachments"), async
       if (!mailbox) { res.status(404).json({ error: "Mailbox not found" }); return; }
       actualMailboxId = mailbox.id;
 
-      await sendEmail(mailbox, {
+      const smtpInfo = await sendEmail(mailbox, {
         to,
         cc:          cc || undefined,
         bcc:         bcc || undefined,
@@ -516,10 +516,14 @@ router.post("/composer/send", requireAuth, uploadMem.array("attachments"), async
         attachments: allAttachments,
       });
 
-      // Non-fatal: append to IMAP Sent folder so the email appears in Outlook/webmail Sent Items
+      // Non-fatal: append to IMAP Sent folder so the email appears in Outlook/webmail Sent Items.
+      // Passes messageId (for reply threading) and allAttachments (so Sent copy is complete).
       tryAppendToSent(mailbox, {
         to, cc: cc || undefined, bcc: bcc || undefined,
         subject: subject ?? "", text: textBody, html: finalHtml,
+        messageId:   smtpInfo.messageId,
+        date:        new Date(),
+        attachments: allAttachments,
       }, { userId: user.id, mailboxId: mailbox.id }).catch(() => {});
     }
 

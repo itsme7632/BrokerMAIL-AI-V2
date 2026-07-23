@@ -714,10 +714,11 @@ router.post("/sent-emails/:id/retry", requireAuth, async (req, res): Promise<voi
   }
 
   try {
-    await sendEmail(mailbox, { to: item.email, subject, text: bodyText, html: trackedHtml });
+    const retryInfo = await sendEmail(mailbox, { to: item.email, subject, text: bodyText, html: trackedHtml });
 
     // Non-fatal: append to IMAP Sent folder so the email appears in Outlook/webmail Sent Items
-    tryAppendToSent(mailbox, { to: item.email, subject, text: bodyText, html: trackedHtml },
+    tryAppendToSent(mailbox, { to: item.email, subject, text: bodyText, html: trackedHtml,
+      messageId: retryInfo.messageId, date: new Date() },
       { queueItemId: id, mailboxId: mailbox.id }).catch(() => {});
 
     // ── Critical: queue update FIRST — this is the idempotency guard ───────
@@ -867,10 +868,11 @@ router.post("/sent-emails/:id/edit-resend", requireAuth, async (req, res): Promi
   }
 
   try {
-    await sendEmail(mailbox, { to: recipientEmail, subject: finalSubject, text: bodyText, html: trackedHtml });
+    const resendInfo = await sendEmail(mailbox, { to: recipientEmail, subject: finalSubject, text: bodyText, html: trackedHtml });
 
     // Non-fatal: append to IMAP Sent folder so the email appears in Outlook/webmail Sent Items
-    tryAppendToSent(mailbox, { to: recipientEmail, subject: finalSubject, text: bodyText, html: trackedHtml },
+    tryAppendToSent(mailbox, { to: recipientEmail, subject: finalSubject, text: bodyText, html: trackedHtml,
+      messageId: resendInfo.messageId, date: new Date() },
       { originalQueueId: id, mailboxId: mailbox.id }).catch(() => {});
 
     // ── Critical: create the new queue row FIRST so a sent email is always

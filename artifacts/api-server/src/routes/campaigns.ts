@@ -418,7 +418,8 @@ export async function processCampaignJobQueue(
         }
 
         // Non-fatal: append to IMAP Sent folder so the email appears in Outlook/webmail Sent Items
-        tryAppendToSent(box, { to: item.email, subject, text: bodyText, html: trackedHtml },
+        tryAppendToSent(box, { to: item.email, subject, text: bodyText, html: trackedHtml,
+          messageId: info.messageId, date: new Date() },
           { jobId, campaignId, queueItemId: item.id }).catch(() => {});
 
         // Non-fatal: if this was a probe send after SMTP quota, clear the quota state.
@@ -969,7 +970,8 @@ export async function processCampaignFully(
         }
 
         // Non-fatal: append to IMAP Sent folder so the email appears in Outlook/webmail Sent Items
-        tryAppendToSent(box, { to: item.email, subject, text: bodyText, html: trackedHtml },
+        tryAppendToSent(box, { to: item.email, subject, text: bodyText, html: trackedHtml,
+          messageId: info.messageId, date: new Date() },
           { campaignId, queueItemId: item.id }).catch(() => {});
 
         // Non-fatal: if this was a probe send after SMTP quota, clear the quota state.

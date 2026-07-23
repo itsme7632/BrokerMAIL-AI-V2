@@ -240,7 +240,8 @@ async function processJobQueue(jobId: string, box: Mailbox, template: Template, 
         }
 
         // Non-fatal: append to IMAP Sent folder so the email appears in Outlook/webmail Sent Items
-        tryAppendToSent(box, { to: item.email, subject, text: bodyText, html: trackedHtml },
+        tryAppendToSent(box, { to: item.email, subject, text: bodyText, html: trackedHtml,
+          messageId: info.messageId, date: new Date() },
           { jobId, mailboxId: box.id, queueItemId: item.id }).catch(() => {});
 
         // Non-fatal: if this was a probe send after SMTP quota, clear the quota state.
