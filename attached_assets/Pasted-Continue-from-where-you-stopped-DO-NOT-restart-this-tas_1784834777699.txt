@@ -1,0 +1,188 @@
+Continue from where you stopped.
+
+DO NOT restart this task from the beginning.
+
+DO NOT audit the entire project again.
+
+Use the existing changes already made in this workspace and continue from the last checkpoint.
+
+==================================================
+CURRENT STATUS
+==================================================
+
+You already completed most of the implementation.
+
+The following files have already been modified:
+
+Backend:
+- campaigns.ts
+- drafts.ts
+- error-classifier.ts
+- classify-send-error.ts
+
+Frontend:
+- AppLayout.tsx
+- CampaignDetail.tsx
+- Drafts.tsx
+- SingleEmailComposer.tsx
+
+You also added:
+
+- Retry endpoints
+- Gmail auth recovery
+- SMTP auth recovery
+- Bulk retry
+- Error classification
+- Authentication Required campaign state
+- Improved compose email error handling
+
+==================================================
+LAST WORKING STATE
+==================================================
+
+You reached the final typecheck stage.
+
+You then fixed:
+
+- misaligned break
+- missing closing brace
+- remaining TypeScript issues
+
+The LAST remaining issues before your credits ended were:
+
+1.
+
+CampaignStatus enum does not include:
+
+auth_required
+
+You temporarily casted it to string.
+
+Implement this properly.
+
+Update the enum so auth_required is a real status everywhere instead of relying on casts.
+
+2.
+
+Draft status filter needed a temporary cast.
+
+Fix the underlying type instead of using casts.
+
+==================================================
+GOAL
+==================================================
+
+Remove temporary workarounds.
+
+Finish the implementation cleanly.
+
+==================================================
+NEXT STEPS
+==================================================
+
+1.
+
+Finish all remaining TypeScript errors.
+
+2.
+
+Run
+
+pnpm typecheck
+
+Fix every issue.
+
+3.
+
+Run
+
+pnpm build
+
+Fix every build issue.
+
+4.
+
+Verify the following work correctly:
+
+✓ Gmail Drafts page restored
+
+✓ Gmail Draft activity
+
+✓ Gmail Draft retry
+
+✓ Retry Draft
+
+✓ Retry Selected
+
+✓ Retry All
+
+✓ Campaign Retry Failed
+
+✓ Retry Selected Failed
+
+✓ Retry All Failed
+
+✓ SMTP Authentication Required state
+
+✓ Gmail Authentication Required state
+
+✓ Resume Campaign after reconnect
+
+✓ Resume from failed recipient
+
+✓ Compose Email retry
+
+✓ Upload & Send retry
+
+✓ Friendly authentication messages
+
+✓ "Reconnect Gmail" button
+
+✓ "Go to Mailbox Settings" button
+
+✓ Notifications
+
+✓ No duplicate retry logic
+
+==================================================
+IMPORTANT
+==================================================
+
+Do NOT rewrite existing working code.
+
+Continue from the current implementation.
+
+Preserve every change already made.
+
+Only finish the remaining implementation and remove temporary workarounds.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Provide:
+
+1. Files modified
+
+2. Files created
+
+3. APIs added
+
+4. Database changes (if any)
+
+5. Root causes fixed
+
+6. Retry architecture
+
+7. Authentication recovery architecture
+
+8. Error classification architecture
+
+9. Confirmation that:
+
+- typecheck passes
+- build passes
+- Gmail Drafts page is restored
+- retry flows are complete
+- authentication recovery is complete
+- all temporary casts/workarounds have been removed
