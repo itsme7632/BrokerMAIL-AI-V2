@@ -1076,7 +1076,7 @@ export default function CampaignDetail() {
 
       {/* ─── Deferred warning banner ──────────────────────────────────────────── */}
       {/* ─── Auth-required banner ─────────────────────────────────────────────── */}
-      {(progress?.status === "auth_required" || (campaign.status as string) === "auth_required") && (
+      {(progress?.status === "auth_required" || campaign.status === "auth_required") && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800/40 p-4 flex flex-col sm:flex-row sm:items-center gap-4">
           <div className="flex items-start gap-3 flex-1">
             <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />

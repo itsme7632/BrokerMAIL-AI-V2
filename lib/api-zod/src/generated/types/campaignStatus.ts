@@ -14,4 +14,5 @@ export const CampaignStatus = {
   pending: 'pending',
   failed: 'failed',
   completed: 'completed',
+  auth_required: 'auth_required',
 } as const;

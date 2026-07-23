@@ -10,4 +10,6 @@ import type { User } from './user';
 export interface AuthResponse {
   user: User;
   token: string;
+  /** Present on registration when email verification is required */
+  requiresVerification?: boolean;
 }

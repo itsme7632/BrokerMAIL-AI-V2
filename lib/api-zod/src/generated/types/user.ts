@@ -21,5 +21,6 @@ export interface User {
   timezone?: string | null;
   /** @nullable */
   aiTone?: string | null;
+  emailVerified: boolean;
   createdAt: string;
 }

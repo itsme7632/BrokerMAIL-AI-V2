@@ -276,7 +276,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [drafted, pending, failed, completed]
+            enum: [drafted, pending, failed, completed, auth_required]
         - name: page
           in: query
           schema:
@@ -958,9 +958,11 @@ components:
           type: ["string", "null"]
         aiTone:
           type: ["string", "null"]
+        emailVerified:
+          type: boolean
         createdAt:
           type: string
-      required: [id, email, name, role, gmailConnected, createdAt]
+      required: [id, email, name, role, gmailConnected, emailVerified, createdAt]
 
     AuthResponse:
       type: object
@@ -969,6 +971,9 @@ components:
           $ref: "#/components/schemas/User"
         token:
           type: string
+        requiresVerification:
+          type: boolean
+          description: Present on registration when email verification is required
       required: [user, token]
 
     LoginInput:
@@ -1055,7 +1060,7 @@ components:
           type: string
         status:
           type: string
-          enum: [drafted, pending, failed, completed]
+          enum: [drafted, pending, failed, completed, auth_required]
         templateId:
           type: ["integer", "null"]
         totalLeads:
@@ -1093,7 +1098,7 @@ components:
           minLength: 1
         status:
           type: string
-          enum: [drafted, pending, failed, completed]
+          enum: [drafted, pending, failed, completed, auth_required]
         templateId:
           type: ["integer", "null"]
 

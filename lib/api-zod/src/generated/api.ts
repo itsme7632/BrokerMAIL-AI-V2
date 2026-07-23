@@ -29,6 +29,7 @@ export const GetMeResponse = zod.object({
   "gmailEmail": zod.string().nullish(),
   "timezone": zod.string().nullish(),
   "aiTone": zod.string().nullish(),
+  "emailVerified": zod.boolean(),
   "createdAt": zod.string()
 })
 
@@ -56,9 +57,11 @@ export const LoginResponse = zod.object({
   "gmailEmail": zod.string().nullish(),
   "timezone": zod.string().nullish(),
   "aiTone": zod.string().nullish(),
+  "emailVerified": zod.boolean(),
   "createdAt": zod.string()
 }),
-  "token": zod.string()
+  "token": zod.string(),
+  "requiresVerification": zod.boolean().optional().describe('Present on registration when email verification is required')
 })
 
 
@@ -147,7 +150,7 @@ export const GetRecentCampaignsResponseItem = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
   "name": zod.string(),
-  "status": zod.enum(['drafted', 'pending', 'failed', 'completed']),
+  "status": zod.enum(['drafted', 'pending', 'failed', 'completed', 'auth_required']),
   "templateId": zod.number().nullish(),
   "totalLeads": zod.number(),
   "draftedCount": zod.number(),
@@ -186,7 +189,7 @@ export const getCampaignsQueryPageDefault = 1;
 export const getCampaignsQueryLimitDefault = 20;
 
 export const GetCampaignsQueryParams = zod.object({
-  "status": zod.enum(['drafted', 'pending', 'failed', 'completed']).optional(),
+  "status": zod.enum(['drafted', 'pending', 'failed', 'completed', 'auth_required']).optional(),
   "page": zod.coerce.number().default(getCampaignsQueryPageDefault),
   "limit": zod.coerce.number().default(getCampaignsQueryLimitDefault)
 })
@@ -196,7 +199,7 @@ export const GetCampaignsResponse = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
   "name": zod.string(),
-  "status": zod.enum(['drafted', 'pending', 'failed', 'completed']),
+  "status": zod.enum(['drafted', 'pending', 'failed', 'completed', 'auth_required']),
   "templateId": zod.number().nullish(),
   "totalLeads": zod.number(),
   "draftedCount": zod.number(),
@@ -235,7 +238,7 @@ export const GetCampaignResponse = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
   "name": zod.string(),
-  "status": zod.enum(['drafted', 'pending', 'failed', 'completed']),
+  "status": zod.enum(['drafted', 'pending', 'failed', 'completed', 'auth_required']),
   "templateId": zod.number().nullish(),
   "totalLeads": zod.number(),
   "draftedCount": zod.number(),
@@ -259,7 +262,7 @@ export const UpdateCampaignParams = zod.object({
 
 export const UpdateCampaignBody = zod.object({
   "name": zod.string().min(1).optional(),
-  "status": zod.enum(['drafted', 'pending', 'failed', 'completed']).optional(),
+  "status": zod.enum(['drafted', 'pending', 'failed', 'completed', 'auth_required']).optional(),
   "templateId": zod.number().nullish()
 })
 
@@ -267,7 +270,7 @@ export const UpdateCampaignResponse = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
   "name": zod.string(),
-  "status": zod.enum(['drafted', 'pending', 'failed', 'completed']),
+  "status": zod.enum(['drafted', 'pending', 'failed', 'completed', 'auth_required']),
   "templateId": zod.number().nullish(),
   "totalLeads": zod.number(),
   "draftedCount": zod.number(),
@@ -767,6 +770,7 @@ export const AdminGetUsersResponse = zod.object({
   "gmailEmail": zod.string().nullish(),
   "timezone": zod.string().nullish(),
   "aiTone": zod.string().nullish(),
+  "emailVerified": zod.boolean(),
   "createdAt": zod.string()
 })),
   "total": zod.number(),

@@ -110,6 +110,7 @@ export const CampaignStatus = {
   pending: 'pending',
   failed: 'failed',
   completed: 'completed',
+  auth_required: 'auth_required',
 } as const;
 
 export type CampaignSendMode = typeof CampaignSendMode[keyof typeof CampaignSendMode];
@@ -152,6 +153,7 @@ export const CampaignUpdateStatus = {
   pending: 'pending',
   failed: 'failed',
   completed: 'completed',
+  auth_required: 'auth_required',
 } as const;
 
 export interface CampaignUpdate {
@@ -597,6 +599,7 @@ export const GetCampaignsStatus = {
   pending: 'pending',
   failed: 'failed',
   completed: 'completed',
+  auth_required: 'auth_required',
 } as const;
 
 export type GetLeadsParams = {
