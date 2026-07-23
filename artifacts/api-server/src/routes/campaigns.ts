@@ -3,7 +3,7 @@ import { logger } from "../lib/logger";
 import {
   db, campaignsTable, leadsTable, draftsTable, templatesTable,
   activityTable, usersTable, emailQueueTable, campaignBatchesTable,
-  mailboxesTable, suppressionListTable,
+  mailboxesTable, suppressionListTable, notificationsTable,
 } from "@workspace/db";
 import { eq, and, count, sql, desc, gte, inArray, or, isNull, lte, isNotNull, ne } from "drizzle-orm";
 import { emailTrackingEventsTable } from "@workspace/db";
@@ -442,7 +442,41 @@ export async function processCampaignJobQueue(
           });
         } catch { /* non-fatal */ }
 
-        if (isQuotaReachedError(err)) {
+        // ── Auth failure: pause campaign immediately so user can fix credentials ──
+        const isSmtpAuthErr =
+          errMsg.toLowerCase().includes("eauth") ||
+          errMsg.toLowerCase().includes("authentication failed") ||
+          errMsg.toLowerCase().includes("535") ||
+          errMsg.toLowerCase().includes("invalid login") ||
+          errMsg.toLowerCase().includes("535 5.7");
+
+        if (isSmtpAuthErr) {
+          // Defer the current item so it can be retried once credentials are fixed
+          await db.update(emailQueueTable)
+            .set({ status: "deferred", attempts, lastError: errorJson, retryAfter: new Date(Date.now() + 300_000) })
+            .where(eq(emailQueueTable.id, item.id));
+          if (item.leadId) {
+            await db.update(leadsTable).set({ status: "queued", updatedAt: new Date() })
+              .where(eq(leadsTable.id, item.leadId));
+          }
+          await db.update(campaignsTable).set({ status: "auth_required", updatedAt: new Date() })
+            .where(eq(campaignsTable.id, campaignId));
+          // Create a notification so the user knows to fix their credentials
+          try {
+            await db.insert(notificationsTable).values({
+              userId:  user.id,
+              type:    "auth_failure_smtp",
+              title:   "SMTP Authentication Failed",
+              message: `Campaign paused: SMTP authentication failed for mailbox "${box.smtpHost}". Please update your credentials to resume.`,
+              link:    "/mailbox",
+              refId:   campaignId,
+              refType: "campaign",
+            });
+          } catch {}
+          logger.error({ jobId, campaignId, mailboxId: box.id, errMsg },
+            "[QUEUE] SMTP auth failure — campaign paused with auth_required status");
+          break;
+        } else if (isQuotaReachedError(err)) {
           // Leave item queued (not deferred/failed) — it will be retried after the probe succeeds.
           // Do NOT increment attempts: this is a mailbox quota issue, not an email-level failure.
           await db.update(emailQueueTable)
@@ -2688,6 +2722,27 @@ router.post("/campaigns/:id/generate-drafts", requireAuth, async (req, res): Pro
         .where(eq(leadsTable.id, lead.id));
       errors.push(`Lead ${lead.email}: ${errMsg}`);
       failed++;
+
+      // If Gmail auth expired, pause the campaign immediately — continuing would
+      // just fail every remaining lead with the same error.
+      if (isAuthErr) {
+        await db.update(campaignsTable).set({ status: "auth_required", updatedAt: new Date() })
+          .where(eq(campaignsTable.id, campaign.id));
+        try {
+          await db.insert(notificationsTable).values({
+            userId:  user.id,
+            type:    "auth_failure_gmail",
+            title:   "Gmail Authorization Expired",
+            message: `Campaign "${campaign.name}" paused: Gmail authorization has expired. Please reconnect your Gmail account from Settings → Brand Settings.`,
+            link:    "/settings",
+            refId:   campaign.id,
+            refType: "campaign",
+          });
+        } catch {}
+        logger.error({ userId: user.id, campaignId: campaign.id },
+          "[GENERATE_DRAFTS] Gmail auth expired — pausing campaign with auth_required status and stopping draft generation");
+        break;
+      }
     }
   }
 
@@ -3008,6 +3063,221 @@ router.post("/campaigns/:id/leads/:leadId/retry", requireAuth, async (req, res):
     logger.error({ campaignId, leadId, errMsg }, "[RETRY-LEAD] Retry failed");
     res.status(500).json({ error: errMsg });
   }
+});
+
+// ─── Retry all failed leads in a campaign ────────────────────────────────────
+/**
+ * POST /api/campaigns/:id/retry-all-failed
+ *
+ * Bulk-retries every lead currently in "failed" status within the campaign.
+ * Delegates to the same send/draft logic as the single-lead retry endpoint.
+ * Never re-sends already-successful leads.
+ */
+router.post("/campaigns/:id/retry-all-failed", requireAuth, async (req, res): Promise<void> => {
+  const user       = req.user!;
+  const campaignId = parseInt((req.params.id as string), 10);
+  if (!campaignId) { res.status(400).json({ error: "Invalid campaign id" }); return; }
+
+  const [campaign] = await db.select().from(campaignsTable)
+    .where(and(eq(campaignsTable.id, campaignId), eq(campaignsTable.userId, user.id)));
+  if (!campaign) { res.status(404).json({ error: "Campaign not found" }); return; }
+
+  const failedLeads = await db.select().from(leadsTable)
+    .where(and(
+      eq(leadsTable.campaignId, campaignId),
+      eq(leadsTable.userId, user.id),
+      eq(leadsTable.status, "failed"),
+    ));
+
+  if (failedLeads.length === 0) {
+    res.json({ total: 0, succeeded: 0, failed: 0, message: "No failed leads to retry" });
+    return;
+  }
+
+  let succeeded = 0, failed = 0;
+  const errors: string[] = [];
+
+  // Load shared resources once
+  const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+  if (!freshUser) { res.status(404).json({ error: "User not found" }); return; }
+
+  const retryTracking = await getTrackingSettings();
+  const publicBase    = retryTracking.trackingUrl;
+
+  for (const lead of failedLeads) {
+    // ── Find failed queue item (SMTP path) ──────────────────────────────────
+    const [queueItem] = await db.select().from(emailQueueTable)
+      .where(and(
+        eq(emailQueueTable.leadId, lead.id),
+        eq(emailQueueTable.campaignId, campaignId),
+        eq(emailQueueTable.status, "failed"),
+      ))
+      .orderBy(desc(emailQueueTable.id))
+      .limit(1);
+
+    if (!queueItem) {
+      // ── Gmail draft path ─────────────────────────────────────────────────
+      if (!freshUser.gmailConnected || !freshUser.gmailAccessToken) {
+        errors.push("Gmail not connected");
+        failed++;
+        break; // Auth failure — stop all remaining retries
+      }
+
+      const [failedDraft] = await db.select().from(draftsTable)
+        .where(and(
+          eq(draftsTable.leadId, lead.id),
+          eq(draftsTable.campaignId, campaignId),
+          eq(draftsTable.userId, user.id),
+          eq(draftsTable.status, "failed"),
+        ))
+        .orderBy(desc(draftsTable.id))
+        .limit(1);
+
+      if (!failedDraft || !lead.email) { failed++; continue; }
+
+      // If no stored content, skip — needs full AI re-render via single-lead retry
+      if (!failedDraft.subject || !failedDraft.body) { failed++; continue; }
+
+      if (await isSuppressed(user.id, lead.email)) { failed++; continue; }
+
+      try {
+        const trackingId   = randomUUID();
+        const gmailDraftId = await createGmailDraft(
+          freshUser, lead.email, failedDraft.subject, failedDraft.body,
+        );
+        await db.update(draftsTable)
+          .set({ status: "success", gmailDraftId, errorMessage: null, trackingId })
+          .where(eq(draftsTable.id, failedDraft.id));
+        await db.update(leadsTable)
+          .set({ status: "drafted", gmailDraftId, errorMessage: null, updatedAt: new Date() })
+          .where(eq(leadsTable.id, lead.id));
+        await db.update(campaignsTable).set({
+          draftedCount: sql`${campaignsTable.draftedCount} + 1`,
+          failedCount:  sql`GREATEST(${campaignsTable.failedCount} - 1, 0)`,
+          updatedAt: new Date(),
+        }).where(eq(campaignsTable.id, campaignId));
+        succeeded++;
+      } catch (err: any) {
+        const errMsg = String(err?.message ?? "Draft retry failed");
+        errors.push(errMsg);
+        failed++;
+        // Stop on auth error — every subsequent attempt will fail too
+        const isGmailAuth = errMsg.includes("invalid_grant") || errMsg.includes("Invalid Credentials") || errMsg.includes("Token has been expired");
+        if (isGmailAuth) {
+          await db.update(campaignsTable).set({ status: "auth_required", updatedAt: new Date() })
+            .where(eq(campaignsTable.id, campaignId));
+          try {
+            await db.insert(notificationsTable).values({
+              userId:  user.id,
+              type:    "auth_failure_gmail",
+              title:   "Gmail Authorization Expired",
+              message: `Retry stopped for campaign "${campaign.name}": Gmail authorization expired. Please reconnect Gmail in Settings.`,
+              link:    "/settings",
+              refId:   campaignId,
+              refType: "campaign",
+            });
+          } catch {}
+          break;
+        }
+      }
+      continue;
+    }
+
+    // ── SMTP path ──────────────────────────────────────────────────────────
+    const [mailbox] = await db.select().from(mailboxesTable)
+      .where(and(eq(mailboxesTable.id, queueItem.mailboxId), eq(mailboxesTable.userId, user.id)));
+    if (!mailbox?.smtpHost) { failed++; continue; }
+
+    const [template] = await db.select().from(templatesTable)
+      .where(and(eq(templatesTable.id, queueItem.templateId), eq(templatesTable.userId, user.id)));
+    if (!template) { failed++; continue; }
+
+    if (await isSuppressed(user.id, queueItem.email)) { failed++; continue; }
+
+    const branding = userBranding(freshUser);
+    let row: Record<string, string> = {};
+    try { row = JSON.parse(queueItem.rowDataJson); } catch {}
+    if (row.price) row.price = formatPrice(row.price);
+    if (campaign.bookingUrl)  row.booking_link = campaign.bookingUrl;
+    if (campaign.quoteUrl)    row.quote_link   = campaign.quoteUrl;
+    if (campaign.websiteUrl)  row.website_link = campaign.websiteUrl;
+    if (campaign.phoneNumber) row.phone_link   = campaign.phoneNumber;
+
+    const trackingId = randomUUID();
+    const ctaButtons = (() => {
+      try { return template.ctaButtonsJson ? JSON.parse(template.ctaButtonsJson) : []; } catch { return []; }
+    })();
+    const subject  = replaceVarsText(template.subject, row);
+    const bodyText = replaceVarsText(template.body, row);
+    const bodyHtml = buildHtmlEmail(template.body, row, branding, {
+      style: (queueItem.style ?? "clean") as any,
+      useSignatureBuilder: queueItem.useSignatureBuilder,
+      ctaButtons,
+      trackingId: retryTracking.clickTrackingEnabled ? trackingId : undefined,
+      publicBase: retryTracking.clickTrackingEnabled ? publicBase : undefined,
+      unsubscribeUrl: buildUnsubscribeUrl(publicBase, user.id, queueItem.leadId ?? null, campaignId, queueItem.email),
+    });
+    const pixelTag    = retryTracking.openTrackingEnabled
+      ? `<img src="${publicBase}/api/track/open/${trackingId}" width="1" height="1" alt="" style="display:none!important;width:1px!important;height:1px!important;border:0;" />`
+      : "";
+    const trackedHtml = pixelTag
+      ? (bodyHtml.includes("</body>") ? bodyHtml.replace(/<\/body>/i, `${pixelTag}</body>`) : bodyHtml + pixelTag)
+      : bodyHtml;
+
+    try {
+      await sendEmail(mailbox, { to: queueItem.email, subject, text: bodyText, html: trackedHtml });
+      const now = new Date();
+      await db.update(emailQueueTable)
+        .set({ status: "success", sentAt: now, trackingId, lastError: null, attempts: queueItem.attempts + 1 })
+        .where(eq(emailQueueTable.id, queueItem.id));
+      await db.update(leadsTable)
+        .set({ status: "sent", sentAt: now, errorMessage: null, updatedAt: now })
+        .where(eq(leadsTable.id, lead.id));
+      await db.update(campaignsTable).set({
+        sentCount:   sql`${campaignsTable.sentCount} + 1`,
+        failedCount: sql`GREATEST(${campaignsTable.failedCount} - 1, 0)`,
+        updatedAt: new Date(),
+      }).where(eq(campaignsTable.id, campaignId));
+      try {
+        await db.insert(draftsTable).values({
+          userId: user.id, campaignId, leadId: queueItem.leadId ?? null,
+          email: queueItem.email, subject, body: bodyText,
+          status: "success", trackingId,
+          gmailDraftId: `smtp:retry:bulk:${lead.id}`,
+          sentAt: now,
+        });
+      } catch {}
+      succeeded++;
+    } catch (err: any) {
+      const errMsg = String(err?.message ?? "Send failed");
+      await db.update(emailQueueTable)
+        .set({ attempts: queueItem.attempts + 1, lastError: errMsg })
+        .where(eq(emailQueueTable.id, queueItem.id));
+      errors.push(errMsg);
+      failed++;
+      // Stop on SMTP auth — every subsequent attempt will fail too
+      const isSmtpAuth = errMsg.toLowerCase().includes("eauth") || errMsg.includes("535") || errMsg.toLowerCase().includes("authentication failed");
+      if (isSmtpAuth) {
+        await db.update(campaignsTable).set({ status: "auth_required", updatedAt: new Date() })
+          .where(eq(campaignsTable.id, campaignId));
+        try {
+          await db.insert(notificationsTable).values({
+            userId:  user.id,
+            type:    "auth_failure_smtp",
+            title:   "SMTP Authentication Failed",
+            message: `Retry stopped for campaign "${campaign.name}": SMTP authentication failed. Please update mailbox credentials.`,
+            link:    "/mailbox",
+            refId:   campaignId,
+            refType: "campaign",
+          });
+        } catch {}
+        break;
+      }
+    }
+  }
+
+  logger.info({ campaignId, total: failedLeads.length, succeeded, failed }, "[RETRY-ALL-FAILED] Bulk retry completed");
+  res.json({ total: failedLeads.length, succeeded, failed, errors });
 });
 
 // ─── Campaign Analytics ───────────────────────────────────────────────────────

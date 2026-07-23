@@ -1,6 +1,9 @@
 import { Router, type IRouter } from "express";
-import { db, draftsTable, usersTable, templatesTable, activityTable, emailTrackingEventsTable } from "@workspace/db";
-import { eq, and, count, desc, inArray, sql } from "drizzle-orm";
+import {
+  db, draftsTable, usersTable, templatesTable, activityTable, emailTrackingEventsTable,
+  campaignsTable, leadsTable, notificationsTable,
+} from "@workspace/db";
+import { eq, and, count, desc, inArray, sql, isNotNull } from "drizzle-orm";
 import { getTrackingSettings } from "../lib/tracking-settings";
 import { checkEmailLimit } from "../lib/plan-limits";
 import { logger } from "../lib/logger";
@@ -457,6 +460,237 @@ router.post("/drafts/from-template", requireAuth, async (req, res): Promise<void
   } catch { }
 
   res.json({ total: rows.length, succeeded, failed, results });
+});
+
+// ─── Retry a single failed draft ─────────────────────────────────────────────
+/**
+ * POST /api/drafts/:id/retry
+ *
+ * Retries a failed Gmail draft.
+ * - Standalone drafts: re-creates using stored subject + body.
+ * - Campaign-linked drafts: re-creates using stored subject + body and updates
+ *   lead/campaign counters. If stored body is empty (failed before render),
+ *   returns { requiresCampaignRetry: true, campaignId, leadId } so the caller
+ *   can fall back to the richer /api/campaigns/:id/leads/:leadId/retry endpoint.
+ */
+router.post("/drafts/:id/retry", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+  const id   = parseInt(req.params.id as string, 10);
+  if (!id) { res.status(400).json({ error: "Invalid draft id" }); return; }
+
+  const [draft] = await db.select().from(draftsTable)
+    .where(and(eq(draftsTable.id, id), eq(draftsTable.userId, user.id)));
+  if (!draft)                       { res.status(404).json({ error: "Draft not found" }); return; }
+  if (draft.status !== "failed")    { res.status(400).json({ error: "Only failed drafts can be retried" }); return; }
+  if (!draft.email)                 { res.status(400).json({ error: "Draft has no recipient email" }); return; }
+
+  // If stored body is empty (AI generation failed before render) and this is
+  // campaign-linked, the caller should use the richer campaign retry endpoint
+  // which re-runs AI personalization and email rendering.
+  if ((!draft.subject || !draft.body) && draft.campaignId && draft.leadId) {
+    res.json({
+      requiresCampaignRetry: true,
+      campaignId: draft.campaignId,
+      leadId:     draft.leadId,
+    });
+    return;
+  }
+
+  if (!draft.subject) { res.status(400).json({ error: "Draft has no subject stored" }); return; }
+
+  const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+  if (!freshUser?.gmailConnected || !freshUser.gmailAccessToken) {
+    res.status(401).json({
+      error:         "Gmail not connected. Please reconnect your Gmail account from Settings → Brand Settings.",
+      errorCategory: "auth_gmail",
+    });
+    return;
+  }
+
+  if (await isSuppressed(user.id, draft.email)) {
+    res.status(409).json({ error: "Recipient is on your suppression list and cannot be retried" });
+    return;
+  }
+
+  const trackingId = draft.trackingId ?? randomUUID();
+
+  try {
+    const gmailDraftId = await createGmailDraft(
+      freshUser, draft.email, draft.subject, draft.body ?? "",
+    );
+
+    await db.update(draftsTable)
+      .set({ status: "success", gmailDraftId, errorMessage: null, trackingId })
+      .where(eq(draftsTable.id, id));
+
+    // Update campaign/lead counters if campaign-linked
+    if (draft.campaignId && draft.leadId) {
+      await db.update(leadsTable)
+        .set({ status: "drafted", gmailDraftId, errorMessage: null, updatedAt: new Date() })
+        .where(eq(leadsTable.id, draft.leadId));
+      await db.update(campaignsTable).set({
+        draftedCount: sql`${campaignsTable.draftedCount} + 1`,
+        failedCount:  sql`GREATEST(${campaignsTable.failedCount} - 1, 0)`,
+        updatedAt: new Date(),
+      }).where(eq(campaignsTable.id, draft.campaignId));
+    }
+
+    logger.info({ draftId: id, gmailDraftId }, "[DRAFT-RETRY] Draft retried successfully");
+    res.json({ ok: true, gmailDraftId, trackingId });
+  } catch (err: any) {
+    const errMsg = String(err?.message ?? "Draft creation failed");
+    await db.update(draftsTable).set({ errorMessage: errMsg }).where(eq(draftsTable.id, id));
+    logger.error({ draftId: id, errMsg }, "[DRAFT-RETRY] Draft retry failed");
+
+    // Detect Gmail auth errors so the frontend can show the reconnect prompt
+    const isGmailAuth = errMsg.includes("invalid_grant") || errMsg.includes("Invalid Credentials") || errMsg.includes("Token has been expired");
+    res.status(500).json({
+      error:         isGmailAuth
+        ? "Gmail authorization has expired. Please reconnect your Gmail account from Settings → Brand Settings."
+        : errMsg,
+      errorCategory: isGmailAuth ? "auth_gmail" : "unknown",
+    });
+  }
+});
+
+// ─── Retry selected failed drafts ─────────────────────────────────────────────
+/**
+ * POST /api/drafts/retry-selected
+ * Body: { ids: number[] }
+ */
+router.post("/drafts/retry-selected", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+  const ids: number[] = Array.isArray(req.body.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
+  if (ids.length === 0) { res.status(400).json({ error: "ids[] is required" }); return; }
+
+  const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+  if (!freshUser?.gmailConnected || !freshUser.gmailAccessToken) {
+    res.status(401).json({
+      error:         "Gmail not connected. Please reconnect your Gmail account from Settings → Brand Settings.",
+      errorCategory: "auth_gmail",
+    });
+    return;
+  }
+
+  const failedDrafts = await db.select().from(draftsTable)
+    .where(and(
+      eq(draftsTable.userId, user.id),
+      eq(draftsTable.status, "failed"),
+      inArray(draftsTable.id, ids),
+    ));
+
+  let succeeded = 0, failed = 0;
+  const errors: string[] = [];
+
+  for (const draft of failedDrafts) {
+    if (!draft.email || !draft.subject) {
+      // Campaign draft with no stored content — skip; user must retry from campaign page
+      failed++;
+      continue;
+    }
+    if (await isSuppressed(user.id, draft.email)) { failed++; continue; }
+
+    try {
+      const trackingId   = draft.trackingId ?? randomUUID();
+      const gmailDraftId = await createGmailDraft(freshUser, draft.email, draft.subject, draft.body ?? "");
+
+      await db.update(draftsTable)
+        .set({ status: "success", gmailDraftId, errorMessage: null, trackingId })
+        .where(eq(draftsTable.id, draft.id));
+
+      if (draft.campaignId && draft.leadId) {
+        await db.update(leadsTable)
+          .set({ status: "drafted", gmailDraftId, errorMessage: null, updatedAt: new Date() })
+          .where(eq(leadsTable.id, draft.leadId));
+        await db.update(campaignsTable).set({
+          draftedCount: sql`${campaignsTable.draftedCount} + 1`,
+          failedCount:  sql`GREATEST(${campaignsTable.failedCount} - 1, 0)`,
+          updatedAt: new Date(),
+        }).where(eq(campaignsTable.id, draft.campaignId));
+      }
+      succeeded++;
+    } catch (err: any) {
+      errors.push(String(err?.message ?? "retry failed"));
+      failed++;
+    }
+  }
+
+  res.json({ total: failedDrafts.length, succeeded, failed, errors });
+});
+
+// ─── Retry ALL failed drafts ──────────────────────────────────────────────────
+/**
+ * POST /api/drafts/retry-all-failed
+ *
+ * Retries all failed Gmail drafts for the authenticated user.
+ * Drafts with no stored content (campaign drafts that failed before rendering)
+ * are skipped with a count returned in the response.
+ */
+router.post("/drafts/retry-all-failed", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
+
+  const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+  if (!freshUser?.gmailConnected || !freshUser.gmailAccessToken) {
+    res.status(401).json({
+      error:         "Gmail not connected. Please reconnect your Gmail account from Settings → Brand Settings.",
+      errorCategory: "auth_gmail",
+    });
+    return;
+  }
+
+  const failedDrafts = await db.select().from(draftsTable)
+    .where(and(
+      eq(draftsTable.userId, user.id),
+      eq(draftsTable.status, "failed"),
+      // Exclude SMTP records (they belong to Sent Emails retry flow)
+      sql`(${draftsTable.gmailDraftId} IS NULL OR ${draftsTable.gmailDraftId} NOT LIKE 'smtp:%')`,
+      isNotNull(draftsTable.email),
+    ));
+
+  let succeeded = 0, failed = 0, skipped = 0;
+  const errors: string[] = [];
+
+  for (const draft of failedDrafts) {
+    if (!draft.email) { skipped++; continue; }
+    if (!draft.subject) {
+      // Campaign draft with no stored content — user must retry from campaign page
+      skipped++;
+      continue;
+    }
+
+    if (await isSuppressed(user.id, draft.email)) { failed++; continue; }
+
+    try {
+      const trackingId   = draft.trackingId ?? randomUUID();
+      const gmailDraftId = await createGmailDraft(freshUser, draft.email, draft.subject, draft.body ?? "");
+
+      await db.update(draftsTable)
+        .set({ status: "success", gmailDraftId, errorMessage: null, trackingId })
+        .where(eq(draftsTable.id, draft.id));
+
+      if (draft.campaignId && draft.leadId) {
+        await db.update(leadsTable)
+          .set({ status: "drafted", gmailDraftId, errorMessage: null, updatedAt: new Date() })
+          .where(eq(leadsTable.id, draft.leadId));
+        await db.update(campaignsTable).set({
+          draftedCount: sql`${campaignsTable.draftedCount} + 1`,
+          failedCount:  sql`GREATEST(${campaignsTable.failedCount} - 1, 0)`,
+          updatedAt: new Date(),
+        }).where(eq(campaignsTable.id, draft.campaignId));
+      }
+      succeeded++;
+    } catch (err: any) {
+      const errMsg = String(err?.message ?? "retry failed");
+      errors.push(errMsg);
+      failed++;
+      // Stop retrying if auth expired — all subsequent attempts will fail too
+      const isGmailAuth = errMsg.includes("invalid_grant") || errMsg.includes("Invalid Credentials") || errMsg.includes("Token has been expired");
+      if (isGmailAuth) break;
+    }
+  }
+
+  logger.info({ userId: user.id, total: failedDrafts.length, succeeded, failed, skipped }, "[DRAFT-RETRY-ALL] Bulk retry completed");
+  res.json({ total: failedDrafts.length, succeeded, failed, skipped, errors });
 });
 
 export default router;

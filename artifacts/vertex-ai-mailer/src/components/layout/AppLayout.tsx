@@ -42,6 +42,7 @@ const NAV_GROUP_DEFS: NavGroupDef[] = [
     defaultOpen: false,
     items: [
       { href: "/campaigns",         icon: Megaphone,      label: "Campaigns",        exact: false },
+      { href: "/drafts",            icon: Mail,           label: "Gmail Drafts",     exact: true  },
       { href: "/sent-emails",       icon: SendHorizonal,  label: "Sent Emails",      exact: true  },
       { href: "/templates",         icon: FileText,       label: "Templates",        exact: true  },
       { href: "/templates/gallery", icon: LayoutGrid,     label: "Template Gallery", exact: true  },

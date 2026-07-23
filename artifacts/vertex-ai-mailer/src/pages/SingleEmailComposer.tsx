@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 import {
   Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight,
@@ -11,9 +11,10 @@ import {
   FileImage, FilePlus, Minus, Building2, Globe, Phone, User,
   ChevronLeft, Palette,
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { classifySendError, type SendErrorDetail } from "@/lib/classify-send-error";
 import { MD_RULES } from "@workspace/markdown";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -583,6 +584,7 @@ export default function SingleEmailComposer() {
   const [loading,     setLoading]     = useState(true);
   const [sending,     setSending]     = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
+  const [sendError,   setSendError]   = useState<SendErrorDetail | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -1174,17 +1176,22 @@ export default function SingleEmailComposer() {
     if (!subject.trim()) { toast({ title: "No subject",    description: "Enter a subject line.",     variant: "destructive" }); return; }
     if (!mailboxId)      { toast({ title: "No mailbox",    description: "Select a sending mailbox.", variant: "destructive" }); return; }
     setSending(true);
+    setSendError(null);
     try {
       const r = await fetch(apiUrl("composer/send"), { method: "POST", headers: authHeaders(), body: buildFormData() });
       if (!r.ok) throw new Error((await r.json()).error || "Failed to send");
       toast({ title: "Email sent!", description: `Sent to ${to}` });
+      setSendError(null);
       if (draftId) { await apiDel(`composer/drafts/${draftId}`); setDraftId(null); await loadDrafts(); }
       setTo(""); setCc(""); setBcc(""); setSubject(""); setHtml("<p></p>");
       setAttachments([]); setShowCc(false); setShowBcc(false);
       setActiveTab("editor");
       rebuildPreview();
     } catch (e: any) {
-      toast({ title: "Send failed", description: e.message, variant: "destructive" });
+      // Classify the error so we can show a specific recovery action
+      const detail = classifySendError(e.message ?? "");
+      setSendError(detail);
+      // Do NOT clear the form — user should be able to retry without rewriting their email
     } finally { setSending(false); }
   };
 
@@ -1452,6 +1459,43 @@ export default function SingleEmailComposer() {
         {/* Scrollable compose area */}
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="max-w-[1120px] mx-auto px-6 py-6">
+
+            {/* ── Send error card ── */}
+            {sendError && (
+              <div className={`mb-5 rounded-xl border p-4 flex flex-col sm:flex-row sm:items-start gap-3 ${
+                sendError.category === "auth_gmail" || sendError.category === "auth_smtp"
+                  ? "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800/40"
+                  : "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800/40"
+              }`}>
+                <div className="flex-1">
+                  <p className={`font-semibold text-sm ${sendError.category === "auth_gmail" || sendError.category === "auth_smtp" ? "text-amber-900 dark:text-amber-200" : "text-red-900 dark:text-red-200"}`}>
+                    {sendError.title}
+                  </p>
+                  <p className={`text-xs mt-0.5 ${sendError.category === "auth_gmail" || sendError.category === "auth_smtp" ? "text-amber-700 dark:text-amber-300" : "text-red-700 dark:text-red-300"}`}>
+                    {sendError.message}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+                  {sendError.recoveryAction && sendError.recoveryRoute && (
+                    <Link href={sendError.recoveryRoute}>
+                      <button className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm">
+                        {sendError.recoveryAction}
+                      </button>
+                    </Link>
+                  )}
+                  {sendError.canRetry && (
+                    <button
+                      onClick={doSend}
+                      disabled={sending}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-sm disabled:opacity-40"
+                    >
+                      {sending ? "Sending…" : "Try Again"}
+                    </button>
+                  )}
+                  <button onClick={() => setSendError(null)} className="text-slate-400 hover:text-slate-600 transition-colors p-0.5 text-base leading-none">✕</button>
+                </div>
+              </div>
+            )}
 
             {/* ── Compose card ── */}
             <div className="bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200/70 dark:border-slate-700/60 overflow-visible">

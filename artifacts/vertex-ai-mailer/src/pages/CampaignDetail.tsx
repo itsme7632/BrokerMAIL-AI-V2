@@ -242,6 +242,7 @@ export default function CampaignDetail() {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [diagnostics, setDiagnostics]     = useState<CampaignDiagnostics | null>(null);
   const [retryingLeadId, setRetryingLeadId] = useState<number | null>(null);
+  const [retryingAll,    setRetryingAll]    = useState(false);
 
   // Track previous sent count so fetchProgress can invalidate the leads cache
   // only when a new email has actually been sent — not on every poll.
@@ -557,6 +558,37 @@ export default function CampaignDetail() {
     }
   }
 
+  // ─── Retry all failed leads ───────────────────────────────────────────────────
+  async function handleRetryAllFailed() {
+    setRetryingAll(true);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res   = await fetch(`/api/campaigns/${campaignId}/retry-all-failed`, {
+        method:  "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Retry failed");
+      if (data.succeeded > 0) {
+        toast({
+          title:       `${data.succeeded} email${data.succeeded !== 1 ? "s" : ""} retried`,
+          description: data.failed > 0 ? `${data.failed} still failed.` : "All failed emails retried successfully.",
+        });
+      } else {
+        toast({ variant: "destructive", title: "Retry completed", description: "No emails were successfully retried." });
+      }
+      await Promise.all([
+        fetchProgress(),
+        queryClient.invalidateQueries({ queryKey: getGetLeadsQueryKey({ campaignId, page: leadsPage, limit: 10 }) }),
+        queryClient.invalidateQueries({ queryKey: getGetCampaignQueryKey(campaignId) }),
+      ]);
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Retry failed", description: err.message });
+    } finally {
+      setRetryingAll(false);
+    }
+  }
+
   // ─── Retry a single failed lead ──────────────────────────────────────────────
   async function handleRetryLead(leadId: number) {
     setRetryingLeadId(leadId);
@@ -638,19 +670,21 @@ export default function CampaignDetail() {
     : 0;
 
   const statusColors: Record<string, string> = {
-    pending:      "bg-amber-100 text-amber-800",
-    sending:      "bg-blue-100 text-blue-800",
-    cooling_down: "bg-orange-100 text-orange-800",
-    paused:       "bg-slate-100 text-slate-600",
-    completed:    "bg-emerald-100 text-emerald-800",
-    failed:       "bg-red-100 text-red-800",
-    drafted:      "bg-violet-100 text-violet-800",
-    cancelled:    "bg-slate-100 text-slate-500",
+    pending:       "bg-amber-100 text-amber-800",
+    sending:       "bg-blue-100 text-blue-800",
+    cooling_down:  "bg-orange-100 text-orange-800",
+    paused:        "bg-slate-100 text-slate-600",
+    completed:     "bg-emerald-100 text-emerald-800",
+    failed:        "bg-red-100 text-red-800",
+    drafted:       "bg-violet-100 text-violet-800",
+    cancelled:     "bg-slate-100 text-slate-500",
+    auth_required: "bg-amber-100 text-amber-800",
   };
 
   const statusLabels: Record<string, string> = {
-    cooling_down: "Cooling Down",
-    cancelled:    "Cancelled",
+    cooling_down:  "Cooling Down",
+    cancelled:     "Cancelled",
+    auth_required: "Auth Required",
   };
 
   const sendModeLabel = isSmtp ? "SMTP Direct" : "Gmail Drafts";
@@ -1041,6 +1075,41 @@ export default function CampaignDetail() {
       )}
 
       {/* ─── Deferred warning banner ──────────────────────────────────────────── */}
+      {/* ─── Auth-required banner ─────────────────────────────────────────────── */}
+      {(progress?.status === "auth_required" || (campaign.status as string) === "auth_required") && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800/40 p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex items-start gap-3 flex-1">
+            <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                Campaign paused — authentication required
+              </p>
+              {isSmtp ? (
+                <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                  SMTP authentication failed. Please update your mailbox credentials, then resume the campaign. Failed leads will be retried from where they left off.
+                </p>
+              ) : (
+                <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                  Gmail authorization has expired. Reconnect your Gmail account, then resume the campaign. Failed leads will be retried from where they left off.
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            {isSmtp ? (
+              <Button asChild size="sm" variant="outline" className="rounded-xl gap-1.5 border-amber-300 text-amber-800 hover:bg-amber-100 text-xs">
+                <Link href="/mailbox">Go to Mailbox Settings</Link>
+              </Button>
+            ) : (
+              <Button asChild size="sm" variant="outline" className="rounded-xl gap-1.5 border-amber-300 text-amber-800 hover:bg-amber-100 text-xs">
+                <Link href="/settings">Reconnect Gmail</Link>
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ─── Deferred warning banner ──────────────────────────────────────────── */}
       {progress?.status === "paused" && !isActive && (progress?.queued ?? 0) > 0 && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
           <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -1074,17 +1143,24 @@ export default function CampaignDetail() {
               </p>
               <p className={`text-xs mt-0.5 ${(progress.failed ?? 0) > 0 ? "text-amber-700" : "text-emerald-700"}`}>
                 {(progress.failed ?? 0) > 0
-                  ? "Use the Sent Emails page to retry or ignore failed emails."
+                  ? "You can retry all failed emails with one click, or retry them individually from the leads table below."
                   : isSmtp ? "Check your Sent folder for delivery confirmations." : "Review your Gmail Drafts folder."}
               </p>
             </div>
           </div>
           {(progress.failed ?? 0) > 0 && (
-            <Button asChild size="sm" variant="outline" className="rounded-xl gap-1.5 border-amber-300 text-amber-800 hover:bg-amber-100 flex-shrink-0">
-              <Link href="/sent-emails">
-                <ExternalLink className="h-3.5 w-3.5" /> Retry Failed Emails
-              </Link>
-            </Button>
+            <div className="flex gap-2 flex-shrink-0 flex-wrap">
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-xl gap-1.5 border-amber-300 text-amber-800 hover:bg-amber-100"
+                disabled={retryingAll}
+                onClick={handleRetryAllFailed}
+              >
+                {retryingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                {retryingAll ? "Retrying…" : `Retry All Failed (${progress.failed})`}
+              </Button>
+            </div>
           )}
         </div>
       )}
