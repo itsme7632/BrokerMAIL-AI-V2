@@ -1,0 +1,156 @@
+STOP.
+
+The latest tracking fix introduced a regression.
+
+Current production behavior:
+
+❌ Gmail Single Email Composer → Open count never increases.
+
+❌ SMTP Single Email Composer → Open count never increases.
+
+❌ Gmail Campaign → Open count never increases.
+
+❌ SMTP Campaign → Open count never increases.
+
+Previously:
+
+• SMTP tracking worked.
+• Gmail produced false opens.
+
+Now NOTHING records opens.
+
+==================================================
+
+DO NOT GUESS.
+
+DO NOT add more filters.
+
+DO NOT modify tracking logic blindly.
+
+==================================================
+
+We need a root-cause analysis.
+
+Audit the COMPLETE tracking pipeline.
+
+==================================================
+
+Verify:
+
+1. Tracking pixel injection.
+
+2. HTML actually contains the tracking pixel.
+
+3. Tracking URL.
+
+4. Tracking ID.
+
+5. Email body sent to SMTP.
+
+6. Email body sent to Gmail.
+
+7. Browser request.
+
+8. Express routing.
+
+9. router.head()
+
+10. router.get()
+
+11. Database writes.
+
+12. Open counter update.
+
+==================================================
+
+Instrument the tracking endpoint.
+
+Log separately:
+
+HEAD request received
+
+GET request received
+
+Tracking ID
+
+Method
+
+IP
+
+User-Agent
+
+Whether bot filter matched
+
+Whether request exited early
+
+Whether DB lookup succeeded
+
+Whether openCount updated
+
+Whether tracking event inserted
+
+Return status code
+
+==================================================
+
+Determine exactly where execution stops.
+
+Examples:
+
+GET never arrives
+
+GET arrives but exits
+
+Tracking ID missing
+
+DB lookup fails
+
+Bot filter blocks legitimate user
+
+HEAD route intercepts GET
+
+Router ordering issue
+
+Tracking pixel missing from HTML
+
+==================================================
+
+Do NOT implement any fixes until the exact failure point is identified.
+
+After identifying the root cause:
+
+Implement the minimum required fix.
+
+==================================================
+
+Run:
+
+pnpm typecheck
+
+pnpm build
+
+Provide:
+
+1. Root cause.
+
+2. Exact failing line.
+
+3. Why SMTP stopped.
+
+4. Why Gmail stopped.
+
+5. Why the previous fix caused this regression.
+
+6. Confirmation that:
+
+• HEAD requests never record opens.
+
+• GET requests always record opens.
+
+• Gmail works.
+
+• SMTP works.
+
+• Campaigns work.
+
+• Single Composer works.

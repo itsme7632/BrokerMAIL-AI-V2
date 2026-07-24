@@ -52,21 +52,29 @@ function isBotUserAgent(ua: string | null): boolean {
   const l = ua.toLowerCase();
 
   // ── Google infrastructure ──────────────────────────────────────────────────
-  // Gmail Image Proxy pre-fetches tracking pixels immediately after a message
-  // is accepted by the Gmail API, before any recipient opens it.  Its UA
-  // contains "googleimageproxy" and/or "ggpht.com" — neither matches the
-  // generic "googlebot" check below, which is why it previously slipped
-  // through and caused the Gmail Single Composer false-open bug.
-  if (l.includes("googleimageproxy"))          return true;  // Gmail image proxy UA
-  if (l.includes("ggpht.com"))                 return true;  // Google image proxy domain
-  if (l.includes("google image proxy"))        return true;  // alternate UA description
-  // Google Safe Browsing scanner
+  //
+  // DO NOT add "googleimageproxy", "ggpht.com", or "google image proxy" here.
+  //
+  // GoogleImageProxy is Gmail's image privacy proxy — it fetches tracking
+  // pixels on behalf of real recipients when they VIEW an email.  Its UA
+  // contains "googleimageproxy".  Blocking it kills all open tracking for
+  // Gmail users.  This mistake was made previously and caused a complete
+  // regression (SMTP + Gmail + all campaigns stopped recording opens).
+  //
+  // The pre-delivery security scanner that causes the Gmail Composer false-open
+  // uses a browser-like UA that does NOT contain "googleimageproxy" — blocking
+  // GoogleImageProxy did not and cannot fix that bug.  The false-open issue
+  // requires time-based filtering (see the sentAt guard below), not UA blocking.
+  //
+  // Google Safe Browsing / security scanners — these DO use HEAD or browser-like
+  // UAs but with identifiable strings; block them:
   if (l.includes("google-safety-net"))         return true;
   if (l.includes("google-inspectiontool"))     return true;
   if (l.includes("googlesafebrowsing"))        return true;
-  // Google link / security crawlers
+  // Google link / content crawlers:
   if (l.includes("google-read-aloud"))         return true;
   if (l.includes("feedfetcher-google"))        return true;
+  if (l.includes("googlebot"))                 return true;
 
   // ── Known mail-prefetch / security-scanning services ──────────────────────
   if (l.includes("apple privacy protection")) return true;
