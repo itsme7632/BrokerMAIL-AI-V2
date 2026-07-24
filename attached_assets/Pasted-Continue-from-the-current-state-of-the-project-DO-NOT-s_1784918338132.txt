@@ -1,0 +1,187 @@
+Continue from the current state of the project.
+
+DO NOT start a new audit from scratch.
+
+Everything below has already been completed.
+
+========================================
+CURRENT STATE
+========================================
+
+The latest tracking investigation found the real regression.
+
+Findings:
+
+1.
+
+The tracking pipeline (pixel injection, trackingId generation, HTML injection, SMTP path, Gmail path, routing) is working correctly.
+
+2.
+
+Express routing is correct.
+
+router.head() handles HEAD requests.
+
+router.get() handles GET requests.
+
+No routing conflict exists.
+
+3.
+
+The HEAD handler should remain.
+
+It correctly prevents HEAD requests from recording opens.
+
+4.
+
+The regression came from isBotUserAgent().
+
+The previous implementation incorrectly treated:
+
+googleimageproxy
+
+ggpht.com
+
+google image proxy
+
+as bots.
+
+That blocks Gmail's legitimate image loading service.
+
+As a result:
+
+• Gmail recipient opens are never counted.
+
+• SMTP emails sent to Gmail recipients are also never counted.
+
+The GET handler exits before any database updates.
+
+5.
+
+The original false-open problem is still NOT solved.
+
+The original false open was NOT caused by GoogleImageProxy.
+
+It comes from Google's outbound pre-delivery scanning service which performs a GET request immediately after Gmail API delivery using a browser-like User-Agent.
+
+Therefore:
+
+Removing GoogleImageProxy blocking restores legitimate opens.
+
+The original false-open source still needs to be identified.
+
+========================================
+WHAT HAS ALREADY BEEN CHANGED
+========================================
+
+✓ router.head() exists.
+
+✓ HEAD requests never update the database.
+
+✓ First-open diagnostic logging exists.
+
+✓ pnpm typecheck passes.
+
+✓ pnpm build passes.
+
+DO NOT remove these improvements.
+
+========================================
+NEXT TASK
+========================================
+
+Implement only the minimum required fix.
+
+Remove:
+
+• googleimageproxy
+• ggpht.com
+• google image proxy
+
+from isBotUserAgent().
+
+Keep every other scanner/bot filter.
+
+Keep the HEAD handler.
+
+Keep diagnostic logging.
+
+========================================
+AFTER THAT
+========================================
+
+Investigate the ORIGINAL Gmail false-open issue.
+
+Do NOT guess.
+
+Do NOT add random User-Agent strings.
+
+Use the existing FIRST-OPEN-DIAG logs.
+
+Determine exactly which request is causing the false open.
+
+Log:
+
+• HTTP method
+• IP
+• User-Agent
+• Headers
+• X-Forwarded-For
+• Referer
+• Tracking ID
+• Gmail vs SMTP
+• Time since sent
+
+Identify the exact request responsible.
+
+Only after identifying the real source should you implement a fix.
+
+========================================
+VERIFICATION
+========================================
+
+Verify all four scenarios:
+
+1.
+
+SMTP → Gmail recipient
+
+No open before recipient opens.
+
+Open count becomes 1 after recipient opens.
+
+2.
+
+Gmail API → Gmail recipient
+
+No open before recipient opens.
+
+Open count becomes 1 after recipient opens.
+
+3.
+
+SMTP → non-Gmail recipient
+
+Still works.
+
+4.
+
+Campaigns
+
+SMTP and Gmail tracking both work.
+
+========================================
+
+Run:
+
+pnpm typecheck
+
+pnpm build
+
+Finally provide:
+
+1. Files modified.
+2. Root cause.
+3. Why the previous fix broke Gmail tracking.
+4. How the original Gmail false-open issue is actually resolved.
+5. Confirmation that HEAD requests never record opens while legitimate GET requests always do.
