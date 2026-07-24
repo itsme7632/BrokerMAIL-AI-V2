@@ -100,6 +100,39 @@ function isBotUserAgent(ua: string | null): boolean {
   );
 }
 
+// ── HEAD /track/open/:trackingId ─────────────────────────────────────────────
+//
+// Critical: without this explicit HEAD handler Express routes HEAD requests to
+// the GET route below, executing ALL its code (UA check → DB lookup → dedup →
+// DB insert) while suppressing only the response body.
+//
+// Root cause of the Gmail Single Composer false-open bug:
+//   Google's outbound security scanner (not GoogleImageProxy — a different
+//   service) probes every image URL in a message immediately after it is
+//   accepted by the Gmail API.  It uses an HTTP HEAD request so it never
+//   actually downloads the image.  Because there was no HEAD handler, Express
+//   routed it to the GET handler; the handler ran in full, recorded the open,
+//   then discarded the pixel bytes before sending.  The sender's open counter
+//   incremented before the recipient ever opened the email.
+//
+//   SMTP is unaffected because SMTP messages are not processed by Google's
+//   infrastructure at send time, so no HEAD probe is issued.
+//
+// This handler returns only the image metadata headers — zero DB work.
+// It is the correct HTTP/1.1 behaviour: HEAD MUST return identical headers
+// to GET but MUST NOT include a message body (RFC 9110 §9.3.2).
+//
+router.head("/track/open/:trackingId", (_req, res): void => {
+  res.set({
+    "Content-Type":   "image/gif",
+    "Content-Length": String(PIXEL.length),
+    "Cache-Control":  "no-store, no-cache, must-revalidate, private",
+    Pragma:           "no-cache",
+    Expires:          "0",
+  });
+  res.end();
+});
+
 router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
   const { trackingId } = req.params;
   const ip = req.ip ?? null;
@@ -362,6 +395,41 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
                 eq(emailTrackingEventsTable.draftId, draft.id),
                 eq(emailTrackingEventsTable.eventType, "open"),
               ));
+
+            // ── FIRST-OPEN DIAGNOSTIC ──────────────────────────────────────
+            // Fires only when the very first open for this draft is recorded
+            // (openCount === 1).  Captures every header and request field
+            // needed to identify whether the requester is a real browser, a
+            // Google scanner, an image proxy, or anything else.
+            // gmailDraftId prefix ("gmail-composer:…" vs "smtp-composer:…")
+            // shows which transport was used without needing extra DB queries.
+            if (openCount === 1) {
+              logger.info({
+                tag:             "[FIRST-OPEN-DIAG]",
+                trackingId,
+                draftId:         draft.id,
+                gmailDraftId:    draft.gmailDraftId,
+                transport:       draft.gmailDraftId?.startsWith("gmail") ? "gmail" : "smtp",
+                method:          req.method,
+                ip,
+                ua,
+                referer:         req.get("referer")           ?? null,
+                host:            req.get("host")              ?? null,
+                accept:          req.get("accept")            ?? null,
+                acceptLanguage:  req.get("accept-language")   ?? null,
+                acceptEncoding:  req.get("accept-encoding")   ?? null,
+                xForwardedFor:   req.get("x-forwarded-for")   ?? null,
+                xRealIp:         req.get("x-real-ip")         ?? null,
+                xForwardedHost:  req.get("x-forwarded-host")  ?? null,
+                xForwardedProto: req.get("x-forwarded-proto") ?? null,
+                via:             req.get("via")               ?? null,
+                forwarded:       req.get("forwarded")         ?? null,
+                allHeaders:      req.headers,
+                sentAt:          draft.sentAt?.toISOString()  ?? null,
+                msSinceSentAt:   draft.sentAt ? ts.getTime() - draft.sentAt.getTime() : null,
+                timestamp:       ts.toISOString(),
+              }, "[TRACK/OPEN] FIRST-OPEN DIAGNOSTIC — first open recorded, full request dump above");
+            }
 
             logger.info({
               trackingId,

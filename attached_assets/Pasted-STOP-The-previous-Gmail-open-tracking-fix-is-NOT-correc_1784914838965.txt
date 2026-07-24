@@ -1,0 +1,218 @@
+STOP.
+
+The previous Gmail open-tracking fix is NOT correct.
+
+Real-world testing shows:
+
+• SMTP Single Email Composer behaves correctly.
+• Gmail Single Email Composer still records an open almost immediately after sending.
+• The recipient NEVER opened the email.
+• The email may even still be sitting unread in Spam.
+
+Therefore the previous GoogleImageProxy filter did NOT solve the root cause.
+
+==================================================
+DO NOT GUESS
+==================================================
+
+Do NOT add more random user-agent strings.
+
+Do NOT keep extending isBotUserAgent blindly.
+
+Find the ACTUAL request that is causing the false open.
+
+==================================================
+INVESTIGATE THE ENTIRE FLOW
+==================================================
+
+Audit:
+
+Single Email Composer
+↓
+
+Gmail send path
+
+↓
+
+Tracking pixel injection
+
+↓
+
+Tracking URL generation
+
+↓
+
+Gmail API send
+
+↓
+
+Tracking endpoint
+
+↓
+
+Open recording
+
+Compare this entire flow against SMTP.
+
+==================================================
+COMPARE SMTP VS GMAIL
+==================================================
+
+Compare every step.
+
+Verify:
+
+• HTML before sending
+• Tracking pixel injection
+• Click tracking
+• Tracking ID creation
+• Gmail API payload
+• SMTP payload
+• Stored draft row
+• sentAt
+• trackingId
+• openCount
+• tracking endpoint
+
+The only difference should be the transport.
+
+If anything else differs, explain why.
+
+==================================================
+LOG THE FIRST REQUEST
+==================================================
+
+Temporarily log the FIRST request that records an open.
+
+Log:
+
+IP
+
+User-Agent
+
+Headers
+
+Referer
+
+Host
+
+X-Forwarded-For
+
+Accept
+
+Accept-Language
+
+Accept-Encoding
+
+Timestamp
+
+trackingId
+
+draftId
+
+gmailDraftId
+
+Message-ID
+
+Whether it was Gmail or SMTP
+
+Whether the message was in Spam
+
+Whether images were downloaded
+
+Do NOT log every request.
+
+Only the first open event for a trackingId.
+
+==================================================
+DETERMINE EXACT SOURCE
+==================================================
+
+Identify exactly what generated the request.
+
+Examples:
+
+Google Image Proxy
+
+Google Safe Browsing
+
+Google Spam Scanner
+
+Google Workspace Security
+
+Virus scanner
+
+Mail gateway
+
+Browser
+
+Outlook
+
+Apple Mail
+
+Anything else
+
+Do NOT assume.
+
+Identify it from the logs.
+
+==================================================
+FIX THE ROOT CAUSE
+==================================================
+
+Once identified:
+
+Implement a robust solution.
+
+Do NOT rely on adding dozens of user-agent keywords.
+
+If necessary:
+
+• detect Google image cache
+• detect HEAD requests
+• detect Gmail proxy headers
+• detect image caching behavior
+• detect prefetch requests
+• detect scanner signatures
+• detect duplicate pre-open requests
+
+Only count genuine human opens.
+
+==================================================
+VERIFY
+==================================================
+
+After the fix:
+
+1.
+
+Send Gmail Single Email Composer.
+
+Recipient does NOT open.
+
+Open count MUST stay 0.
+
+2.
+
+Recipient opens email.
+
+Open count becomes 1.
+
+3.
+
+SMTP behaviour remains unchanged.
+
+==================================================
+RUN
+
+pnpm typecheck
+
+pnpm build
+
+Provide:
+
+1. Exact root cause.
+2. Exact request causing the false open.
+3. Why SMTP worked while Gmail didn't.
+4. Why the previous fix failed.
+5. Why the new fix cannot falsely count Gmail prefetches.
