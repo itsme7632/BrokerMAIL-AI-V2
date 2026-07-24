@@ -30,6 +30,21 @@ const VALID_REASONS = new Set([
   "other",
 ]);
 
+// ─── Reason label ─────────────────────────────────────────────────────────────
+
+const REASON_LABELS: Record<string, string> = {
+  unsubscribe:    "Unsubscribed",
+  already_shipped: "Already shipped my vehicle",
+  not_interested: "Not interested",
+  too_many_emails: "Too many emails",
+  spam:           "Marked as spam",
+  other:          "Other",
+};
+
+function reasonLabel(reason: string): string {
+  return REASON_LABELS[reason] ?? reason.replace(/_/g, " ");
+}
+
 // ─── Notification helper ──────────────────────────────────────────────────────
 
 interface UnsubscribeNotificationParams {
@@ -83,10 +98,11 @@ async function createUnsubscribeNotification(params: UnsubscribeNotificationPara
       if (lead?.name?.trim()) recipientName = lead.name.trim();
     }
 
-    const displayName = recipientName ?? email;
-    const title   = "Customer Unsubscribed";
-    const message = `${displayName} (${email}) unsubscribed from your emails.`;
-    const link    = `/suppression-list?highlight=${encodeURIComponent(email)}`;
+    const displayName = recipientName ? `${recipientName} (${email})` : email;
+    const title       = "Customer Unsubscribed";
+    const label       = reasonLabel(reason);
+    const message     = `${displayName} unsubscribed from your emails. Reason: ${label}.`;
+    const link        = `/suppression-list?highlight=${encodeURIComponent(email)}`;
 
     const metadata: Record<string, unknown> = {
       suppressionId,
@@ -101,7 +117,7 @@ async function createUnsubscribeNotification(params: UnsubscribeNotificationPara
       timestamp: new Date().toISOString(),
     };
 
-    await db.insert(notificationsTable).values({
+    const [inserted] = await db.insert(notificationsTable).values({
       userId,
       type:    "unsubscribe",
       title,
@@ -110,12 +126,18 @@ async function createUnsubscribeNotification(params: UnsubscribeNotificationPara
       refId:   suppressionId,
       refType: "suppression",
       metadata,
-    });
+    }).returning({ id: notificationsTable.id });
 
-    logger.info({ userId, email, suppressionId }, "[UNSUBSCRIBE] Notification created");
+    logger.info(
+      { userId, email, suppressionId, notificationId: inserted?.id ?? null, reason },
+      "[UNSUBSCRIBE] Notification created",
+    );
   } catch (err) {
-    // Non-fatal — the unsubscribe already succeeded; don't surface this error
-    logger.warn({ err }, "[UNSUBSCRIBE] Failed to create unsubscribe notification");
+    // Non-fatal — the unsubscribe already succeeded; don't surface this error to the recipient
+    logger.error(
+      { err, userId: params.userId, email: params.email, suppressionId: params.suppressionId },
+      "[UNSUBSCRIBE] FAILED to create unsubscribe notification — check notifications table schema",
+    );
   }
 }
 
@@ -187,12 +209,15 @@ router.get("/unsubscribe", async (req, res): Promise<void> => {
 // POST /api/unsubscribe/reason
 // After the unsubscribe page loads it may POST the user's selected reason.
 // body: { token: string; reason: string }
+//
+// In addition to updating suppressionListTable.reason, this endpoint also
+// updates the matching notification so the bell and history show the real reason.
 router.post("/unsubscribe/reason", async (req, res): Promise<void> => {
   const token  = typeof req.body.token  === "string" ? req.body.token.trim()  : "";
   const reason = typeof req.body.reason === "string" ? req.body.reason.trim() : "";
 
-  if (!token) { res.status(400).json({ error: "Missing token" }); return; }
-  if (!VALID_REASONS.has(reason)) { res.status(400).json({ error: "Invalid reason" }); return; }
+  if (!token)                       { res.status(400).json({ error: "Missing token" });   return; }
+  if (!VALID_REASONS.has(reason))   { res.status(400).json({ error: "Invalid reason" }); return; }
 
   const payload = verifyUnsubscribeToken(token);
   if (!payload) { res.status(400).json({ error: "Invalid or expired token" }); return; }
@@ -200,6 +225,7 @@ router.post("/unsubscribe/reason", async (req, res): Promise<void> => {
   const email = payload.email.trim().toLowerCase();
 
   try {
+    // ── 1. Update suppression reason ─────────────────────────────────────────
     await db
       .update(suppressionListTable)
       .set({ reason })
@@ -211,6 +237,74 @@ router.post("/unsubscribe/reason", async (req, res): Promise<void> => {
       );
 
     logger.info({ userId: payload.userId, email, reason }, "[UNSUBSCRIBE] Reason updated");
+
+    // ── 2. Update the matching notification ───────────────────────────────────
+    // Look up the suppression row so we have its ID (used as refId on the notification).
+    try {
+      const [suppression] = await db
+        .select({ id: suppressionListTable.id })
+        .from(suppressionListTable)
+        .where(
+          and(
+            eq(suppressionListTable.userId, payload.userId),
+            eq(suppressionListTable.email, email),
+          ),
+        )
+        .limit(1);
+
+      if (!suppression) {
+        logger.warn({ userId: payload.userId, email },
+          "[UNSUBSCRIBE] Could not find suppression row to link notification update — notification not updated");
+      } else {
+        // Find the notification created by GET /api/unsubscribe
+        const [notification] = await db
+          .select({ id: notificationsTable.id, metadata: notificationsTable.metadata })
+          .from(notificationsTable)
+          .where(
+            and(
+              eq(notificationsTable.userId,  payload.userId),
+              eq(notificationsTable.refId,   suppression.id),
+              eq(notificationsTable.refType, "suppression"),
+            ),
+          )
+          .limit(1);
+
+        if (!notification) {
+          logger.warn(
+            { userId: payload.userId, email, suppressionId: suppression.id },
+            "[UNSUBSCRIBE] No matching notification found for suppression — notification not updated",
+          );
+        } else {
+          // Rebuild display name from metadata (already stored there)
+          const meta = (notification.metadata ?? {}) as Record<string, unknown>;
+          const recipientName = typeof meta.recipientName === "string" ? meta.recipientName : null;
+          const displayName   = recipientName ? `${recipientName} (${email})` : email;
+          const label         = reasonLabel(reason);
+          const updatedMessage = `${displayName} unsubscribed from your emails. Reason: ${label}.`;
+          const updatedMetadata: Record<string, unknown> = {
+            ...meta,
+            unsubscribeReason: reason,
+          };
+
+          await db
+            .update(notificationsTable)
+            .set({ message: updatedMessage, metadata: updatedMetadata })
+            .where(eq(notificationsTable.id, notification.id));
+
+          logger.info(
+            { userId: payload.userId, email, notificationId: notification.id, reason, updatedMessage },
+            "[UNSUBSCRIBE] Notification updated with chosen reason",
+          );
+        }
+      }
+    } catch (notifErr) {
+      // Non-fatal — the suppression reason update already succeeded
+      logger.error(
+        { notifErr, userId: payload.userId, email, reason },
+        "[UNSUBSCRIBE] Failed to update notification with chosen reason",
+      );
+    }
+
     res.json({ success: true });
   } catch (err) {
     logger.error({ err, email }, "[UNSUBSCRIBE] Failed to update reason");
