@@ -108,6 +108,50 @@ function isBotUserAgent(ua: string | null): boolean {
   );
 }
 
+/**
+ * Same logic as isBotUserAgent but returns the matched pattern string (for
+ * diagnostic logging only) or null when the UA is not a bot.
+ * Keep in sync with isBotUserAgent whenever that function changes.
+ */
+function getBotReason(ua: string | null): string | null {
+  if (!ua) return null;
+  const l = ua.toLowerCase();
+  const checks: [string, string][] = [
+    ["google-safety-net", "google-safety-net"],
+    ["google-inspectiontool", "google-inspectiontool"],
+    ["googlesafebrowsing", "googlesafebrowsing"],
+    ["google-read-aloud", "google-read-aloud"],
+    ["feedfetcher-google", "feedfetcher-google"],
+    ["googlebot", "googlebot"],
+    ["apple privacy protection", "apple privacy protection"],
+    ["outlook fetch worker", "outlook fetch worker"],
+    ["microsoft office", "microsoft office"],
+    ["yahoo slurp", "yahoo slurp"],
+    ["bingbot", "bingbot"],
+    ["applebot", "applebot"],
+    ["mimecast", "mimecast"],
+    ["proofpoint", "proofpoint"],
+    ["barracuda", "barracuda"],
+    ["agari", "agari"],
+    ["abnormal security", "abnormal security"],
+    ["cloudmark", "cloudmark"],
+    ["greathorn", "greathorn"],
+    ["ironscales", "ironscales"],
+    ["vade secure", "vade secure"],
+    ["cofense", "cofense"],
+    ["tessian", "tessian"],
+    ["knowbe4", "knowbe4"],
+    ["bot", "generic:bot"],
+    ["crawler", "generic:crawler"],
+    ["spider", "generic:spider"],
+    ["prefetch", "generic:prefetch"],
+  ];
+  for (const [pattern, label] of checks) {
+    if (l.includes(pattern)) return label;
+  }
+  return null;
+}
+
 // ── HEAD /track/open/:trackingId ─────────────────────────────────────────────
 //
 // Critical: without this explicit HEAD handler Express routes HEAD requests to
@@ -130,7 +174,19 @@ function isBotUserAgent(ua: string | null): boolean {
 // It is the correct HTTP/1.1 behaviour: HEAD MUST return identical headers
 // to GET but MUST NOT include a message body (RFC 9110 §9.3.2).
 //
-router.head("/track/open/:trackingId", (_req, res): void => {
+router.head("/track/open/:trackingId", (req, res): void => {
+  // ── DIAG: log every HEAD request so we can see if scanners are hitting this path ──
+  logger.info({
+    handler:       "HEAD",
+    trackingId:    req.params.trackingId,
+    ip:            req.ip ?? null,
+    ua:            req.get("user-agent") ?? null,
+    xForwardedFor: req.headers["x-forwarded-for"] ?? "(not set)",
+    xRealIp:       req.headers["x-real-ip"]       ?? "(not set)",
+    referer:       req.get("referer")              ?? null,
+    timestamp:     new Date().toISOString(),
+  }, "[TRACK/HEAD] HEAD request intercepted — no DB work, headers only");
+
   res.set({
     "Content-Type":   "image/gif",
     "Content-Length": String(PIXEL.length),
@@ -175,7 +231,7 @@ router.get("/track/open/:trackingId", async (req, res): Promise<void> => {
       return;
     }
     if (isBotUserAgent(ua)) {
-      logger.info({ trackingId, ua },
+      logger.info({ trackingId, ua, botReason: getBotReason(ua) },
         "[TRACK/OPEN] 2b. EXIT — Bot/prefetch user-agent — open ignored, serving pixel");
       sendPixel(res);
       return;
