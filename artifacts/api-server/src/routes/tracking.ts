@@ -51,37 +51,39 @@ function isBotUserAgent(ua: string | null): boolean {
   if (!ua) return false;
   const l = ua.toLowerCase();
 
+  // ── Google Image Proxy allowlist — checked BEFORE any block rules ─────────
+  //
+  // Gmail loads tracking pixels through its image privacy proxy.  Depending on
+  // platform / Gmail version the proxy announces itself as either:
+  //   • "Googleimageproxy/…"  (modern Gmail web + mobile)
+  //   • "Googlebot-Image/1.0" (legacy path)
+  //
+  // Both represent a REAL recipient viewing their email and MUST NOT be blocked.
+  //
+  // "Googlebot-Image/1.0" contains both "googlebot" (caught by the explicit
+  // block below) and "bot" (caught by the generic block at the bottom).
+  // Without this early-return these two rules would silently drop every Gmail
+  // open — which is the exact regression that was observed in production.
+  //
+  if (l.includes("googleimageproxy")) return false;  // modern Gmail image proxy
+  if (l.includes("googlebot-image"))  return false;  // legacy Gmail image proxy
+
   // ── Google infrastructure ──────────────────────────────────────────────────
   //
-  // DO NOT add "googleimageproxy", "ggpht.com", or "google image proxy" here.
-  //
-  // GoogleImageProxy is Gmail's image privacy proxy — it fetches tracking
-  // pixels on behalf of real recipients when they VIEW an email.  Its UA
-  // contains "googleimageproxy".  Blocking it kills all open tracking for
-  // Gmail users.  This mistake was made previously and caused a complete
-  // regression (SMTP + Gmail + all campaigns stopped recording opens).
-  //
-  // The pre-delivery security scanner that causes the Gmail Composer false-open
-  // uses a browser-like UA that does NOT contain "googleimageproxy" — blocking
-  // GoogleImageProxy did not and cannot fix that bug.  The false-open issue
-  // requires time-based filtering (see the sentAt guard below), not UA blocking.
-  //
-  // Google Safe Browsing / security scanners — these DO use HEAD or browser-like
-  // UAs but with identifiable strings; block them:
+  // Google Safe Browsing / security scanners — block them:
   if (l.includes("google-safety-net"))         return true;
   if (l.includes("google-inspectiontool"))     return true;
   if (l.includes("googlesafebrowsing"))        return true;
   // Google link / content crawlers:
   if (l.includes("google-read-aloud"))         return true;
   if (l.includes("feedfetcher-google"))        return true;
-  if (l.includes("googlebot"))                 return true;
+  if (l.includes("googlebot"))                 return true;  // web crawler (not image proxy — see allowlist above)
 
   // ── Known mail-prefetch / security-scanning services ──────────────────────
   if (l.includes("apple privacy protection")) return true;
   if (l.includes("outlook fetch worker"))    return true;
   if (l.includes("microsoft office"))        return true;
   if (l.includes("yahoo slurp"))             return true;
-  if (l.includes("googlebot"))               return true;
   if (l.includes("bingbot"))                 return true;
   if (l.includes("applebot"))                return true;
   if (l.includes("mimecast"))                return true;
@@ -116,6 +118,9 @@ function isBotUserAgent(ua: string | null): boolean {
 function getBotReason(ua: string | null): string | null {
   if (!ua) return null;
   const l = ua.toLowerCase();
+  // Mirror the allowlist in isBotUserAgent — these are never bots
+  if (l.includes("googleimageproxy")) return null;
+  if (l.includes("googlebot-image"))  return null;
   const checks: [string, string][] = [
     ["google-safety-net", "google-safety-net"],
     ["google-inspectiontool", "google-inspectiontool"],

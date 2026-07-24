@@ -1,0 +1,92 @@
+We now have a much clearer picture after testing.
+
+Results:
+
+1. Outlook test
+- Email initially did NOT register an open.
+- As soon as I clicked "Download Pictures", BrokerMAIL immediately recorded the open.
+- This behavior is expected because Outlook blocks remote images.
+
+2. Gmail -> Gmail test
+- Email was opened.
+- No open was recorded.
+- No notification appeared.
+
+The logs show that Gmail DID request the tracking pixel, but our application exited before recording the open because it classified the request as a bot/prefetch.
+
+Please investigate this thoroughly.
+
+Tasks:
+
+1. Find the exact code path that logs:
+
+   "[TRACK/OPEN] 2b. EXIT — Bot/prefetch user-agent"
+
+2. Determine exactly WHICH rule caused the request to be rejected.
+
+I don't want only "isBotUserAgent() returned true".
+
+I want the exact matching rule logged, for example:
+
+- matchedRule: "googleimageproxy"
+- matchedRule: "ggpht.com"
+- matchedRule: "prefetch"
+- matchedRule: "google"
+- matchedRule: "<actual regex or keyword>"
+
+3. Verify that GoogleImageProxy and ggpht.com are NOT still being treated as bots anywhere in production.
+
+Do a full repository search.
+
+Check:
+
+- isBotUserAgent()
+- getBotReason()
+- any middleware
+- any helper
+- any duplicate implementation
+- any old utility still imported
+- any reverse proxy filtering
+- any early return before tracking is recorded
+
+4. IMPORTANT
+
+Please verify whether this same filtering logic is shared by ALL tracking flows.
+
+Specifically tell me whether ALL of these use the same /api/track/open/:trackingId endpoint:
+
+- SMTP Campaigns
+- Gmail Campaigns
+- SMTP Composer
+- Gmail Composer
+
+If yes, then explain whether this single bug would prevent opens from being recorded for every one of those features.
+
+If no, explain which paths are different.
+
+5. If Gmail requests are intentionally ignored because they are GoogleImageProxy requests, explain the reasoning.
+
+We already confirmed Outlook only records after images are downloaded.
+
+If Gmail is always being ignored, then Gmail opens will never be tracked.
+
+6. If you find the root cause, fix it properly.
+
+Do NOT simply remove filters blindly.
+
+Ensure:
+
+- Gmail opens are recorded correctly.
+- Outlook still works.
+- HEAD requests are still ignored.
+- Duplicate opens are still prevented.
+- Bot scanners are still filtered.
+
+Finally provide:
+
+- Root cause
+- Files changed
+- Why this happened
+- Why the fix is correct
+- pnpm typecheck result
+- pnpm build result
