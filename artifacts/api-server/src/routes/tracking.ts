@@ -50,7 +50,25 @@ function isPrivateIp(ip: string | null): boolean {
 function isBotUserAgent(ua: string | null): boolean {
   if (!ua) return false;
   const l = ua.toLowerCase();
-  // Known mail-prefetch services
+
+  // ── Google infrastructure ──────────────────────────────────────────────────
+  // Gmail Image Proxy pre-fetches tracking pixels immediately after a message
+  // is accepted by the Gmail API, before any recipient opens it.  Its UA
+  // contains "googleimageproxy" and/or "ggpht.com" — neither matches the
+  // generic "googlebot" check below, which is why it previously slipped
+  // through and caused the Gmail Single Composer false-open bug.
+  if (l.includes("googleimageproxy"))          return true;  // Gmail image proxy UA
+  if (l.includes("ggpht.com"))                 return true;  // Google image proxy domain
+  if (l.includes("google image proxy"))        return true;  // alternate UA description
+  // Google Safe Browsing scanner
+  if (l.includes("google-safety-net"))         return true;
+  if (l.includes("google-inspectiontool"))     return true;
+  if (l.includes("googlesafebrowsing"))        return true;
+  // Google link / security crawlers
+  if (l.includes("google-read-aloud"))         return true;
+  if (l.includes("feedfetcher-google"))        return true;
+
+  // ── Known mail-prefetch / security-scanning services ──────────────────────
   if (l.includes("apple privacy protection")) return true;
   if (l.includes("outlook fetch worker"))    return true;
   if (l.includes("microsoft office"))        return true;
@@ -61,7 +79,18 @@ function isBotUserAgent(ua: string | null): boolean {
   if (l.includes("mimecast"))                return true;
   if (l.includes("proofpoint"))              return true;
   if (l.includes("barracuda"))               return true;
-  // Generic bot keywords — intentionally narrow to avoid blocking real email clients.
+  // Email security / link-scanning vendors
+  if (l.includes("agari"))                   return true;
+  if (l.includes("abnormal security"))       return true;
+  if (l.includes("cloudmark"))               return true;
+  if (l.includes("greathorn"))               return true;
+  if (l.includes("ironscales"))              return true;
+  if (l.includes("vade secure"))             return true;
+  if (l.includes("cofense"))                 return true;
+  if (l.includes("tessian"))                 return true;
+  if (l.includes("knowbe4"))                 return true;
+
+  // ── Generic bot keywords — intentionally narrow ───────────────────────────
   // "preview" and "scan" were removed: too broad and can match legitimate UAs.
   return (
     l.includes("bot") ||
