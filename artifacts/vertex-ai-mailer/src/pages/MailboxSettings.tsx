@@ -314,6 +314,11 @@ function LiveStatusWidget({ visible, form }: { visible: boolean; form: MailboxFo
                 label="Next Probe"
                 value={quota.quotaCooldownUntil && isCooling ? new Date(quota.quotaCooldownUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
               />
+              <Row
+                label="Probe Count"
+                value={quota.quotaProbeCount > 0 ? String(quota.quotaProbeCount) : "—"}
+                valueClassName={quota.quotaProbeCount > 0 ? "text-amber-600 dark:text-amber-400" : ""}
+              />
               <Row label="Sending Pace" value={`${form.delaySeconds}s · ${form.batchSize}/batch`} />
               <Row
                 label="Last Error"
@@ -989,24 +994,6 @@ export default function MailboxSettings() {
                     onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v) && v > 0) set("probeRetryMinutes", v); }}
                     className="h-9 rounded-xl font-mono text-sm" />
                   <p className="text-xs text-muted-foreground">Extra wait after each failed probe. Default: 5.</p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                    <Shield className="h-3.5 w-3.5 text-muted-foreground" /> Auto Resume
-                  </label>
-                  <div className="h-9 flex items-center px-3 rounded-xl border border-border bg-muted/40 text-xs font-medium text-foreground">
-                    Always on
-                  </div>
-                  <p className="text-xs text-muted-foreground">Resumes automatically after a successful probe.</p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                    <Activity className="h-3.5 w-3.5 text-muted-foreground" /> Notifications
-                  </label>
-                  <div className="h-9 flex items-center px-3 rounded-xl border border-border bg-muted/40 text-xs font-medium text-foreground">
-                    Shown in Live SMTP Status
-                  </div>
-                  <p className="text-xs text-muted-foreground">Cooldowns and probes appear in the sidebar.</p>
                 </div>
               </div>
             </CardContent>

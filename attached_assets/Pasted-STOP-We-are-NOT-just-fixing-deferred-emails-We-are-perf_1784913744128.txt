@@ -1,0 +1,320 @@
+STOP.
+
+We are NOT just fixing deferred emails.
+
+We are performing a complete audit of the SMTP Quota Recovery System.
+
+This system must behave like enterprise email platforms.
+
+==================================================
+PROBLEM
+==================================================
+
+Observed behavior:
+
+A campaign was started.
+
+The SMTP provider reached its hourly quota.
+
+Instead of pausing immediately, BrokerMAIL AI continued processing the queue.
+
+Over 100 emails became Deferred / Failed because of quota exhaustion.
+
+This should NEVER happen.
+
+==================================================
+EXPECTED BEHAVIOR
+==================================================
+
+When quota/rate-limit is detected:
+
+• Stop sending immediately.
+• Do NOT continue processing the remaining queue.
+• Put the mailbox into Cooling Down.
+• Put the campaign into Cooling Down.
+• Leave all remaining leads Pending.
+• Start the recovery scheduler.
+• Probe after the configured cooldown.
+• Resume automatically only after quota is available.
+• Resume from the exact next unsent lead.
+
+One quota event must stop the worker immediately.
+
+==================================================
+AUDIT THE ENTIRE RECOVERY SYSTEM
+==================================================
+
+Audit every component:
+
+• SMTP worker
+• Campaign processor
+• Queue processor
+• Mailbox state machine
+• Campaign state machine
+• Recovery scheduler
+• Probe scheduler
+• Cooldown timer
+• Deferred handling
+• Pending handling
+• Retry logic
+• Auto Resume
+• Manual Pause
+• Live SMTP Status
+
+==================================================
+VERIFY INITIAL COOLDOWN
+==================================================
+
+The UI currently allows:
+
+Initial Cooldown (minutes)
+
+Verify:
+
+• Is this value actually used?
+• Is the timer persisted in the database?
+• Does restarting the API lose the cooldown?
+• Does every mailbox have its own cooldown?
+• Does the scheduler wait the correct amount of time?
+
+==================================================
+VERIFY PROBE INTERVAL
+==================================================
+
+The UI currently allows:
+
+Probe Interval
+
+Determine exactly how probing works.
+
+Questions:
+
+What is being probed?
+
+Does it actually send an SMTP command?
+
+Does it attempt AUTH?
+
+Does it attempt MAIL FROM?
+
+Does it reconnect?
+
+Does it just wait?
+
+If quota is still exhausted:
+
+Does it wait another Probe Interval?
+
+Does it exponentially backoff?
+
+Or does it continuously retry?
+
+==================================================
+VERIFY AUTO RESUME
+==================================================
+
+The UI currently shows:
+
+Auto Resume
+
+Always On
+
+Questions:
+
+Is Auto Resume actually configurable?
+
+Or is it hardcoded?
+
+Why can the user not change it?
+
+If it is hardcoded:
+
+Remove the fake setting.
+
+If it is intended to be configurable:
+
+Implement a real toggle.
+
+==================================================
+VERIFY MANUAL PAUSE
+==================================================
+
+Critical.
+
+If Auto Resume is enabled:
+
+Can a user manually pause a campaign?
+
+If yes:
+
+Does the scheduler incorrectly resume it anyway?
+
+Manual Pause MUST always override Auto Resume.
+
+Required behavior:
+
+Quota pause
+→ automatic resume allowed.
+
+Manual pause
+→ NEVER resume automatically.
+
+The scheduler must distinguish:
+
+paused_by_user
+
+paused_by_quota
+
+paused_by_admin
+
+Each state must behave differently.
+
+==================================================
+VERIFY CAMPAIGN STATES
+==================================================
+
+Audit all campaign states.
+
+Ensure there are separate states for:
+
+Pending
+
+Sending
+
+Cooling Down
+
+Paused by User
+
+Paused by Quota
+
+Completed
+
+Failed
+
+Auth Required
+
+Cancelled
+
+Do NOT overload one status for multiple meanings.
+
+==================================================
+VERIFY MAILBOX STATES
+==================================================
+
+Audit mailbox state.
+
+Ensure mailbox states include:
+
+Online
+
+Cooling Down
+
+Quota Exceeded
+
+Paused
+
+Offline
+
+Authentication Required
+
+==================================================
+VERIFY RECOVERY
+==================================================
+
+When quota returns:
+
+The worker must resume ONLY the mailbox that recovered.
+
+Not every mailbox.
+
+Not every campaign.
+
+Only the affected mailbox.
+
+Resume exactly where it stopped.
+
+Never resend successful emails.
+
+Never skip pending emails.
+
+==================================================
+VERIFY DEFERRED EMAILS
+==================================================
+
+Emails should only become Deferred when:
+
+Temporary SMTP failure unrelated to quota.
+
+Quota exhaustion should NOT create hundreds of deferred emails.
+
+Remaining emails should stay Pending.
+
+==================================================
+VERIFY DASHBOARD
+==================================================
+
+Live SMTP Status must correctly display:
+
+Cooling Down
+
+Time Remaining
+
+Next Probe
+
+Probe Count
+
+Last Probe
+
+Auto Resume Enabled
+
+Manual Pause
+
+Reason For Pause
+
+==================================================
+VERIFY UI
+==================================================
+
+If Auto Resume is configurable:
+
+Implement a working toggle.
+
+If it is NOT configurable:
+
+Remove the fake control.
+
+Do not display settings the user cannot change.
+
+==================================================
+VERIFICATION
+==================================================
+
+Run:
+
+pnpm typecheck
+
+Run:
+
+pnpm build
+
+Finally provide:
+
+1. Root cause of the deferred email issue.
+
+2. Exact quota recovery flow before.
+
+3. Exact quota recovery flow after.
+
+4. How Initial Cooldown works.
+
+5. How Probe Interval works.
+
+6. Whether Auto Resume is real or fake.
+
+7. Whether Manual Pause overrides Auto Resume.
+
+8. Campaign state diagram.
+
+9. Mailbox state diagram.
+
+10. Confirmation that one quota event immediately pauses the worker and resumes correctly without generating hundreds of deferred emails.

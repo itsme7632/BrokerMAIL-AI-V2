@@ -70,8 +70,27 @@ async function logActivity(
  * Covers the specific Exim/cPanel pattern referenced in the spec:
  *   "Domain X has exceeded the max emails per hour (51/50 allowed).
  *    Message will be reattempted later."
+ *
+ * Nodemailer SMTP errors carry three distinct fields:
+ *   - err.message      — human-readable description (may or may not embed the response)
+ *   - err.responseCode — numeric SMTP response code (e.g. 421, 452) as a Number property
+ *   - err.response     — the raw server response string (always contains the full line)
+ *
+ * Previously only err.message was checked, so providers whose quota response text
+ * did not match any pattern caused the loop to fall through to the generic "deferred"
+ * branch — processing the next lead, and the next, creating hundreds of deferred rows
+ * instead of one clean pause.  Now all three fields are checked.
  */
 export function isQuotaReachedError(err: unknown): boolean {
+  // ── 1. Nodemailer numeric response code (most reliable signal) ──────────────
+  // err.responseCode is a plain Number on every Nodemailer SMTPError; check it
+  // first so a provider that returns 421 with unusual text is still caught.
+  const responseCode = (err as any)?.responseCode;
+  if (responseCode === 421 || responseCode === 452) return true;
+
+  // ── 2. Build a combined search string from all text fields ──────────────────
+  // err.response is the full raw server response (e.g. "421 4.7.0 Try again
+  // later") and is the definitive source; err.message is kept as a fallback.
   const rawMsg =
     err instanceof Error
       ? err.message
@@ -79,14 +98,19 @@ export function isQuotaReachedError(err: unknown): boolean {
       ? err
       : String((err as any)?.message ?? err);
 
-  const s = rawMsg.toLowerCase();
+  const smtpResponse: string = (err as any)?.response ?? "";
+
+  // Concatenate both so a single set of pattern checks covers everything.
+  const s = (rawMsg + " " + smtpResponse).toLowerCase();
 
   return (
+    // ── Exim / cPanel patterns ─────────────────────────────────────────────
     s.includes("has exceeded the max emails per hour") ||
     s.includes("max emails per hour") ||
     s.includes("exceeded the max emails") ||
     s.includes("message will be reattempted later") ||
     s.includes("will be reattempted") ||
+    // ── Limit / quota keywords ─────────────────────────────────────────────
     s.includes("hourly limit") ||
     s.includes("daily limit") ||
     s.includes("rate limit") ||
@@ -95,17 +119,22 @@ export function isQuotaReachedError(err: unknown): boolean {
     s.includes("sending limit exceeded") ||
     s.includes("too many emails") ||
     s.includes("too many recipients") ||
-    s.includes("too many") ||
     s.includes("quota exceeded") ||
     s.includes("mailbox temporarily blocked") ||
     s.includes("temporarily deferred") ||
-    s.includes("temporarily unavailable") ||
     s.includes("try again later") ||
     s.includes("retry later") ||
     s.includes("slow down") ||
-    // "51/50 allowed" — numeric limit exhausted
+    s.includes("exceeded your") ||
+    s.includes("over the limit") ||
+    s.includes("limit exceeded") ||
+    s.includes("frequency limit") ||
+    s.includes("throttle") ||
+    // ── "51/50 allowed" — numeric limit exhausted ──────────────────────────
     /\d+\/\d+\s+allowed/.test(s) ||
-    // SMTP numeric codes often embedded in the message
+    // ── SMTP numeric codes embedded in the response text ───────────────────
+    // These complement the responseCode check above for providers that embed
+    // the code in the response string but use a different err.responseCode.
     /\b421\b/.test(s) ||   // 421 = service temporarily unavailable / rate limit
     /\b452\b/.test(s)      // 452 = insufficient system storage / quota exceeded
   );
