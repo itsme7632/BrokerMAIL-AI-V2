@@ -1,0 +1,83 @@
+BUG AUDIT — Gmail Single Email Composer False Open Tracking
+
+I found a reproducible tracking bug.
+
+Observed behavior:
+
+SMTP Single Email Composer:
+✓ Open count stays at 0 until the recipient actually opens the email.
+
+Gmail Single Email Composer:
+❌ Open count becomes 1 immediately after sending.
+The recipient never opened the email.
+The email even landed in Spam.
+
+Therefore this bug ONLY affects the Gmail Single Email Composer path.
+
+DO NOT guess.
+
+Audit the complete Gmail tracking flow.
+
+Compare it against the SMTP tracking flow.
+
+Verify:
+
+• HTML generation
+• Tracking pixel injection
+• Gmail API send path
+• SMTP send path
+• Tracking ID generation
+• Tracking endpoint
+• Draft creation
+• Single composer send
+• Campaign send
+• Gmail Draft send
+• Gmail API response handling
+
+Determine exactly why ONLY Gmail Single Composer records a false open.
+
+Specifically investigate whether:
+
+- Gmail image proxy is requesting the pixel.
+- Google Safe Browsing is requesting the pixel.
+- The Gmail API send flow marks opens incorrectly.
+- The tracking endpoint increments opens without validating the requester.
+- Gmail uses a different HTML body than SMTP.
+- The tracking ID is reused.
+- The pixel URL differs between Gmail and SMTP.
+
+Do NOT implement a workaround until the root cause is identified.
+
+If the cause is Google's image proxy:
+
+Implement proper filtering similar to commercial email platforms.
+
+Do not count opens originating from:
+
+- Google Image Proxy
+- Gmail image cache
+- Google Safe Browsing
+- Link scanners
+- Security scanners
+- Known bot user agents
+
+Only count genuine recipient opens.
+
+The SMTP behavior is already correct.
+
+Make the Gmail behavior match SMTP.
+
+Run:
+
+pnpm typecheck
+
+Run:
+
+pnpm build
+
+Finally provide:
+
+1. Root cause.
+2. Files modified.
+3. Why SMTP was correct while Gmail was not.
+4. Confirmation that Gmail Single Composer now waits for a real recipient open before incrementing the open count.
