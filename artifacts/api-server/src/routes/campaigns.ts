@@ -1834,13 +1834,32 @@ router.post("/campaigns/:id/send-batch", requireAuth, async (req, res): Promise<
       // DB write failures here are non-fatal for the drafts table but critical for leads.
       // If the draft was created, we always count it as succeeded — regardless of DB errors.
       if (phase1Error !== null || gmailDraftId === null) {
-        // Draft creation genuinely failed
+        // Draft creation genuinely failed.
+        // Upsert: update the existing failed row if one exists for this lead instead of
+        // inserting a new one. Accumulating multiple failed rows for the same
+        // (campaignId, leadId) causes duplicate Gmail drafts when retry-all runs,
+        // because the drafts retry iterates rows, not leads.
         try {
-          await db.insert(draftsTable).values({
-            userId: user.id, campaignId, leadId: lead.id,
-            email: lead.email, subject: generatedSubject, body: generatedBody,
-            status: "failed", errorMessage: phase1Error ?? "Unknown error",
-          });
+          const [existingFailedDraft] = await db
+            .select({ id: draftsTable.id })
+            .from(draftsTable)
+            .where(and(
+              eq(draftsTable.campaignId, campaignId),
+              eq(draftsTable.leadId, lead.id),
+              eq(draftsTable.status, "failed"),
+            ))
+            .limit(1);
+          if (existingFailedDraft) {
+            await db.update(draftsTable)
+              .set({ subject: generatedSubject, body: generatedBody, errorMessage: phase1Error ?? "Unknown error" })
+              .where(eq(draftsTable.id, existingFailedDraft.id));
+          } else {
+            await db.insert(draftsTable).values({
+              userId: user.id, campaignId, leadId: lead.id,
+              email: lead.email, subject: generatedSubject, body: generatedBody,
+              status: "failed", errorMessage: phase1Error ?? "Unknown error",
+            });
+          }
         } catch { /* non-fatal */ }
         try {
           await db.update(leadsTable)

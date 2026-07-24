@@ -588,6 +588,23 @@ router.post("/drafts/retry-selected", requireAuth, async (req, res): Promise<voi
       failed++;
       continue;
     }
+
+    // Idempotency guard: if the lead already succeeded via a prior retry, skip.
+    if (draft.campaignId && draft.leadId) {
+      const [currentLead] = await db.select({ status: leadsTable.status })
+        .from(leadsTable)
+        .where(eq(leadsTable.id, draft.leadId))
+        .limit(1);
+      if (currentLead?.status === "drafted" || currentLead?.status === "sent") {
+        await db.update(draftsTable)
+          .set({ status: "success", errorMessage: null })
+          .where(eq(draftsTable.id, draft.id))
+          .catch(() => {});
+        failed++;
+        continue;
+      }
+    }
+
     if (await isSuppressed(user.id, draft.email)) { failed++; continue; }
 
     try {
@@ -645,17 +662,49 @@ router.post("/drafts/retry-all-failed", requireAuth, async (req, res): Promise<v
       // Exclude SMTP records (they belong to Sent Emails retry flow)
       sql`(${draftsTable.gmailDraftId} IS NULL OR ${draftsTable.gmailDraftId} NOT LIKE 'smtp:%')`,
       isNotNull(draftsTable.email),
-    ));
+    ))
+    .orderBy(desc(draftsTable.id)); // most recent first for dedup
+
+  // Deduplicate by (campaignId, leadId): keep only the most recent failed draft
+  // per lead. The campaign processor inserts a fresh failed row on every internal
+  // retry attempt, so a single lead can accumulate multiple failed rows. Iterating
+  // all of them would call createGmailDraft once per row — creating duplicate drafts.
+  const seenLeadKeys = new Set<string>();
+  const dedupedDrafts = failedDrafts.filter(d => {
+    if (d.campaignId && d.leadId) {
+      const key = `${d.campaignId}:${d.leadId}`;
+      if (seenLeadKeys.has(key)) return false;
+      seenLeadKeys.add(key);
+    }
+    return true;
+  });
 
   let succeeded = 0, failed = 0, skipped = 0;
   const errors: string[] = [];
 
-  for (const draft of failedDrafts) {
+  for (const draft of dedupedDrafts) {
     if (!draft.email) { skipped++; continue; }
     if (!draft.subject) {
       // Campaign draft with no stored content — user must retry from campaign page
       skipped++;
       continue;
+    }
+
+    // Idempotency guard: if the lead already succeeded (via a prior retry from the
+    // campaign page), skip creating another draft and clean up the stale failed row.
+    if (draft.campaignId && draft.leadId) {
+      const [currentLead] = await db.select({ status: leadsTable.status })
+        .from(leadsTable)
+        .where(eq(leadsTable.id, draft.leadId))
+        .limit(1);
+      if (currentLead?.status === "drafted" || currentLead?.status === "sent") {
+        await db.update(draftsTable)
+          .set({ status: "success", errorMessage: null })
+          .where(eq(draftsTable.id, draft.id))
+          .catch(() => {});
+        skipped++;
+        continue;
+      }
     }
 
     if (await isSuppressed(user.id, draft.email)) { failed++; continue; }

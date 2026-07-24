@@ -1,0 +1,101 @@
+BUG FIX — Campaign Retry UI + Gmail Draft Retry Duplication
+
+I tested the implementation and found two bugs.
+
+==================================================
+BUG 1 — Retry controls are in the wrong place
+==================================================
+
+The Retry Failed actions currently appear on the Gmail Drafts page.
+
+That is NOT the primary workflow.
+
+Move the retry controls to the Campaign Detail page.
+
+When viewing a campaign:
+
+- Show Retry Failed when failed leads exist.
+- Show Retry Selected when one or more failed leads are selected.
+- Show Retry All Failed.
+- Disable retry buttons while a retry job is running.
+- Show progress while retrying.
+- Refresh campaign statistics immediately after completion.
+
+The Gmail Drafts page may keep retry actions if appropriate, but the Campaign Detail page must be the primary location.
+
+==================================================
+BUG 2 — Gmail Retry creates duplicate drafts
+==================================================
+
+This is a critical bug.
+
+Observed behavior:
+
+1. Gmail draft creation fails.
+2. Retry Failed is clicked.
+3. Two Gmail drafts now exist for every retried lead.
+
+This must NEVER happen.
+
+Audit the complete Gmail retry flow.
+
+Verify:
+
+- Backend endpoint
+- Gmail API calls
+- Database updates
+- Tracking records
+- Retry endpoints
+- Frontend retry calls
+
+Retry must be FULLY IDEMPOTENT.
+
+Requirements:
+
+- Never create duplicate Gmail drafts.
+- Never insert duplicate draft rows.
+- Never create duplicate analytics.
+- Never create duplicate tracking IDs.
+- Never create duplicate campaign progress.
+- Never retry a lead that has already succeeded.
+- Never execute the same retry twice.
+
+If a failed draft row already exists:
+
+- Update that row.
+- Replace the Gmail Draft ID.
+- Clear the error.
+- Change status to success.
+
+Do NOT insert a second draft row.
+
+If a retry request is received for a lead that is already successful:
+
+- Return success without creating anything.
+
+==================================================
+VERIFICATION
+==================================================
+
+Run:
+
+pnpm typecheck
+
+Run:
+
+pnpm build
+
+Then verify:
+
+✓ Retry buttons appear on Campaign Detail.
+✓ Gmail Drafts are NOT duplicated.
+✓ One lead always results in one Gmail draft after retry.
+✓ Retry is idempotent.
+✓ Campaign counters remain correct.
+✓ Analytics remain correct.
+
+Finally provide:
+
+1. Root cause of the duplication.
+2. Files modified.
+3. Confirmation that Gmail retry is now fully idempotent.

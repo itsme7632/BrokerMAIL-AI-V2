@@ -241,8 +241,10 @@ export default function CampaignDetail() {
   const [isCancelling, setIsCancelling]   = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [diagnostics, setDiagnostics]     = useState<CampaignDiagnostics | null>(null);
-  const [retryingLeadId, setRetryingLeadId] = useState<number | null>(null);
-  const [retryingAll,    setRetryingAll]    = useState(false);
+  const [retryingLeadId,   setRetryingLeadId]   = useState<number | null>(null);
+  const [retryingAll,      setRetryingAll]      = useState(false);
+  const [selectedLeadIds,  setSelectedLeadIds]  = useState<Set<number>>(new Set());
+  const [retryingSelected, setRetryingSelected] = useState(false);
 
   // Track previous sent count so fetchProgress can invalidate the leads cache
   // only when a new email has actually been sent — not on every poll.
@@ -258,6 +260,8 @@ export default function CampaignDetail() {
   // would tear down and recreate the 3-second polling interval on every page turn).
   const leadsPageRef = useRef(leadsPage);
   useEffect(() => { leadsPageRef.current = leadsPage; }, [leadsPage]);
+  // Clear selection whenever the user turns to a different leads page
+  useEffect(() => { setSelectedLeadIds(new Set()); }, [leadsPage]);
 
   const cooldownLeft = useCooldownTimerUntil(progress?.cooldownUntil ?? null);
   const etaSecs      = useETACountdown(progress?.estimatedCompletionSeconds ?? null);
@@ -587,6 +591,40 @@ export default function CampaignDetail() {
     } finally {
       setRetryingAll(false);
     }
+  }
+
+  // ─── Retry selected failed leads ─────────────────────────────────────────────
+  async function handleRetrySelected() {
+    const ids = [...selectedLeadIds].filter(id =>
+      leadsData?.data?.some(l => l.id === id && l.status === "failed")
+    );
+    if (ids.length === 0) return;
+    setRetryingSelected(true);
+    let succeeded = 0, failedCount = 0;
+    const token = localStorage.getItem("auth_token");
+    for (const leadId of ids) {
+      try {
+        const res = await fetch(`/api/campaigns/${campaignId}/leads/${leadId}/retry`, {
+          method: "POST", headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) succeeded++; else failedCount++;
+      } catch { failedCount++; }
+    }
+    if (succeeded > 0) {
+      toast({
+        title:       `${succeeded} email${succeeded !== 1 ? "s" : ""} retried`,
+        description: failedCount > 0 ? `${failedCount} still failed.` : "All selected emails retried successfully.",
+      });
+    } else {
+      toast({ variant: "destructive", title: "Retry failed", description: "No emails were successfully retried." });
+    }
+    setSelectedLeadIds(new Set());
+    await Promise.all([
+      fetchProgress(),
+      queryClient.invalidateQueries({ queryKey: getGetLeadsQueryKey({ campaignId, page: leadsPage, limit: 10 }) }),
+      queryClient.invalidateQueries({ queryKey: getGetCampaignQueryKey(campaignId) }),
+    ]);
+    setRetryingSelected(false);
   }
 
   // ─── Retry a single failed lead ──────────────────────────────────────────────
@@ -1287,10 +1325,50 @@ export default function CampaignDetail() {
               transition={{ duration: 0.2 }}
               className="overflow-hidden"
             >
+              {/* ─── Retry action toolbar ─────────────────────────────────────── */}
+              {(progress?.failed ?? 0) > 0 && (
+                <div className="border-t border-slate-100 px-4 py-2.5 flex flex-wrap items-center gap-2 bg-red-50/60 dark:bg-red-950/20">
+                  <span className="text-xs text-red-700 dark:text-red-400 font-medium flex items-center gap-1.5 flex-1">
+                    <XCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                    {progress!.failed} failed lead{progress!.failed !== 1 ? "s" : ""}
+                    {selectedLeadIds.size > 0 && (
+                      <span className="text-red-500 dark:text-red-400"> — {selectedLeadIds.size} selected</span>
+                    )}
+                  </span>
+                  <div className="flex gap-2 flex-shrink-0 flex-wrap">
+                    {selectedLeadIds.size > 0 && (
+                      <Button
+                        size="sm" variant="outline"
+                        className="h-7 px-2.5 text-xs rounded-lg border-red-300 text-red-700 hover:bg-red-100 dark:text-red-400 dark:border-red-800 gap-1.5"
+                        disabled={retryingSelected || retryingAll}
+                        onClick={handleRetrySelected}
+                      >
+                        {retryingSelected
+                          ? <Loader2 className="h-3 w-3 animate-spin" />
+                          : <RotateCcw className="h-3 w-3" />}
+                        {retryingSelected ? "Retrying…" : `Retry Selected (${selectedLeadIds.size})`}
+                      </Button>
+                    )}
+                    <Button
+                      size="sm" variant="outline"
+                      className="h-7 px-2.5 text-xs rounded-lg border-red-300 text-red-700 hover:bg-red-100 dark:text-red-400 dark:border-red-800 gap-1.5"
+                      disabled={retryingAll || retryingSelected}
+                      onClick={handleRetryAllFailed}
+                    >
+                      {retryingAll
+                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                        : <RotateCcw className="h-3 w-3" />}
+                      {retryingAll ? "Retrying…" : `Retry All Failed (${progress!.failed})`}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               <div className="border-t border-slate-100 overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50">
+                      <th className="px-3 py-3 w-8"></th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Name</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Email</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 hidden sm:table-cell">Vehicle</th>
@@ -1303,7 +1381,7 @@ export default function CampaignDetail() {
                     {isLeadsLoading ? (
                       Array(5).fill(0).map((_, i) => (
                         <tr key={i}>
-                          {[...Array(6)].map((_, j) => (
+                          {[...Array(7)].map((_, j) => (
                             <td key={j} className="px-4 py-3">
                               <Skeleton className="h-4 w-full" />
                             </td>
@@ -1312,7 +1390,7 @@ export default function CampaignDetail() {
                       ))
                     ) : leadsData?.data?.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-4 py-10 text-center text-xs text-muted-foreground dark:text-slate-400">
+                        <td colSpan={7} className="px-4 py-10 text-center text-xs text-muted-foreground dark:text-slate-400">
                           No leads in this campaign yet.
                         </td>
                       </tr>
@@ -1328,6 +1406,21 @@ export default function CampaignDetail() {
                         };
                         return (
                           <tr key={lead.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors">
+                            <td className="px-3 py-3 w-8">
+                              {lead.status === "failed" && (
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Select ${lead.email}`}
+                                  className="h-3.5 w-3.5 rounded accent-red-600 cursor-pointer"
+                                  checked={selectedLeadIds.has(lead.id)}
+                                  onChange={e => setSelectedLeadIds(prev => {
+                                    const next = new Set(prev);
+                                    if (e.target.checked) next.add(lead.id); else next.delete(lead.id);
+                                    return next;
+                                  })}
+                                />
+                              )}
+                            </td>
                             <td className="px-4 py-3 text-xs font-medium text-slate-800 truncate max-w-[120px]">
                               {lead.name || "—"}
                             </td>
