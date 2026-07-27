@@ -1542,7 +1542,7 @@ router.get("/admin/platform-health", requireAdmin, async (_req, res): Promise<vo
   }
 
   const [
-    [queuePending], [queueSending], [queueDeferred], [queueFailed], [queueSuccess],
+    [queuePending], [queueSending], [queueDeferred], [queueFailed], [queueSuccess], [queueCancelled],
     [sessions1h], [sessions24h], [errors1h], [errors24h],
     runningCampaigns, failedQueueRows, recentErrorLogs,
     [smtpActiveRow], [gmailActiveRow], [bounceRecentRow],
@@ -1552,6 +1552,7 @@ router.get("/admin/platform-health", requireAdmin, async (_req, res): Promise<vo
     db.select({ count: count() }).from(emailQueueTable).where(eq(emailQueueTable.status, "deferred")),
     db.select({ count: count() }).from(emailQueueTable).where(eq(emailQueueTable.status, "failed")),
     db.select({ count: count() }).from(emailQueueTable).where(eq(emailQueueTable.status, "success")),
+    db.select({ count: count() }).from(emailQueueTable).where(eq(emailQueueTable.status, "cancelled")),
     db.select({ count: count() }).from(usersTable).where(gte(usersTable.lastActiveAt, since1h)),
     db.select({ count: count() }).from(usersTable).where(gte(usersTable.lastActiveAt, since24h)),
     db.select({ count: count() }).from(systemLogsTable).where(and(eq(systemLogsTable.severity, "error"), gte(systemLogsTable.createdAt, since1h))),
@@ -1606,8 +1607,14 @@ router.get("/admin/platform-health", requireAdmin, async (_req, res): Promise<vo
     disk: diskUsage(),
     database: { status: dbStatus, latencyMs: dbLatencyMs },
     queue: {
-      pending: queuePending.count, sending: queueSending.count, deferred: queueDeferred.count,
-      failed: queueFailed.count, success: queueSuccess.count,
+      pending:   queuePending.count,
+      sending:   queueSending.count,
+      deferred:  queueDeferred.count,
+      failed:    queueFailed.count,
+      success:   queueSuccess.count,
+      cancelled: queueCancelled.count,
+      // "active" = emails that can still be delivered (pending + sending + deferred)
+      active:    queuePending.count + queueSending.count + queueDeferred.count,
     },
     workers: {
       smtpActive: smtpActiveRow.count > 0,

@@ -1,0 +1,147 @@
+We have found a queue management bug affecting the Platform Monitoring dashboard.
+
+Current issue:
+
+The Monitoring page shows:
+
+- Email Queue: 3516 active
+- Platform Health: Degraded
+
+After investigating, many of those emails are NOT actually active.
+
+They belong to campaigns that users cancelled.
+
+Those pending emails remain in the queue indefinitely, so the monitoring system thinks thousands of emails are still waiting to send.
+
+This causes inaccurate queue statistics and incorrectly affects Platform Health.
+
+I want this fixed properly, not just hidden from the UI.
+
+Please investigate the complete queue lifecycle.
+
+Specifically:
+
+1. When a campaign is cancelled:
+
+- Find every queued email belonging to that campaign that has NOT been sent.
+- Remove those jobs from the email queue.
+- They should no longer exist as pending/queued items.
+
+Only emails that were already sent should remain in history.
+
+2. Verify what statuses currently exist.
+
+For example:
+
+- pending
+- queued
+- processing
+- scheduled
+- retrying
+- paused
+- sent
+- failed
+- cancelled
+
+Tell me which statuses are counted as "Active".
+
+3. The Active Queue count should ONLY include emails that can still be delivered.
+
+For example:
+
+Include:
+
+- queued
+- scheduled
+- retrying
+- processing
+
+Do NOT include:
+
+- cancelled
+- removed
+- sent
+- failed
+- expired
+- campaign deleted
+- orphaned records
+
+4. When cancelling a campaign:
+
+Perform cleanup atomically.
+
+Expected flow:
+
+- Stop campaign
+- Stop workers for that campaign
+- Remove remaining queued emails
+- Update campaign status
+- Update monitoring counters
+- Refresh Platform Health immediately
+
+5. Investigate orphaned queue records.
+
+Determine whether cancelled campaigns leave behind pending email_queue rows.
+
+If they do:
+
+- explain why
+- fix the root cause
+- provide a cleanup migration/script to remove existing orphaned records safely
+
+6. Review Platform Health.
+
+It should reflect the REAL queue state.
+
+If only 25 emails are actually waiting to send,
+
+Email Queue should display approximately 25,
+
+not thousands of cancelled jobs.
+
+7. Verify all queue statistics are derived from active queue entries only.
+
+Check:
+
+- Monitoring page
+- Queue Management page
+- Dashboard cards
+- API responses
+
+Everything should stay consistent.
+
+8. After implementing the fix:
+
+Run a test.
+
+Create a campaign with 100 emails.
+
+Cancel it after 20 have been sent.
+
+Expected result:
+
+Sent:
+20
+
+Remaining queued:
+0
+
+Cancelled pending jobs:
+80 removed from queue
+
+Active Queue:
+0
+
+Campaign:
+Cancelled
+
+No orphaned queue entries should remain.
+
+Finally provide:
+
+- Root cause
+- Files changed
+- Database changes (if any)
+- Whether existing orphaned queue records were cleaned
+- pnpm typecheck result
+- pnpm build result
