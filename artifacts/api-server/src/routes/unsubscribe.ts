@@ -102,7 +102,7 @@ async function createUnsubscribeNotification(params: UnsubscribeNotificationPara
     const title       = "Customer Unsubscribed";
     const label       = reasonLabel(reason);
     const message     = `${displayName} unsubscribed from your emails. Reason: ${label}.`;
-    const link        = `/suppression-list?highlight=${encodeURIComponent(email)}`;
+    const link        = `/suppressions?highlight=${encodeURIComponent(email)}`;
 
     const metadata: Record<string, unknown> = {
       suppressionId,
