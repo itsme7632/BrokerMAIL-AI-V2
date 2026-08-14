@@ -65,6 +65,31 @@ export function smtpTimeouts() {
   };
 }
 
+/**
+ * Overall cap for a single Test Connection run (ms).
+ *
+ * Keeps the WHOLE test — TCP preflight + SMTP session (connect/greeting/EHLO/
+ * STARTTLS/auth) — under common reverse-proxy read timeouts (nginx default
+ * proxy_read_timeout is 60s). When the deadline fires, the test fails fast with
+ * a structured JSON "timeout" error instead of letting the proxy kill the
+ * request and return an HTML 502/504 page (which the old frontend then tried
+ * to parse as JSON). Configurable via SMTP_TEST_DEADLINE (ms).
+ */
+const SMTP_TEST_DEADLINE_MS = envInt("SMTP_TEST_DEADLINE", 50_000);
+
+/** Race a promise against a deadline; clears the timer when the promise wins. */
+function withDeadline<T>(promise: Promise<T>, ms: number, onTimeout: () => Error): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    promise,
+    new Promise<T>((_resolve, reject) => {
+      timer = setTimeout(() => reject(onTimeout()), ms);
+    }),
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 // ─── Transporter config ───────────────────────────────────────────────────────
 
 export function buildTransportOptions(creds: SmtpCredentials, rawPass?: string) {
@@ -151,15 +176,34 @@ function tcpConnect(host: string, port: number, timeoutMs = 10_000): Promise<voi
 
 // ─── Nodemailer debug logger ──────────────────────────────────────────────────
 
+/**
+ * Redact credential payloads from nodemailer's protocol trace BEFORE logging.
+ * With debug:true nodemailer logs every `C: <command>` line, and AUTH commands
+ * carry the base64-encoded username:password (e.g. `C: AUTH PLAIN dXNlcjpwYXNz`).
+ * Those lines must never reach the log, so scrub AUTH payloads and any bare
+ * long base64 line (AUTH LOGIN sends the user/pass as separate base64 payloads).
+ */
+function sanitizeSmtpTrace(msg: string): string {
+  return msg
+    .replace(/\bAUTH PLAIN \S+/gi,        "AUTH PLAIN <redacted>")
+    .replace(/\bAUTH LOGIN \S+/gi,        "AUTH LOGIN <redacted>")
+    .replace(/\bAUTH XOAUTH2 \S+/gi,      "AUTH XOAUTH2 <redacted>")
+    .replace(/^(C: )([A-Za-z0-9+/=]{12,})$/gm, "$1<redacted-base64>");
+}
+
 function makeSmtpLogger(prefix: string) {
+  const write = (level: "debug" | "info" | "warn" | "error", tag: string, msg: string, a: any[]) => {
+    const line = sanitizeSmtpTrace(`${msg} ${a.join(" ")}`);
+    logger[level]({ smtpTrace: true }, `${prefix} ${tag}: ${line}`);
+  };
   return {
     level()                          { return true; },
-    trace(msg: string, ...a: any[]) { logger.debug({ smtpTrace: true }, `${prefix} TRACE: ${msg} ${a.join(" ")}`); },
-    debug(msg: string, ...a: any[]) { logger.debug({ smtpTrace: true }, `${prefix} DEBUG: ${msg} ${a.join(" ")}`); },
-    info(msg: string,  ...a: any[]) { logger.info({ smtpTrace: true },  `${prefix} INFO:  ${msg} ${a.join(" ")}`); },
-    warn(msg: string,  ...a: any[]) { logger.warn({ smtpTrace: true },  `${prefix} WARN:  ${msg} ${a.join(" ")}`); },
-    error(msg: string, ...a: any[]) { logger.error({ smtpTrace: true }, `${prefix} ERROR: ${msg} ${a.join(" ")}`); },
-    fatal(msg: string, ...a: any[]) { logger.error({ smtpTrace: true }, `${prefix} FATAL: ${msg} ${a.join(" ")}`); },
+    trace(msg: string, ...a: any[]) { write("debug", "TRACE", msg, a); },
+    debug(msg: string, ...a: any[]) { write("debug", "DEBUG", msg, a); },
+    info(msg: string,  ...a: any[]) { write("info",  "INFO",  msg, a); },
+    warn(msg: string,  ...a: any[]) { write("warn",  "WARN",  msg, a); },
+    error(msg: string, ...a: any[]) { write("error", "ERROR", msg, a); },
+    fatal(msg: string, ...a: any[]) { write("error", "FATAL", msg, a); },
   };
 }
 
@@ -382,6 +426,14 @@ function friendlySmtpError(err: unknown, context: Record<string, unknown> = {}):
   (friendly as any).rawCode = code;
   (friendly as any).rawMsg  = rawMsg;
   (friendly as any).stage   = info.stage;
+  // Normalized fields the route serializes into the JSON response. `response`
+  // is the first SMTP server line only (truncated) — it never contains
+  // credentials, only what the server said (e.g. "535 5.7.8 Auth failed").
+  (friendly as any).code        = code;
+  const responseCode = Number((err as any)?.responseCode) || 0;
+  (friendly as any).responseCode = responseCode || undefined;
+  const responseLine = String((err as any)?.response ?? "").split("\n")[0].trim().slice(0, 200);
+  (friendly as any).response     = responseLine || undefined;
   return friendly;
 }
 
@@ -398,21 +450,13 @@ export function createSmtpTransport(mailbox: SmtpCredentials): Transporter {
  * clear network-vs-SMTP distinction in the logs.
  */
 export async function testSmtp(creds: SmtpCredentials & { rawPass?: string }): Promise<void> {
-  const ctx   = { host: creds.smtpHost, port: creds.smtpPort, user: creds.smtpUser };
-  const mode  = normalizeSmtpSecure(creds.smtpSecure);
-  const timeouts = smtpTimeouts();
-  logger.info({ ...ctx, mode, timeouts }, "[SMTP-TEST] Starting SMTP test connection");
+  const ctx       = { host: creds.smtpHost, port: creds.smtpPort, user: creds.smtpUser };
+  const mode      = normalizeSmtpSecure(creds.smtpSecure);
+  const timeouts  = smtpTimeouts();
+  const startedAt = Date.now();
+  logger.info({ ...ctx, mode, timeouts, deadlineMs: SMTP_TEST_DEADLINE_MS },
+    "[SMTP-TEST] Starting SMTP test connection");
   logTransportConfig("SMTP-TEST", creds);
-
-  // TCP preflight — diagnoses network reachability before SMTP protocol starts
-  logger.info(ctx, "[SMTP-TEST] 1. TCP preflight: opening connection");
-  try {
-    await tcpConnect(creds.smtpHost, creds.smtpPort, timeouts.connectionTimeout);
-    logger.info(ctx, "[SMTP-TEST] 2. TCP preflight: connection established — port is reachable");
-  } catch (tcpErr: any) {
-    logger.error({ ...ctx, tcpError: tcpErr.message },
-      "[SMTP-TEST] 2. TCP preflight FAILED — port unreachable (continuing to let nodemailer confirm)");
-  }
 
   const transport = nodemailer.createTransport({
     ...buildTransportOptions(creds, creds.rawPass),
@@ -420,12 +464,43 @@ export async function testSmtp(creds: SmtpCredentials & { rawPass?: string }): P
     logger: makeSmtpLogger("[SMTP-TEST]"),
   } as any);
 
-  try {
+  // TCP preflight — diagnoses network reachability before SMTP protocol starts.
+  // Capped at 10s so an unreachable port fails fast instead of stacking with the
+  // full nodemailer connection timeout and blowing the overall test deadline
+  // (which would otherwise let nginx kill the request and return an HTML 502).
+  const runSession = async () => {
+    logger.info(ctx, "[SMTP-TEST] 1. TCP preflight: opening connection");
+    try {
+      await tcpConnect(creds.smtpHost, creds.smtpPort, Math.min(timeouts.connectionTimeout, 10_000));
+      logger.info(ctx, "[SMTP-TEST] 2. TCP preflight: connection established — port is reachable");
+    } catch (tcpErr: any) {
+      logger.error({ ...ctx, tcpError: tcpErr.message },
+        "[SMTP-TEST] 2. TCP preflight FAILED — port unreachable (continuing to let nodemailer confirm)");
+    }
     logger.info(ctx, "[SMTP-TEST] 3. SMTP session: greeting → EHLO → STARTTLS (if selected) → AUTH → verify()");
     await transport.verify();
-    logger.info({ ...ctx, verifySuccess: true }, "[SMTP TEST] Verify Success — host/port/encryption/auth OK");
+  };
+
+  try {
+    await withDeadline(runSession(), SMTP_TEST_DEADLINE_MS, () => {
+      const e = new Error(
+        `SMTP connection test timed out after ${Math.round(SMTP_TEST_DEADLINE_MS / 1000)} seconds — the server did not respond. ` +
+        `Check the host and port, or that the SMTP server accepts connections from this server's IP address.`,
+      );
+      (e as any).stage = "timeout";
+      (e as any).code  = "ETIMEDOUT";
+      return e;
+    });
+    logger.info({ ...ctx, verifySuccess: true, elapsedMs: Date.now() - startedAt },
+      "[SMTP-TEST] Verify Success — host/port/encryption/auth OK");
   } catch (err) {
-    logger.error({ ...ctx, verifySuccess: false }, "[SMTP TEST] Verify Failed — see raw error below");
+    const elapsedMs = Date.now() - startedAt;
+    if (err instanceof Error && (err as any).stage === "timeout") {
+      logger.error({ ...ctx, verifySuccess: false, stage: "timeout", code: "ETIMEDOUT", elapsedMs },
+        "[SMTP-TEST] Overall test deadline exceeded — failing fast with a structured timeout error");
+      throw err;
+    }
+    logger.error({ ...ctx, verifySuccess: false, elapsedMs }, "[SMTP-TEST] Verify Failed — see raw error below");
     throw friendlySmtpError(err, ctx);
   } finally {
     transport.close();

@@ -638,12 +638,38 @@ router.post("/mailbox/remove", requireAuth, async (req, res): Promise<void> => {
 });
 
 // ─── POST /api/mailbox/test-smtp ──────────────────────────────────────────────
+// Always responds with JSON (never HTML), even on unexpected failures, so the
+// frontend can safely parse the response. Failure shape:
+//   { success:false, error, message, stage, code?, responseCode?, response? }
+// `message` is a SAFE user-presentable string; `stage`/`code`/`responseCode`/
+// `response` are diagnostic. Credentials are never included.
 router.post("/mailbox/test-smtp", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
+  const startedAt = Date.now();
   const { smtpHost, smtpPort, smtpUser, smtpPass, smtpSecure } = req.body as Record<string, string | number>;
 
+  const sendFailure = (
+    status: number,
+    payload: { error: string; message?: string; stage?: string; code?: string; responseCode?: number; response?: string },
+  ) => {
+    const body = {
+      success: false,
+      error: payload.error,
+      message: payload.message ?? payload.error,
+      stage: payload.stage ?? "unknown",
+      code: payload.code,
+      responseCode: payload.responseCode,
+      response: payload.response,
+    };
+    logger.warn(
+      { userId: user.id, host: smtpHost, port: smtpPort, elapsedMs: Date.now() - startedAt, ...body },
+      "[SMTP-TEST] Test failed — returning JSON error to client",
+    );
+    res.status(status).json(body);
+  };
+
   if (!smtpHost || !smtpPort || !smtpUser) {
-    res.status(400).json({ error: "Host, port, and username are required." });
+    sendFailure(400, { error: "Host, port, and username are required.", stage: "validation" });
     return;
   }
 
@@ -651,19 +677,32 @@ router.post("/mailbox/test-smtp", requireAuth, async (req, res): Promise<void> =
   // stored encrypted password — so users don't need to re-type it just to
   // re-test the connection (mirrors the IMAP test behavior).
   let rawPass: string;
-  if (smtpPass) {
-    rawPass = String(smtpPass);
-  } else {
-    const [box] = await db
-      .select({ smtpPassEncrypted: mailboxesTable.smtpPassEncrypted })
-      .from(mailboxesTable)
-      .where(eq(mailboxesTable.userId, user.id));
-    if (!box?.smtpPassEncrypted) {
-      res.status(400).json({ error: "Password is required — enter it in the Password field." });
-      return;
+  try {
+    if (smtpPass) {
+      rawPass = String(smtpPass);
+    } else {
+      const [box] = await db
+        .select({ smtpPassEncrypted: mailboxesTable.smtpPassEncrypted })
+        .from(mailboxesTable)
+        .where(eq(mailboxesTable.userId, user.id));
+      if (!box?.smtpPassEncrypted) {
+        sendFailure(400, { error: "Password is required — enter it in the Password field.", stage: "validation" });
+        return;
+      }
+      rawPass = decrypt(box.smtpPassEncrypted);
     }
-    rawPass = decrypt(box.smtpPassEncrypted);
+  } catch (err: any) {
+    sendFailure(500, {
+      error: "Could not load your saved mailbox credentials. Enter the password manually and try again.",
+      stage: "unknown",
+      code:  err?.code,
+    });
+    return;
   }
+
+  const mode = normalizeSmtpSecure(String(smtpSecure ?? "tls"));
+  logger.info({ userId: user.id, host: smtpHost, port: smtpPort, mode },
+    "[SMTP-TEST] Request received — starting SMTP test");
 
   try {
     await testSmtp({
@@ -671,12 +710,21 @@ router.post("/mailbox/test-smtp", requireAuth, async (req, res): Promise<void> =
       smtpPort: Number(smtpPort),
       smtpUser: String(smtpUser),
       smtpPassEncrypted: "",
-      smtpSecure: normalizeSmtpSecure(String(smtpSecure ?? "tls")),
+      smtpSecure: mode,
       rawPass,
     });
-    res.json({ ok: true, message: "SMTP connection successful." });
+    logger.info({ userId: user.id, host: smtpHost, port: smtpPort, mode, elapsedMs: Date.now() - startedAt },
+      "[SMTP-TEST] Test succeeded");
+    res.json({ success: true, ok: true, message: "SMTP connection successful." });
   } catch (err: any) {
-    res.status(400).json({ error: err.message ?? "SMTP connection failed." });
+    sendFailure(400, {
+      error:  "SMTP connection failed",
+      message: err?.message ?? "SMTP connection failed.",
+      stage:   err?.stage ?? "unknown",
+      code:    err?.code ?? err?.rawCode,
+      responseCode: typeof err?.responseCode === "number" ? err.responseCode : undefined,
+      response: typeof err?.response === "string" ? err.response : undefined,
+    });
   }
 });
 

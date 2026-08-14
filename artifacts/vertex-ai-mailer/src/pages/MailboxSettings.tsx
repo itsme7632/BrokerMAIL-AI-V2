@@ -7,7 +7,7 @@ import {
   Loader2, CheckCircle2, XCircle, Server, Mail, User, Lock,
   Wifi, Trash2, Save, FlaskConical, ChevronDown, ChevronUp, Eye, EyeOff,
   Shield, Clock, Gauge, AlertTriangle, Zap, RefreshCw, TimerReset,
-  Activity, HeartPulse, BarChart3, Ban, PlayCircle, PauseCircle,
+  Activity, HeartPulse, BarChart3, Ban, PlayCircle, PauseCircle, Copy,
 } from "lucide-react";
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
@@ -107,6 +107,66 @@ const HOURLY_OPTIONS = [
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("auth_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+// ─── Safe API response handling ───────────────────────────────────────────────
+// The API normally returns JSON, but a reverse proxy (nginx on DigitalOcean) or
+// a crashed upstream can answer with an HTML error page (e.g. 502 Bad Gateway).
+// Blindly calling res.json() on that throws:
+//   "Failed to execute 'json' on 'Response': Unexpected token '<'..."
+// These helpers read the body as text first, try JSON only when it looks like
+// JSON, and always preserve the raw body so the user can see the real response.
+
+async function readJsonSafely(res: Response): Promise<{ json: any; text: string }> {
+  const text = await res.text();
+  const trimmed = text.trim();
+  const looksJson =
+    (res.headers.get("content-type") ?? "").includes("application/json") ||
+    trimmed.startsWith("{") || trimmed.startsWith("[");
+  if (looksJson) {
+    try {
+      return { json: JSON.parse(text), text };
+    } catch {
+      return { json: null, text }; // malformed JSON → keep the raw body
+    }
+  }
+  return { json: null, text };
+}
+
+export interface RequestErrorInfo {
+  status: number;          // 0 = the fetch itself failed (network error)
+  statusText: string;
+  stage?: string;          // dns | tcp_connect | greeting | starttls_* | tls_* | auth | ...
+  code?: string;           // ETIMEDOUT / ECONNREFUSED / ENOTFOUND / EAUTH / ...
+  responseCode?: number;   // SMTP response code, e.g. 535
+  response?: string;       // first SMTP server response line (safe, truncated)
+  message: string;         // full user-presentable message
+  shortMessage?: string;   // compact version for the inline line / toast
+  rawBody: string;         // the actual response body (HTML/JSON/text) — never parsed blindly
+}
+
+function buildRequestError(res: Response, json: any, text: string): RequestErrorInfo {
+  const jsonMsg = json && (json.message ?? json.error ?? json.msg);
+  const hasJson = json != null;
+  const message = typeof jsonMsg === "string" && jsonMsg.trim()
+    ? jsonMsg.trim()
+    : text.trim()
+      ? text.trim().slice(0, 800)
+      : `Request failed with HTTP ${res.status}${res.statusText ? ` (${res.statusText})` : ""} and no response body.`;
+  const shortMessage = hasJson
+    ? message
+    : `SMTP test failed (HTTP ${res.status}): ${(text.trim() || "server returned a non-JSON response").slice(0, 140)}`;
+  return {
+    status: res.status,
+    statusText: res.statusText || `HTTP ${res.status}`,
+    stage: json?.stage,
+    code: json?.code,
+    responseCode: typeof json?.responseCode === "number" ? json.responseCode : undefined,
+    response: typeof json?.response === "string" ? json.response : undefined,
+    message,
+    shortMessage,
+    rawBody: text,
+  };
 }
 
 // ─── Small shared UI primitives (all theme-token based) ──────────────────────
@@ -232,7 +292,7 @@ function LiveStatusWidget({ visible, form }: { visible: boolean; form: MailboxFo
     setLoading(true);
     try {
       const res = await fetch("/api/mailbox/quota", { headers: authHeaders() });
-      if (res.ok) setQuota(await res.json());
+      if (res.ok) setQuota((await readJsonSafely(res)).json);
     } catch { /* ignore */ } finally {
       setLoading(false);
     }
@@ -535,6 +595,9 @@ export default function MailboxSettings() {
 
   const [smtpTest, setSmtpTest] = useState<"idle"|"testing"|"ok"|"fail">("idle");
   const [smtpErr, setSmtpErr]   = useState("");
+  const [smtpDetail, setSmtpDetail]         = useState<RequestErrorInfo | null>(null);
+  const [showSmtpDetails, setShowSmtpDetails] = useState(false);
+  const [smtpCopied, setSmtpCopied]         = useState(false);
   const [imapTest, setImapTest] = useState<"idle"|"testing"|"ok"|"fail">("idle");
   const [imapErr, setImapErr]   = useState("");
   const [customDelay, setCustomDelay]   = useState("");
@@ -581,7 +644,7 @@ export default function MailboxSettings() {
     const load = async () => {
       try {
         const res = await fetch("/api/mailbox/quota", { headers: authHeaders() });
-        if (res.ok) setQuotaSnapshot(await res.json());
+        if (res.ok) setQuotaSnapshot((await readJsonSafely(res)).json);
       } catch { /* ignore */ }
     };
     load();
@@ -594,7 +657,7 @@ export default function MailboxSettings() {
     try {
       const res = await fetch("/api/mailbox", { headers: authHeaders() });
       if (res.ok) {
-        const data = await res.json();
+        const { json: data } = await readJsonSafely(res);
         if (data) {
           setIsConnected(true);
           setLastVerified(data.updatedAt ?? null);
@@ -621,6 +684,8 @@ export default function MailboxSettings() {
           });
         }
       }
+    } catch {
+      // Non-JSON / unreachable API — leave the form empty rather than crashing
     } finally {
       setIsLoading(false);
     }
@@ -648,27 +713,63 @@ export default function MailboxSettings() {
           imapSecure: form.imapSecure,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Test failed");
+      const { json, text } = await readJsonSafely(res);
+      if (!res.ok) {
+        const msg = json?.message ?? json?.error ??
+          `IMAP test failed (HTTP ${res.status}): ${text.trim().slice(0, 200) || "server returned a non-JSON response"}`;
+        throw new Error(msg);
+      }
       setImapTest("ok");
     } catch (err: any) {
       setImapTest("fail"); setImapErr(err.message);
     }
   }
 
+  function copySmtpDetails() {
+    if (!smtpDetail) return;
+    const d = smtpDetail;
+    const block = [
+      `HTTP Status: ${d.status || "n/a"}`,
+      d.stage       ? `Stage: ${d.stage}` : null,
+      d.code        ? `Code: ${d.code}` : null,
+      d.responseCode != null ? `SMTP Response Code: ${d.responseCode}` : null,
+      d.response    ? `Server Response: ${d.response}` : null,
+      `Message: ${d.message}`,
+      d.rawBody && d.rawBody !== d.message ? `Raw Body: ${d.rawBody}` : null,
+    ].filter(Boolean).join("\n");
+    navigator.clipboard?.writeText(block).then(() => {
+      setSmtpCopied(true);
+      setTimeout(() => setSmtpCopied(false), 1500);
+    }).catch(() => {});
+  }
+
   async function handleTestSmtp() {
-    setSmtpTest("testing"); setSmtpErr("");
+    setSmtpTest("testing"); setSmtpErr(""); setSmtpDetail(null); setShowSmtpDetails(false);
     try {
       const res = await fetch("/api/mailbox/test-smtp", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ smtpHost: form.smtpHost, smtpPort: Number(form.smtpPort), smtpUser: form.smtpUser, smtpPass: form.smtpPass || undefined, smtpSecure: form.smtpSecure }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Test failed");
-      setSmtpTest("ok");
+      // Read the body as text first — never assume JSON. An nginx HTML 502 or
+      // any other non-JSON body is preserved verbatim instead of crashing with
+      // "Failed to execute 'json' on 'Response': Unexpected token '<'...".
+      const { json, text } = await readJsonSafely(res);
+      if (res.ok) { setSmtpTest("ok"); return; }
+      const info = buildRequestError(res, json, text);
+      setSmtpDetail(info);
+      setSmtpErr(info.shortMessage ?? info.message);
+      setSmtpTest("fail");
     } catch (err: any) {
-      setSmtpTest("fail"); setSmtpErr(err.message);
+      const info: RequestErrorInfo = {
+        status: 0,
+        statusText: "Network error",
+        message: "Could not reach the API server. Check your connection and try again.",
+        rawBody: String(err?.message ?? err),
+      };
+      setSmtpDetail(info);
+      setSmtpErr(info.message);
+      setSmtpTest("fail");
     }
   }
 
@@ -701,8 +802,12 @@ export default function MailboxSettings() {
           imapSecure: form.imapHost  ? form.imapSecure : undefined,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Save failed");
+      const { json, text } = await readJsonSafely(res);
+      if (!res.ok) {
+        const msg = json?.message ?? json?.error ??
+          `Save failed (HTTP ${res.status}): ${text.trim().slice(0, 200) || "server returned a non-JSON response"}`;
+        throw new Error(msg);
+      }
       setIsConnected(true);
       setForm(f => ({ ...f, smtpPass: "", imapPass: "" }));
       setLastVerified(new Date().toISOString());
@@ -854,6 +959,51 @@ export default function MailboxSettings() {
                   <TestBadge state={smtpTest} />
                   {smtpErr && <span className="text-xs text-destructive truncate">{smtpErr}</span>}
                 </div>
+                {smtpDetail && (
+                  <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold text-destructive">
+                        SMTP test failed (HTTP {smtpDetail.status || "—"})
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowSmtpDetails(s => !s)}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {showSmtpDetails ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                        {showSmtpDetails ? "Hide details" : "Show details"}
+                      </button>
+                    </div>
+                    {showSmtpDetails && (
+                      <div className="mt-2.5 space-y-1.5 rounded-lg bg-background/70 p-2.5 font-mono text-xs leading-relaxed">
+                        <p className="break-words whitespace-pre-wrap text-foreground">{smtpDetail.message}</p>
+                        {smtpDetail.stage && (
+                          <p className="text-muted-foreground">Stage: <span className="text-foreground">{smtpDetail.stage}</span></p>
+                        )}
+                        {smtpDetail.code && (
+                          <p className="text-muted-foreground">Code: <span className="text-foreground">{smtpDetail.code}</span></p>
+                        )}
+                        {smtpDetail.responseCode != null && (
+                          <p className="text-muted-foreground">SMTP response code: <span className="text-foreground">{smtpDetail.responseCode}</span></p>
+                        )}
+                        {smtpDetail.response && (
+                          <p className="text-muted-foreground">Server response: <span className="text-foreground break-words whitespace-pre-wrap">{smtpDetail.response}</span></p>
+                        )}
+                        {smtpDetail.rawBody && smtpDetail.rawBody !== smtpDetail.message && (
+                          <p className="text-muted-foreground">Raw response body: <span className="text-foreground break-words whitespace-pre-wrap">{smtpDetail.rawBody.slice(0, 1500)}</span></p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={copySmtpDetails}
+                          className="mt-1 inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+                        >
+                          {smtpCopied ? <CheckCircle2 className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                          {smtpCopied ? "Copied" : "Copy details"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </CardContent>
             <CardFooter className="justify-end">
