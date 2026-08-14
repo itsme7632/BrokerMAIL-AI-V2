@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
@@ -33,7 +33,22 @@ interface HealthStats {
   suppressionCount: number;
 }
 
-type Secure = "ssl" | "tls" | "none";
+type Secure = "starttls" | "ssl" | "none";
+
+// Backwards compatibility: mailboxes saved before the STARTTLS rename stored
+// legacy "tls" (= STARTTLS on port 587). Map those to the canonical value.
+function mapSecure(v: string | null | undefined, fallback: Secure = "starttls"): Secure {
+  const s = String(v ?? "").trim().toLowerCase();
+  if (s === "ssl" || s === "ssl/tls" || s === "implicit") return "ssl";
+  if (s === "tls" || s === "starttls") return "starttls";
+  if (s === "none") return "none";
+  return fallback;
+}
+
+// Suggested default ports per encryption mode. The user can always override;
+// the backend never rewrites the submitted port.
+const SUGGESTED_PORTS: Record<Secure, string> = { starttls: "587", ssl: "465", none: "25" };
+const SECURE_LABELS: Record<Secure, string> = { starttls: "STARTTLS", ssl: "SSL/TLS", none: "NONE" };
 
 interface MailboxForm {
   smtpHost: string; smtpPort: string; smtpUser: string; smtpPass: string; smtpSecure: Secure;
@@ -48,7 +63,7 @@ interface MailboxForm {
 }
 
 const EMPTY_FORM: MailboxForm = {
-  smtpHost: "", smtpPort: "587", smtpUser: "", smtpPass: "", smtpSecure: "tls",
+  smtpHost: "", smtpPort: "587", smtpUser: "", smtpPass: "", smtpSecure: "starttls",
   fromName: "", replyTo: "",
   batchSize: 10,
   delaySeconds: 15,
@@ -62,8 +77,8 @@ const PRESETS = [
   { name: "Hostinger",       smtp: "smtp.hostinger.com",    smtpPort: "465", secure: "ssl" as Secure },
   { name: "cPanel / WHM",    smtp: "mail.yourdomain.com",   smtpPort: "465", secure: "ssl" as Secure },
   { name: "Zoho Mail",       smtp: "smtp.zoho.com",         smtpPort: "465", secure: "ssl" as Secure },
-  { name: "Outlook / 365",   smtp: "smtp.office365.com",    smtpPort: "587", secure: "tls" as Secure },
-  { name: "Gmail SMTP",      smtp: "smtp.gmail.com",        smtpPort: "587", secure: "tls" as Secure },
+  { name: "Outlook / 365",   smtp: "smtp.office365.com",    smtpPort: "587", secure: "starttls" as Secure },
+  { name: "Gmail SMTP",      smtp: "smtp.gmail.com",        smtpPort: "587", secure: "starttls" as Secure },
   { name: "Namecheap Email", smtp: "mail.privateemail.com", smtpPort: "465", secure: "ssl" as Secure },
 ];
 
@@ -529,8 +544,35 @@ export default function MailboxSettings() {
 
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // Tracks whether the SMTP/IMAP port was auto-suggested from the encryption
+  // mode (true) or manually entered / loaded from a saved mailbox (false).
+  // When the user changes the encryption mode, the port is only updated if it
+  // is still an auto-generated default — a custom port is never overwritten.
+  const autoSmtpPortRef = useRef(true);
+  const autoImapPortRef = useRef(true);
+
   const set = <K extends keyof MailboxForm>(key: K, val: MailboxForm[K]) =>
     setForm(f => ({ ...f, [key]: val }));
+
+  const IMAP_SUGGESTED_PORTS: Record<Secure, string> = { starttls: "143", ssl: "993", none: "143" };
+
+  function changeEncryption(
+    encKey: "smtpSecure" | "imapSecure",
+    portKey: "smtpPort" | "imapPort",
+    mode: Secure,
+    suggested: Record<Secure, string>,
+    autoRef: React.MutableRefObject<boolean>,
+  ) {
+    const prevMode    = form[encKey];
+    const prevDefault = suggested[prevMode];
+    const portIsAuto  = autoRef.current || (prevDefault !== undefined && form[portKey] === prevDefault);
+    autoRef.current   = portIsAuto; // an applied suggestion stays auto; a custom port stays custom
+    setForm(f => ({
+      ...f,
+      [encKey]: mode,
+      ...(portIsAuto ? { [portKey]: suggested[mode] } : {}),
+    }));
+  }
 
   useEffect(() => { loadMailbox(); }, []);
 
@@ -556,12 +598,14 @@ export default function MailboxSettings() {
         if (data) {
           setIsConnected(true);
           setLastVerified(data.updatedAt ?? null);
+          autoSmtpPortRef.current = false; // saved values are real config, never auto
+          autoImapPortRef.current = false;
           setForm({
             smtpHost: data.smtpHost ?? "",
             smtpPort: String(data.smtpPort ?? "587"),
             smtpUser: data.smtpUser ?? "",
             smtpPass: "",
-            smtpSecure: (data.smtpSecure ?? "tls") as Secure,
+            smtpSecure: mapSecure(data.smtpSecure, "starttls"),
             fromName: data.fromName ?? "",
             replyTo:  data.replyTo  ?? "",
             batchSize:         data.batchSize         ?? 10,
@@ -573,7 +617,7 @@ export default function MailboxSettings() {
             imapPort:   String(data.imapPort ?? "993"),
             imapUser:   data.imapUser   ?? "",
             imapPass:   "",
-            imapSecure: (data.imapSecure ?? "ssl") as Secure,
+            imapSecure: mapSecure(data.imapSecure, "ssl"),
           });
         }
       }
@@ -583,6 +627,7 @@ export default function MailboxSettings() {
   }
 
   function applyPreset(p: typeof PRESETS[0]) {
+    autoSmtpPortRef.current = false; // presets set an explicit host/port pair
     setForm(f => ({
       ...f,
       smtpHost: p.smtp, smtpPort: p.smtpPort, smtpSecure: p.secure,
@@ -617,7 +662,7 @@ export default function MailboxSettings() {
       const res = await fetch("/api/mailbox/test-smtp", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ smtpHost: form.smtpHost, smtpPort: Number(form.smtpPort), smtpUser: form.smtpUser, smtpPass: form.smtpPass, smtpSecure: form.smtpSecure }),
+        body: JSON.stringify({ smtpHost: form.smtpHost, smtpPort: Number(form.smtpPort), smtpUser: form.smtpUser, smtpPass: form.smtpPass || undefined, smtpSecure: form.smtpSecure }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Test failed");
@@ -673,6 +718,8 @@ export default function MailboxSettings() {
     try {
       await fetch("/api/mailbox/remove", { method: "POST", headers: authHeaders() });
       setIsConnected(false);
+      autoSmtpPortRef.current = true; // fresh form → port suggestions active again
+      autoImapPortRef.current = true;
       setForm(EMPTY_FORM);
       setSmtpTest("idle"); setImapTest("idle"); setImapErr("");
       setConfirmDelete(false);
@@ -768,7 +815,7 @@ export default function MailboxSettings() {
                 }
               />
               <Field label="SMTP Port" icon={Wifi} value={form.smtpPort}
-                onChange={v => set("smtpPort", v)} placeholder="587" />
+                onChange={v => { autoSmtpPortRef.current = false; set("smtpPort", v); }} placeholder="587" />
               <Field label="Username / Email" icon={User} value={form.smtpUser}
                 onChange={v => set("smtpUser", v)} placeholder="sales@yourcompany.com" />
               <Field label="Password" icon={Lock} value={form.smtpPass} revealable
@@ -780,24 +827,24 @@ export default function MailboxSettings() {
                   <Wifi className="h-3.5 w-3.5 text-muted-foreground" /> Encryption
                 </label>
                 <div className="flex gap-2">
-                  {(["ssl","tls","none"] as Secure[]).map(s => (
+                  {(["starttls","ssl","none"] as Secure[]).map(s => (
                     <button
-                      key={s} type="button" onClick={() => set("smtpSecure", s)}
+                      key={s} type="button" onClick={() => changeEncryption("smtpSecure", "smtpPort", s, SUGGESTED_PORTS, autoSmtpPortRef)}
                       className={`flex-1 py-2 rounded-xl border text-xs font-semibold transition-colors ${
                         form.smtpSecure === s ? "border-primary bg-accent text-accent-foreground" : "border-border text-muted-foreground hover:border-primary/40 bg-card"
                       }`}
                     >
-                      {s.toUpperCase()}
+                      {SECURE_LABELS[s]}
                     </button>
                   ))}
                 </div>
-                <p className="text-xs text-muted-foreground">SSL=465, TLS=587, None=25</p>
+                <p className="text-xs text-muted-foreground">STARTTLS=587, SSL/TLS=465, NONE=25</p>
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium flex items-center gap-1.5 text-foreground opacity-0 select-none">Test</label>
                 <Button type="button" variant="outline" size="sm"
                   onClick={handleTestSmtp}
-                  disabled={smtpTest === "testing" || !form.smtpHost || !form.smtpUser || !form.smtpPass}
+                  disabled={smtpTest === "testing" || !form.smtpHost || !form.smtpUser || (!form.smtpPass && !isConnected)}
                   className="rounded-xl gap-1.5 w-full"
                 >
                   {smtpTest === "testing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FlaskConical className="h-3.5 w-3.5" />}
@@ -839,7 +886,7 @@ export default function MailboxSettings() {
                   hint="Same provider as SMTP — e.g. imap.hostinger.com, outlook.office365.com"
                 />
                 <Field label="IMAP Port" icon={Wifi} value={form.imapPort}
-                  onChange={v => set("imapPort", v)} placeholder="993" />
+                  onChange={v => { autoImapPortRef.current = false; set("imapPort", v); }} placeholder="993" />
                 <Field label="Username" icon={User} value={form.imapUser}
                   onChange={v => set("imapUser", v)} placeholder="sales@yourcompany.com"
                   hint="Usually the same as your SMTP username / email address"
@@ -854,18 +901,18 @@ export default function MailboxSettings() {
                     <Wifi className="h-3.5 w-3.5 text-muted-foreground" /> Encryption
                   </label>
                   <div className="flex gap-2">
-                    {(["ssl", "tls", "none"] as Secure[]).map(s => (
+                    {(["starttls", "ssl", "none"] as Secure[]).map(s => (
                       <button
-                        key={s} type="button" onClick={() => set("imapSecure", s)}
+                        key={s} type="button" onClick={() => changeEncryption("imapSecure", "imapPort", s, IMAP_SUGGESTED_PORTS, autoImapPortRef)}
                         className={`flex-1 py-2 rounded-xl border text-xs font-semibold transition-colors ${
                           form.imapSecure === s ? "border-primary bg-accent text-accent-foreground" : "border-border text-muted-foreground hover:border-primary/40 bg-card"
                         }`}
                       >
-                        {s.toUpperCase()}
+                        {SECURE_LABELS[s]}
                       </button>
                     ))}
                   </div>
-                  <p className="text-xs text-muted-foreground">SSL=993 (recommended), TLS/STARTTLS=143</p>
+                  <p className="text-xs text-muted-foreground">STARTTLS=143, SSL/TLS=993 (recommended), NONE=143</p>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium flex items-center gap-1.5 text-foreground opacity-0 select-none">Test</label>

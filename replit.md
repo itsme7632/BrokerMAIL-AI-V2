@@ -13,6 +13,12 @@ A production-ready AI SaaS for vehicle shipping brokers — upload CSV/XLSX lead
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL`, `SESSION_SECRET`, `OPENAI_API_KEY`
 - Optional (for Gmail/Google OAuth): `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REDIRECT_URI`
+- Optional SMTP transport env (safe defaults; never log secrets):
+  - `SMTP_TLS_REJECT_UNAUTHORIZED` — `false` disables TLS certificate validation (troubleshooting only). Default: validate (`true`)
+  - `SMTP_CONNECTION_TIMEOUT` — TCP connect timeout in ms. Default: 30000
+  - `SMTP_GREETING_TIMEOUT` — SMTP greeting timeout in ms. Default: 30000
+  - `SMTP_SOCKET_TIMEOUT` — socket inactivity timeout in ms. Default: 30000
+- SMTP encryption modes (mailboxes.smtp_secure): `starttls` (STARTTLS, ~587), `ssl` (implicit TLS, ~465), `none` (plain). Legacy stored value `tls` is treated as STARTTLS.
 - Status: DATABASE_URL and SESSION_SECRET are set; OPENAI_API_KEY is not set yet (user declined on initial setup) — AI email generation will fail until it's added.
 
 ## First-time setup (after import or clone)

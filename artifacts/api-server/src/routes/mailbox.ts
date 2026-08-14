@@ -3,7 +3,7 @@ import { db, mailboxesTable, templatesTable, draftsTable, usersTable, emailQueue
 import { eq, and, gte, sql, or, isNull, lte, isNotNull, desc, count, inArray } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { encrypt, decrypt } from "../lib/crypto";
-import { testSmtp, sendEmail } from "../lib/smtp";
+import { testSmtp, sendEmail, normalizeSmtpSecure } from "../lib/smtp";
 import { tryAppendToSent } from "../lib/imap-sent";
 import { ImapFlow } from "imapflow";
 import {
@@ -336,7 +336,7 @@ router.get("/mailbox", requireAuth, async (req, res): Promise<void> => {
     smtpPort:      box.smtpPort,
     smtpUser:      box.smtpUser,
     smtpPassSet:   !!box.smtpPassEncrypted,
-    smtpSecure:    box.smtpSecure,
+    smtpSecure:    normalizeSmtpSecure(box.smtpSecure),
     fromName:      box.fromName      ?? "",
     replyTo:       box.replyTo       ?? "",
     isActive:           box.isActive,
@@ -350,7 +350,7 @@ router.get("/mailbox", requireAuth, async (req, res): Promise<void> => {
     imapPort:           box.imapPort   ?? 993,
     imapUser:           box.imapUser   ?? "",
     imapPassSet:        !!box.imapPassEncrypted,
-    imapSecure:         box.imapSecure ?? "ssl",
+    imapSecure:         normalizeSmtpSecure(box.imapSecure ?? "ssl"),
   });
 });
 
@@ -525,7 +525,7 @@ router.put("/mailbox", requireAuth, async (req, res): Promise<void> => {
     smtpPort:          Number(smtpPort),
     smtpUser:          String(smtpUser),
     smtpPassEncrypted,
-    smtpSecure:        String(smtpSecure ?? "tls"),
+    smtpSecure:        normalizeSmtpSecure(String(smtpSecure ?? "tls")),
     fromName:          fromName ? String(fromName) : null,
     replyTo:           replyTo  ? String(replyTo)  : null,
     isActive:          true,
@@ -538,7 +538,7 @@ router.put("/mailbox", requireAuth, async (req, res): Promise<void> => {
     imapPort:           imapPort  ? Number(imapPort)  : null,
     imapUser:           imapUser  ? String(imapUser)  : null,
     imapPassEncrypted:  newImapPassEncrypted,
-    imapSecure:         imapSecure ? String(imapSecure) : null,
+    imapSecure:         imapSecure ? normalizeSmtpSecure(String(imapSecure)) : null,
     updatedAt:         new Date(),
   };
 
@@ -601,7 +601,7 @@ router.post("/mailbox/save", requireAuth, async (req, res): Promise<void> => {
     smtpPort:          Number(smtpPort),
     smtpUser:          String(smtpUser),
     smtpPassEncrypted,
-    smtpSecure:        String(smtpSecure ?? "tls"),
+    smtpSecure:        normalizeSmtpSecure(String(smtpSecure ?? "tls")),
     fromName:          fromName ? String(fromName) : null,
     replyTo:           replyTo  ? String(replyTo)  : null,
     isActive:          true,
@@ -614,7 +614,7 @@ router.post("/mailbox/save", requireAuth, async (req, res): Promise<void> => {
     imapPort:           imapPort  ? Number(imapPort)  : null,
     imapUser:           imapUser  ? String(imapUser)  : null,
     imapPassEncrypted:  newImapPassEncrypted,
-    imapSecure:         imapSecure ? String(imapSecure) : null,
+    imapSecure:         imapSecure ? normalizeSmtpSecure(String(imapSecure)) : null,
     updatedAt:         new Date(),
   };
 
@@ -639,19 +639,40 @@ router.post("/mailbox/remove", requireAuth, async (req, res): Promise<void> => {
 
 // ─── POST /api/mailbox/test-smtp ──────────────────────────────────────────────
 router.post("/mailbox/test-smtp", requireAuth, async (req, res): Promise<void> => {
+  const user = req.user!;
   const { smtpHost, smtpPort, smtpUser, smtpPass, smtpSecure } = req.body as Record<string, string | number>;
-  if (!smtpHost || !smtpPort || !smtpUser || !smtpPass) {
-    res.status(400).json({ error: "Host, port, username, and password are required." });
+
+  if (!smtpHost || !smtpPort || !smtpUser) {
+    res.status(400).json({ error: "Host, port, and username are required." });
     return;
   }
+
+  // Use the password from the form if provided; otherwise fall back to the
+  // stored encrypted password — so users don't need to re-type it just to
+  // re-test the connection (mirrors the IMAP test behavior).
+  let rawPass: string;
+  if (smtpPass) {
+    rawPass = String(smtpPass);
+  } else {
+    const [box] = await db
+      .select({ smtpPassEncrypted: mailboxesTable.smtpPassEncrypted })
+      .from(mailboxesTable)
+      .where(eq(mailboxesTable.userId, user.id));
+    if (!box?.smtpPassEncrypted) {
+      res.status(400).json({ error: "Password is required — enter it in the Password field." });
+      return;
+    }
+    rawPass = decrypt(box.smtpPassEncrypted);
+  }
+
   try {
     await testSmtp({
       smtpHost: String(smtpHost),
       smtpPort: Number(smtpPort),
       smtpUser: String(smtpUser),
       smtpPassEncrypted: "",
-      smtpSecure: String(smtpSecure ?? "tls"),
-      rawPass: String(smtpPass),
+      smtpSecure: normalizeSmtpSecure(String(smtpSecure ?? "tls")),
+      rawPass,
     });
     res.json({ ok: true, message: "SMTP connection successful." });
   } catch (err: any) {

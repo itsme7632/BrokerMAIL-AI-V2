@@ -39,19 +39,35 @@ function decrypt(ciphertext) {
 }
 
 // ─── Same transport option shape as buildTransportOptions() in lib/smtp.ts ──
+// (kept in sync with the app's canonical starttls/ssl/none modes)
+function normalizeSecure(value) {
+  const v = String(value ?? "").trim().toLowerCase().replace(/[\s/_-]+/g, "");
+  if (v === "ssl" || v === "implicit" || v === "465" || v === "ssltls") return "ssl";
+  if (v === "tls" || v === "starttls" || v === "587") return "starttls";
+  if (v === "none" || v === "plain" || v === "" || v === "25") return "none";
+  return "starttls";
+}
+
+function envInt(name, fallback) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : fallback;
+}
+
 function buildTransportOptions(mailbox, pass) {
-  const isSSL = mailbox.smtp_secure === "ssl";
-  const isTLS = mailbox.smtp_secure === "tls";
+  const mode = normalizeSecure(mailbox.smtp_secure);
+  const rejectUnauthorized = String(process.env.SMTP_TLS_REJECT_UNAUTHORIZED ?? "").toLowerCase() === "false" ? false : true;
   return {
     host: mailbox.smtp_host,
     port: mailbox.smtp_port,
-    secure: isSSL,
-    requireTLS: isTLS,
+    secure: mode === "ssl",
+    requireTLS: mode === "starttls",
     auth: { user: mailbox.smtp_user, pass },
-    tls: { rejectUnauthorized: false },
-    connectionTimeout: 20_000,
-    greetingTimeout: 30_000,
-    socketTimeout: 60_000,
+    tls: { minVersion: "TLSv1.2", rejectUnauthorized },
+    connectionTimeout: envInt("SMTP_CONNECTION_TIMEOUT", 30_000),
+    greetingTimeout:   envInt("SMTP_GREETING_TIMEOUT",   30_000),
+    socketTimeout:     envInt("SMTP_SOCKET_TIMEOUT",     30_000),
   };
 }
 
